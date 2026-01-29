@@ -276,7 +276,7 @@ const pickApiKey = (headerKey: string | null) => {
 export async function POST(req: Request) {
   try {
     const payload = (await req.json()) as ReportPayload;
-    const headerKey = req.headers.get("x-google-key") ?? req.headers.get("x-openai-key");
+    const headerKey = req.headers.get("x-google-key");
     const apiKey = pickApiKey(headerKey?.trim() ?? null);
     if (!apiKey) {
       console.error("[report] GOOGLE_API_KEY missing or malformed");

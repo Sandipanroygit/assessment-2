@@ -15,7 +15,7 @@ const pdfParse = require("pdf-parse");
 dotenv.config();
 
 // 🔑 Hardcoded API key for now. KEEP IT IN QUOTES.
-const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || process.env.OPENAI_API_KEY;
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 if (!GOOGLE_API_KEY) {
   throw new Error("Missing GOOGLE_API_KEY");
 }

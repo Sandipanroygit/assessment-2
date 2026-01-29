@@ -294,7 +294,7 @@ const fallbackReply = (message: string) => {
     return "Students can view and download manuals, code files, and activities. Materials are curated for structured, step-by-step learning.";
   }
 
-  return "Indus Skylab delivers a structured, school-ready drone curriculum for grades 9-12. It combines Python, electronics, mechanics, and data analysis through hands-on activities and real-world use cases.";
+  return "Skylab delivers a structured, school-ready drone curriculum for grades 9-12. It combines Python, electronics, mechanics, and data analysis through hands-on activities and real-world use cases.";
 };
 
 const buildWelcomeIntro = (context?: unknown) => {
@@ -341,7 +341,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "message is required" }, { status: 400 });
   }
 
-  const apiKey = pickApiKey(req.headers.get("x-google-key") ?? req.headers.get("x-openai-key"));
+  const apiKey = pickApiKey(req.headers.get("x-google-key"));
   if (!apiKey) {
     if (isQuizPrompt(message)) {
       return NextResponse.json(
@@ -375,9 +375,10 @@ export async function POST(req: Request) {
         parts: [
           {
             text:
-              "You are an AI assistant for Indus Skylab, an educational platform providing structured, school-focused drone curriculum for grades 9-12. "
-              + "Explain what students learn, why drones matter, and keep the tone friendly and educational. "
-              + "Before any reply, include the provided welcome intro text if supplied.",
+              "You are an assistant for Skylab's drone curriculum (grades 9-12). "
+              + "Before giving solutions, ask the user what stalled or blocked them (e.g., install, hardware, code, permissions). "
+              + "If they already described the stall, briefly restate it and give a concise fix path. "
+              + "Keep tone friendly and educational, and include the provided welcome intro text first when present.",
           },
         ],
       },
