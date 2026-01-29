@@ -1195,12 +1195,6 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
     let serverDeleted = false;
     try {
       if (!submission.id.startsWith("local-")) {
-        const attemptDelete = async (query: ReturnType<typeof supabase.from>) => {
-          const { data, error } = await query.select("id");
-          if (error) throw error;
-          return (Array.isArray(data) ? data.length : 0) ?? 0;
-        };
-
         let deleteQuery = supabase
           .from("activity_submissions")
           .delete()
@@ -1210,12 +1204,19 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
           deleteQuery = deleteQuery.eq("module_id", module.id);
         }
 
-        let deletedCount = await attemptDelete(deleteQuery);
+        const execDelete = async () => {
+          const { data, error } = await deleteQuery.select("id");
+          if (error) throw error;
+          return (Array.isArray(data) ? data.length : 0) ?? 0;
+        };
+
+        let deletedCount = await execDelete();
         if (deletedCount === 0 && module?.id) {
           // Fallback without module filter in case the stored row lacks module_id
-          deletedCount = await attemptDelete(
-            supabase.from("activity_submissions").delete().eq("id", submissionId).eq("user_id", userId),
-          );
+          const fallbackDelete = supabase.from("activity_submissions").delete().eq("id", submissionId).eq("user_id", userId);
+          const { data, error } = await fallbackDelete.select("id");
+          if (error) throw error;
+          deletedCount = (Array.isArray(data) ? data.length : 0) ?? 0;
         }
 
         if (deletedCount === 0) throw new Error("Delete blocked (no matching submission)");

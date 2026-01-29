@@ -79,6 +79,18 @@ const cleanSnippet = (text: string | null | undefined) => {
   return trimmed;
 };
 
+const getErrorMessage = (err: unknown) => {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === "object" && "message" in err && typeof (err as { message?: unknown }).message === "string") {
+    return (err as { message: string }).message;
+  }
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err ?? "Unknown error");
+  }
+};
+
 function AssessmentPageContent() {
   const searchParams = useSearchParams();
   const moduleId = searchParams.get("module");
