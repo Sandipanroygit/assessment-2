@@ -272,31 +272,6 @@ const buildQuizFallback = ({ message, contextText }: { message: string; contextT
     .join("\n\n");
 };
 
-const fallbackReply = (message: string) => {
-  const normalized = message.toLowerCase();
-
-  if (normalized.includes("price") || normalized.includes("cost") || normalized.includes("pricing")) {
-    return "Pricing varies by kit and bundle. Visit the shopping page for current packages or use 'Talk to sales' for a tailored quote.";
-  }
-  if (normalized.includes("login") || normalized.includes("sign in")) {
-    return "Use the Login / Sign In button on the homepage. Students can access modules after selecting their grade and subject.";
-  }
-  if (normalized.includes("demo") || normalized.includes("sales") || normalized.includes("contact")) {
-    return "Request a demo via the Talk to sales panel, and the team will share a guided walkthrough and onboarding details.";
-  }
-  if (normalized.includes("curriculum") || normalized.includes("syllabus") || normalized.includes("module")) {
-    return "The curriculum is structured and subject-aligned (CS, Physics, Math, Design Tech, ESS). It blends hands-on drone activities with Python programming and real-world applications.";
-  }
-  if (normalized.includes("board") || normalized.includes("grade")) {
-    return "Content is aligned for grades 9-12 and is compatible with major boards. Students choose their grade and subject to access curated modules.";
-  }
-  if (normalized.includes("download") || normalized.includes("materials") || normalized.includes("manual")) {
-    return "Students can view and download manuals, code files, and activities. Materials are curated for structured, step-by-step learning.";
-  }
-
-  return "Skylab delivers a structured, school-ready drone curriculum for grades 9-12. It combines Python, electronics, mechanics, and data analysis through hands-on activities and real-world use cases.";
-};
-
 const buildWelcomeIntro = (context?: unknown) => {
   if (!context) return "";
   try {

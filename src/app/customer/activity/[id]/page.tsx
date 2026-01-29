@@ -396,7 +396,6 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
   const [pdfLogoSrc, setPdfLogoSrc] = useState<string | null>(null);
   const [pdfStatus, setPdfStatus] = useState<string | null>(null);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
-  const [sopUploading, setSopUploading] = useState(false);
 
   const applyQuizQuestions = (
     questions: Array<{
