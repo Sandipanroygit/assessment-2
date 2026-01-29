@@ -372,6 +372,7 @@ export async function POST(req: Request) {
     const model = client.getGenerativeModel({ model: modelName });
     const completion = await model.generateContent({
       systemInstruction: {
+        role: "system",
         parts: [
           {
             text:
