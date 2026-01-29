@@ -371,18 +371,11 @@ export async function POST(req: Request) {
   try {
     const model = client.getGenerativeModel({ model: modelName });
     const completion = await model.generateContent({
-      systemInstruction: {
-        role: "system",
-        parts: [
-          {
-            text:
-              "You are an assistant for Skylab's drone curriculum (grades 9-12). "
-              + "Before giving solutions, ask the user what stalled or blocked them (e.g., install, hardware, code, permissions). "
-              + "If they already described the stall, briefly restate it and give a concise fix path. "
-              + "Keep tone friendly and educational, and include the provided welcome intro text first when present.",
-          },
-        ],
-      },
+      systemInstruction:
+        "You are an assistant for Skylab's drone curriculum (grades 9-12). "
+        + "Before giving solutions, ask the user what stalled or blocked them (e.g., install, hardware, code, permissions). "
+        + "If they already described the stall, briefly restate it and give a concise fix path. "
+        + "Keep tone friendly and educational, and include the provided welcome intro text first when present.",
       contents: [
         {
           role: "user",
