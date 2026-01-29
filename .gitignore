@@ -31,6 +31,8 @@ yarn-error.log*
 .env.development.local
 .env.test.local
 .env.production.local
+# Allow project-specific env to be committed on request
+!.env.local
 
 # vercel
 .vercel
@@ -67,5 +69,4 @@ pnpm-lock.yaml
 # yarn.lock
 # pnpm-lock.yaml
 # Local env
-.env.local
 env.env
