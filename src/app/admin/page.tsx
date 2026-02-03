@@ -8,7 +8,13 @@ import { supabase } from "@/lib/supabaseClient";
 import type { CurriculumModule, Product } from "@/types";
 import { useRouter } from "next/navigation";
 import { dataUrlToFile, fetchCurriculumModules, fetchProducts, uploadFileToBucket } from "@/lib/supabaseData";
-type AdminUser = { id: string; full_name: string; role: string; displayRole: string; created_at?: string | null };
+type AdminUser = {
+  id: string;
+  full_name: string;
+  role: string;
+  displayRole: string;
+  created_at?: string | null;
+};
 
 const orderActions = ["Track status", "View receipts", "Export reports"];
 
@@ -56,6 +62,7 @@ export default function AdminPage() {
   const [authStatus, setAuthStatus] = useState<string | null>(null);
   const [signingOut, startSignOut] = useTransition();
   const router = useRouter();
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [curriculumRows, setCurriculumRows] = useState<CurriculumModule[]>([]);
   const [productRows, setProductRows] = useState<Product[]>([]);
   const [userRows, setUserRows] = useState<AdminUser[]>([]);
@@ -131,6 +138,7 @@ export default function AdminPage() {
         router.push("/login");
         return;
       }
+      setCurrentUserId(user.id);
       const { data: profileData, error } = await supabase
         .from("profiles")
         .select("full_name, role")
@@ -200,6 +208,79 @@ export default function AdminPage() {
       cancelled = true;
     };
   }, [isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    const channel = supabase
+      .channel("profiles-live")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "profiles" },
+        (payload) => {
+          setUserRows((prev) => {
+            if (payload.eventType === "DELETE") {
+              const removedId = (payload.old as { id?: string })?.id;
+              if (!removedId) return prev;
+              return prev.filter((u) => u.id !== removedId);
+            }
+
+            const next = payload.new as {
+              id?: string;
+              full_name?: string | null;
+              role?: string | null;
+              created_at?: string | null;
+            };
+            if (!next?.id) return prev;
+
+            const entry: AdminUser = {
+              id: next.id,
+              full_name: next.full_name ?? "Unnamed user",
+              role: next.role ?? "customer",
+              displayRole: mapRoleLabel(next.role),
+              created_at: next.created_at ?? null,
+            };
+
+            const existingIndex = prev.findIndex((u) => u.id === entry.id);
+            if (existingIndex >= 0) {
+              const copy = [...prev];
+              copy[existingIndex] = { ...copy[existingIndex], ...entry };
+              return copy;
+            }
+
+            const merged = [entry, ...prev];
+            return merged.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+          });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [isAdmin]);
+
+  const handleDeleteUser = async (user: AdminUser) => {
+    if (!isAdmin) {
+      setDataStatus("Admin access is required to delete users.");
+      return;
+    }
+    if (currentUserId && user.id === currentUserId) {
+      setDataStatus("You cannot delete your own admin account.");
+      return;
+    }
+    const confirmed = window.confirm(`Delete user "${user.full_name}"? This cannot be undone.`);
+    if (!confirmed) return;
+
+    setDataStatus(`Deleting ${user.full_name}...`);
+    const { error } = await supabase.from("profiles").delete().eq("id", user.id);
+    if (error) {
+      setDataStatus(`Delete failed: ${error.message}`);
+      return;
+    }
+    setUserRows((prev) => prev.filter((u) => u.id !== user.id));
+    setDataStatus(null);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -625,12 +706,13 @@ export default function AdminPage() {
                 <th className="py-2 pr-3">Role</th>
                 <th className="py-2 pr-3">User ID</th>
                 <th className="py-2 pr-3">Joined</th>
+                <th className="py-2 pr-3">Actions</th>
               </tr>
             </thead>
             <tbody>
               {userRows.length === 0 ? (
                 <tr className="border-b border-white/5">
-                  <td className="py-2 pr-3 text-slate-300" colSpan={3}>
+                  <td className="py-2 pr-3 text-slate-300" colSpan={5}>
                     No users found yet. New accounts will appear here automatically after signup.
                   </td>
                 </tr>
@@ -641,6 +723,17 @@ export default function AdminPage() {
                     <td className="py-2 pr-3 text-slate-300">{user.displayRole}</td>
                     <td className="py-2 pr-3 text-slate-400 font-mono">{shortId(user.id)}</td>
                     <td className="py-2 pr-3 text-slate-300">{formatJoinedDate(user.created_at)}</td>
+                    <td className="py-2 pr-3">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          className="px-3 py-1 rounded-lg border border-rose-500/80 text-rose-200 text-xs hover:bg-rose-600/25 transition disabled:opacity-50"
+                          onClick={() => void handleDeleteUser(user)}
+                          disabled={!!currentUserId && user.id === currentUserId}
+                        >
+                          {currentUserId && user.id === currentUserId ? "Self" : "Delete"}
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}
