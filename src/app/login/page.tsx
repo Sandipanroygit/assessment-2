@@ -8,7 +8,7 @@ import { supabase } from "@/lib/supabaseClient";
 
 type AuthMode = "login" | "signup";
 type UserRole = "admin" | "teacher" | "student";
-type Profile = { full_name?: string; role?: string; grade?: string };
+type Profile = { full_name?: string; role?: string; grade?: string; verified?: boolean | null };
 
 const gradeOptions = ["Grade 5", "Grade 6", "Grade 7", "Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12"];
 
@@ -28,7 +28,7 @@ export default function LoginPage() {
     async (user: User): Promise<Profile | null> => {
       const { data: existing, error: fetchError } = await supabase
         .from("profiles")
-        .select("full_name, role, grade")
+        .select("full_name, role, grade, verified")
         .eq("id", user.id)
         .maybeSingle();
       if (!fetchError && existing) return existing as Profile;
@@ -37,10 +37,11 @@ export default function LoginPage() {
       }
 
       const roleFromMeta = (user.user_metadata?.role as string | undefined) ?? "customer";
-      const payload: Record<string, string> = {
+      const payload: Record<string, string | boolean> = {
         id: user.id,
         full_name: (user.user_metadata?.full_name as string | undefined) ?? user.email ?? "Customer",
         role: roleFromMeta,
+        verified: roleFromMeta === "admin",
       };
       const gradeFromMeta = user.user_metadata?.grade as string | undefined;
       if (gradeFromMeta) {
@@ -50,7 +51,7 @@ export default function LoginPage() {
       const { data, error } = await supabase
         .from("profiles")
         .insert(payload)
-        .select("full_name, role, grade")
+        .select("full_name, role, grade, verified")
         .single();
       if (error) {
         console.warn("Profile insert failed", error.message);
@@ -80,6 +81,11 @@ export default function LoginPage() {
       const user = data.user;
       if (user) {
         const profile = await ensureProfile(user);
+        if (profile && profile.verified === false) {
+          setStatus("Admin has yet to verify your account.");
+          await supabase.auth.signOut();
+          return;
+        }
         routeByRole(profile?.role ?? user.user_metadata.role, user.email);
       }
     };
@@ -113,6 +119,12 @@ export default function LoginPage() {
       return;
     }
     const profile = await ensureProfile(data.user);
+    if (profile && profile.verified === false) {
+      setStatus("Admin has yet to verify your account.");
+      await supabase.auth.signOut();
+      setLoading(false);
+      return;
+    }
     setStatus(`Hi ${profile?.full_name ?? data.user.email}! Redirecting...`);
     routeByRole(profile?.role ?? data.user.user_metadata.role, data.user.email);
   };
@@ -159,7 +171,7 @@ export default function LoginPage() {
       setLoading(false);
       return;
     }
-    setStatus("Account created. Check your email to confirm, then sign in.");
+    setStatus("Account created. Check your email to confirm. Admin will verify your account before you can sign in.");
     setMode("login");
     setLoading(false);
   };

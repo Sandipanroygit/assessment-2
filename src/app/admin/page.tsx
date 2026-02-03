@@ -13,6 +13,7 @@ type AdminUser = {
   full_name: string;
   role: string;
   displayRole: string;
+  verified?: boolean | null;
   created_at?: string | null;
 };
 
@@ -174,7 +175,10 @@ export default function AdminPage() {
         const [nextCurriculum, nextProducts, usersResponse] = await Promise.all([
           fetchCurriculumModules({ includeUnpublished: true }),
           fetchProducts(),
-          supabase.from("profiles").select("id,full_name,role,created_at").order("created_at", { ascending: false }),
+          supabase
+            .from("profiles")
+            .select("id,full_name,role,verified,created_at")
+            .order("created_at", { ascending: false }),
         ]);
         if (cancelled) return;
 
@@ -187,6 +191,7 @@ export default function AdminPage() {
           full_name: user.full_name ?? "Unnamed user",
           role: user.role ?? "customer",
           displayRole: mapRoleLabel(user.role),
+          verified: user.verified ?? false,
           created_at: user.created_at,
         }));
         setCurriculumRows(nextCurriculum);
@@ -229,6 +234,7 @@ export default function AdminPage() {
               id?: string;
               full_name?: string | null;
               role?: string | null;
+              verified?: boolean | null;
               created_at?: string | null;
             };
             if (!next?.id) return prev;
@@ -238,6 +244,7 @@ export default function AdminPage() {
               full_name: next.full_name ?? "Unnamed user",
               role: next.role ?? "customer",
               displayRole: mapRoleLabel(next.role),
+              verified: next.verified ?? false,
               created_at: next.created_at ?? null,
             };
 
@@ -259,6 +266,23 @@ export default function AdminPage() {
       void supabase.removeChannel(channel);
     };
   }, [isAdmin]);
+
+  const handleVerifyUser = async (user: AdminUser) => {
+    if (!isAdmin) {
+      setDataStatus("Admin access is required to verify users.");
+      return;
+    }
+    setDataStatus(`Verifying ${user.full_name}...`);
+    const { error } = await supabase.from("profiles").update({ verified: true }).eq("id", user.id);
+    if (error) {
+      setDataStatus(`Verify failed: ${error.message}`);
+      return;
+    }
+    setUserRows((prev) =>
+      prev.map((u) => (u.id === user.id ? { ...u, verified: true, displayRole: mapRoleLabel(u.role) } : u)),
+    );
+    setDataStatus(null);
+  };
 
   const handleDeleteUser = async (user: AdminUser) => {
     if (!isAdmin) {
@@ -704,6 +728,7 @@ export default function AdminPage() {
               <tr className="text-left text-slate-400 border-b border-white/10">
                 <th className="py-2 pr-3">Name</th>
                 <th className="py-2 pr-3">Role</th>
+                <th className="py-2 pr-3">Status</th>
                 <th className="py-2 pr-3">User ID</th>
                 <th className="py-2 pr-3">Joined</th>
                 <th className="py-2 pr-3">Actions</th>
@@ -712,7 +737,7 @@ export default function AdminPage() {
             <tbody>
               {userRows.length === 0 ? (
                 <tr className="border-b border-white/5">
-                  <td className="py-2 pr-3 text-slate-300" colSpan={5}>
+                  <td className="py-2 pr-3 text-slate-300" colSpan={6}>
                     No users found yet. New accounts will appear here automatically after signup.
                   </td>
                 </tr>
@@ -721,10 +746,27 @@ export default function AdminPage() {
                   <tr key={user.id} className="border-b border-white/5">
                     <td className="py-2 pr-3 font-semibold text-white">{user.full_name}</td>
                     <td className="py-2 pr-3 text-slate-300">{user.displayRole}</td>
+                    <td className="py-2 pr-3">
+                      <span
+                        className={`px-2 py-1 rounded-lg text-xs font-semibold border ${
+                          user.verified ? "border-emerald-400 text-emerald-200 bg-emerald-500/10" : "border-amber-400 text-amber-200 bg-amber-500/10"
+                        }`}
+                      >
+                        {user.verified ? "Verified" : "Pending"}
+                      </span>
+                    </td>
                     <td className="py-2 pr-3 text-slate-400 font-mono">{shortId(user.id)}</td>
                     <td className="py-2 pr-3 text-slate-300">{formatJoinedDate(user.created_at)}</td>
                     <td className="py-2 pr-3">
                       <div className="flex flex-wrap gap-2">
+                        {!user.verified && (
+                          <button
+                            className="px-3 py-1 rounded-lg border border-emerald-500/80 text-emerald-200 text-xs hover:bg-emerald-500/15 transition disabled:opacity-50"
+                            onClick={() => void handleVerifyUser(user)}
+                          >
+                            Confirm
+                          </button>
+                        )}
                         <button
                           className="px-3 py-1 rounded-lg border border-rose-500/80 text-rose-200 text-xs hover:bg-rose-600/25 transition disabled:opacity-50"
                           onClick={() => void handleDeleteUser(user)}

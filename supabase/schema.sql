@@ -7,11 +7,13 @@ create table if not exists public.profiles (
   full_name text,
   role text check (role in ('admin', 'teacher', 'student', 'customer')) default 'student',
   grade text,
+  verified boolean default false,
   created_at timestamp with time zone default now()
 );
 
 -- Bring existing tables in line with the newer profile shape
 alter table public.profiles add column if not exists grade text;
+alter table public.profiles add column if not exists verified boolean default false;
 alter table public.profiles drop constraint if exists profiles_role_check;
 alter table public.profiles add constraint profiles_role_check check (role in ('admin', 'teacher', 'student', 'customer'));
 alter table public.profiles alter column role set default 'student';

@@ -55,7 +55,7 @@ async function ensureAdmin() {
   console.log("Upserting profile row...");
   const { error: profileError } = await client
     .from("profiles")
-    .upsert({ id: userId, full_name: fullName, role: "admin" }, { onConflict: "id" });
+    .upsert({ id: userId, full_name: fullName, role: "admin", verified: true }, { onConflict: "id" });
 
   if (profileError) {
     console.error("Profile upsert failed (create tables first):", profileError.message);
