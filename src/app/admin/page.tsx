@@ -176,25 +176,25 @@ export default function AdminPage() {
         case "name": {
           const an = (a.full_name || "").toLowerCase();
           const bn = (b.full_name || "").toLowerCase();
-          if (an === bn) break;
+          if (an === bn) return 0;
           return userSort.dir === "asc" ? an.localeCompare(bn) : bn.localeCompare(an);
         }
         case "role": {
           const ar = (a.displayRole || "").toLowerCase();
           const br = (b.displayRole || "").toLowerCase();
-          if (ar === br) break;
+          if (ar === br) return 0;
           return userSort.dir === "asc" ? ar.localeCompare(br) : br.localeCompare(ar);
         }
         case "subject": {
           const asub = (a.subject || "").toLowerCase();
           const bsub = (b.subject || "").toLowerCase();
-          if (asub === bsub) break;
+          if (asub === bsub) return 0;
           return userSort.dir === "asc" ? asub.localeCompare(bsub) : bsub.localeCompare(asub);
         }
         case "grade": {
           const ag = (a.grade || "").toLowerCase();
           const bg = (b.grade || "").toLowerCase();
-          if (ag === bg) break;
+          if (ag === bg) return 0;
           return userSort.dir === "asc" ? ag.localeCompare(bg) : bg.localeCompare(ag);
         }
         default:
@@ -304,7 +304,7 @@ export default function AdminPage() {
       const message = err instanceof Error ? err.message : "Unable to save user";
       setUserEditStatus(message);
     }
-  }, [editingUser, reloadUsers, userForm.grade, userForm.full_name, userForm.role]);
+  }, [editingUser, reloadUsers, userForm.full_name, userForm.grade, userForm.role, userForm.subject]);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -457,7 +457,7 @@ export default function AdminPage() {
     setUserRows((prev) => prev.filter((u) => u.id !== user.id));
     if (editingUser && editingUser.id === user.id) {
       setEditingUser(null);
-      setUserForm({ full_name: "", role: "student", grade: "" });
+      setUserForm({ full_name: "", role: "student", grade: "", subject: "" });
     }
     setDataStatus(null);
   };
