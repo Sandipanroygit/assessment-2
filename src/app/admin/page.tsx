@@ -171,7 +171,7 @@ export default function AdminPage() {
 
   const sortedUsers = useMemo(() => {
     const copy = [...userRows];
-    copy.sort((a, b) => {
+    copy.sort((a, b): number => {
       switch (userSort.field) {
         case "name": {
           const an = (a.full_name || "").toLowerCase();
