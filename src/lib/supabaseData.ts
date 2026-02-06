@@ -43,6 +43,7 @@ export const mapCurriculumRow = (row: CurriculumRow): CurriculumModule => {
     description: row.description ?? "",
     assets,
     priceYearly: row.price_yearly ?? undefined,
+    published: row.published ?? undefined,
   };
 };
 
@@ -65,12 +66,15 @@ export const mapProductRow = (row: ProductRow): Product => {
   };
 };
 
-export async function fetchCurriculumModules(options?: { includeUnpublished?: boolean }) {
+export async function fetchCurriculumModules(options?: { includeUnpublished?: boolean; subject?: string }) {
   const includeUnpublished = options?.includeUnpublished ?? false;
-  const query = supabase
+  let query = supabase
     .from("curriculum_modules")
     .select("id,title,grade,subject,module,description,asset_urls,price_yearly,published,created_at")
     .order("created_at", { ascending: false });
+  if (options?.subject) {
+    query = query.eq("subject", options.subject);
+  }
   const { data, error } = includeUnpublished ? await query : await query.eq("published", true);
   if (error) throw error;
   return (data as CurriculumRow[]).map(mapCurriculumRow);

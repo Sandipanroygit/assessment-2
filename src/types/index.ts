@@ -10,6 +10,7 @@ export interface CurriculumModule {
   assets: Array<{ type: "video" | "code" | "doc"; url: string; label: string }>;
   codeSnippet?: string;
   priceYearly?: number;
+  published?: boolean;
 }
 
 export interface Product {

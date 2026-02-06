@@ -11,6 +11,13 @@ type UserRole = "admin" | "teacher" | "student";
 type Profile = { full_name?: string; role?: string; grade?: string };
 
 const gradeOptions = ["Grade 5", "Grade 6", "Grade 7", "Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12"];
+const subjectOptions = [
+  "Physics",
+  "Mathematics",
+  "Computer Science",
+  "Environment System & Society (ESS)",
+  "Design Technology",
+];
 
 export default function LoginPage() {
   const router = useRouter();
@@ -21,6 +28,7 @@ export default function LoginPage() {
   const [fullName, setFullName] = useState("");
   const [role, setRole] = useState<UserRole>("teacher");
   const [grade, setGrade] = useState(gradeOptions[0]);
+  const [subject, setSubject] = useState<string>(subjectOptions[0]);
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -36,7 +44,7 @@ export default function LoginPage() {
         console.warn("Profile fetch error", fetchError.message);
       }
 
-      const roleFromMeta = (user.user_metadata?.role as string | undefined) ?? "customer";
+      const roleFromMeta = (user.user_metadata?.role as string | undefined)?.toLowerCase() ?? "student";
       const payload: Record<string, string> = {
         id: user.id,
         full_name: (user.user_metadata?.full_name as string | undefined) ?? user.email ?? "Customer",
@@ -93,6 +101,9 @@ export default function LoginPage() {
     if (nextRole === "student" && !grade) {
       setGrade(gradeOptions[0]);
     }
+    if (nextRole === "teacher" && !subject) {
+      setSubject(subjectOptions[0]);
+    }
   };
 
   const handleLogin = async () => {
@@ -139,7 +150,10 @@ export default function LoginPage() {
       setLoading(false);
       return;
     }
-    const metadata: Record<string, string> = { full_name: fullName, role };
+    const metadata: Record<string, string> = { full_name: fullName, role: role.toLowerCase() };
+    if (role === "teacher") {
+      metadata.subject = subject;
+    }
     if (role === "student") {
       metadata.grade = grade;
     }
@@ -241,6 +255,23 @@ export default function LoginPage() {
                 onChange={(e) => setGrade(e.target.value)}
               >
                 {gradeOptions.map((option) => (
+                  <option key={option} value={option} className="text-black">
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          {role === "teacher" && mode === "signup" && (
+            <label className="block text-sm text-slate-300 space-y-2">
+              Subject
+              <select
+                className="w-full rounded-xl border border-slate-500/70 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+              >
+                {subjectOptions.map((option) => (
                   <option key={option} value={option} className="text-black">
                     {option}
                   </option>

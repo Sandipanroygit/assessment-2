@@ -14,9 +14,9 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Curriculum Dashboard | Drones, AR/VR, 3D Printing",
+  title: "Curriculum Dashboard | Drones | Experiential Learning | Design Technology",
   description:
-    "Commercialize drone, AR/VR, and 3D printing curriculum with Supabase-powered dashboards for schools and educators.",
+    "Launch drone, experiential learning, and design technology programs with Supabase-powered dashboards for schools and educators.",
 };
 
 export default function RootLayout({
