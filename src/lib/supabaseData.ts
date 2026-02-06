@@ -177,3 +177,37 @@ export function dataUrlToFile(dataUrl: string, fileName: string) {
   for (let i = 0; i < bytes.length; i += 1) buf[i] = bytes.charCodeAt(i);
   return new File([buf], fileName, { type: mime });
 }
+
+export type AnalyticsEventRow = {
+  id: number;
+  user_id: string | null;
+  event_type: string;
+  payload: Record<string, unknown> | null;
+  created_at: string;
+};
+
+export async function fetchAnalyticsEvents(limit = 200) {
+  const { data, error } = await supabase
+    .from("analytics_events")
+    .select("id,user_id,event_type,payload,created_at")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data as AnalyticsEventRow[]) ?? [];
+}
+
+export type PageViewRow = {
+  id: number;
+  page: string;
+  created_at: string;
+};
+
+export async function fetchPageViews(limit = 200) {
+  const { data, error } = await supabase
+    .from("page_views")
+    .select("id,page,created_at")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data as PageViewRow[]) ?? [];
+}

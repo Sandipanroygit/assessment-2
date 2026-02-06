@@ -16,7 +16,16 @@ import {
 import { supabase } from "@/lib/supabaseClient";
 import type { CurriculumModule, Product } from "@/types";
 import { useRouter } from "next/navigation";
-import { dataUrlToFile, fetchCurriculumModules, fetchProducts, uploadFileToBucket } from "@/lib/supabaseData";
+import {
+  dataUrlToFile,
+  fetchAnalyticsEvents,
+  fetchCurriculumModules,
+  fetchPageViews,
+  fetchProducts,
+  uploadFileToBucket,
+  type AnalyticsEventRow,
+  type PageViewRow,
+} from "@/lib/supabaseData";
 type AdminUser = {
   id: string;
   full_name: string;
@@ -40,6 +49,27 @@ const formatPrice = (value: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(
     value,
   );
+
+const formatDateTime = (value?: string | null) =>
+  value ? new Date(value).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
+
+const formatDuration = (ms?: number | null) => {
+  if (!ms || Number.isNaN(ms)) return "—";
+  const minutes = Math.round(ms / 60000);
+  if (minutes < 120) return `${minutes} min`;
+  const hours = ms / 3600000;
+  return `${hours.toFixed(hours >= 10 ? 0 : 1)} hr`;
+};
+
+const SESSION_START_EVENTS = new Set(["login", "session_start", "auth_login", "signin", "session-start"]);
+const SESSION_END_EVENTS = new Set(["logout", "session_end", "auth_logout", "signout", "session-end"]);
+const DURATION_KEYS = ["durationMs", "duration_ms", "duration", "time_ms", "timeSpentMs", "time_spent_ms", "ms"];
+type SessionRow = {
+  userId: string;
+  start: string;
+  end: string | null;
+  durationMs: number | null;
+};
 
 const formatJoinedDate = (value?: string | null) => (value ? new Date(value).toLocaleDateString() : "-");
 const sanitizeSegment = (value: string) =>
@@ -82,6 +112,9 @@ export default function AdminPage() {
   const [productRows, setProductRows] = useState<Product[]>([]);
   const [userRows, setUserRows] = useState<AdminUser[]>([]);
   const [userCount, setUserCount] = useState<number | null>(null);
+  const [analyticsEvents, setAnalyticsEvents] = useState<AnalyticsEventRow[]>([]);
+  const [pageViews, setPageViews] = useState<PageViewRow[]>([]);
+  const [showSessions, setShowSessions] = useState(false);
   const [userSort, setUserSort] = useState<{ field: "name" | "role" | "subject" | "grade"; dir: "asc" | "desc" }>({
     field: "role",
     dir: "asc",
@@ -169,32 +202,166 @@ export default function AdminPage() {
     [curriculumRows.length, productRows.length, userRows.length, userCount],
   );
 
+  const userLookup = useMemo(() => {
+    const map = new Map<string, AdminUser>();
+    userRows.forEach((u) => map.set(u.id, u));
+    return map;
+  }, [userRows]);
+
+  const sessionStats = useMemo(() => {
+    if (!analyticsEvents.length) {
+      return {
+        sessions: [] as SessionRow[],
+        perUser: new Map<string, { sessions: number; timeMs: number; lastLogin: string | null; lastLogout: string | null }>(),
+        totals: { sessions: 0, timeMs: 0, activeToday: 0, sessionsToday: 0, avgSessionMs: 0 },
+      };
+    }
+
+    // Build sessions (pair start/end)
+    const chronological = [...analyticsEvents].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    );
+    const open = new Map<string, AnalyticsEventRow>();
+    const sessions: SessionRow[] = [];
+
+    for (const ev of chronological) {
+      const uid = ev.user_id ?? "unknown";
+      const normalizedType = (ev.event_type ?? "").toLowerCase();
+      const payload = (ev.payload ?? {}) as Record<string, unknown>;
+
+      if (SESSION_START_EVENTS.has(normalizedType)) {
+        open.set(uid, ev);
+      } else if (SESSION_END_EVENTS.has(normalizedType)) {
+        const start = open.get(uid);
+        const endTs = new Date(ev.created_at).getTime();
+        const startTs = start ? new Date(start.created_at).getTime() : NaN;
+        const durationFromPayload = DURATION_KEYS.map((key) => payload[key]).find(
+          (v) => typeof v === "number" && Number.isFinite(v),
+        ) as number | undefined;
+        const durationMs =
+          Number.isFinite(startTs) && endTs > startTs
+            ? endTs - startTs
+            : typeof durationFromPayload === "number"
+              ? durationFromPayload
+              : null;
+        sessions.push({
+          userId: uid,
+          start: start?.created_at ?? ev.created_at,
+          end: ev.created_at,
+          durationMs,
+        });
+        open.delete(uid);
+      }
+    }
+
+    // Treat any open starts as in-progress sessions with no end time
+    for (const [uid, start] of open.entries()) {
+      sessions.push({ userId: uid, start: start.created_at, end: null, durationMs: null });
+    }
+
+    const perUser = new Map<
+      string,
+      { sessions: number; timeMs: number; lastLogin: string | null; lastLogout: string | null }
+    >();
+    sessions.forEach((s) => {
+      const entry =
+        perUser.get(s.userId) ?? { sessions: 0, timeMs: 0, lastLogin: null, lastLogout: null };
+      entry.sessions += 1;
+      if (typeof s.durationMs === "number" && s.durationMs > 0) entry.timeMs += s.durationMs;
+      if (!entry.lastLogin || (s.start && s.start > entry.lastLogin)) entry.lastLogin = s.start;
+      if (s.end && (!entry.lastLogout || s.end > entry.lastLogout)) entry.lastLogout = s.end;
+      perUser.set(s.userId, entry);
+    });
+
+    const now = Date.now();
+    const dayAgo = now - 24 * 60 * 60 * 1000;
+    const sessionsToday = sessions.filter(
+      (s) => new Date(s.start).getTime() >= dayAgo || (s.end && new Date(s.end).getTime() >= dayAgo),
+    );
+    const activeToday = new Set(sessionsToday.map((s) => s.userId)).size;
+
+    const totalSessions = sessions.length;
+    const totalTimeMs = sessions.reduce((sum, s) => (s.durationMs ? sum + s.durationMs : sum), 0);
+    const timeTodayMs = sessionsToday.reduce((sum, s) => (s.durationMs ? sum + s.durationMs : sum), 0);
+    const avgSessionMs = totalSessions ? totalTimeMs / totalSessions : 0;
+
+    const recentSessions = [...sessions].sort(
+      (a, b) => new Date(b.start).getTime() - new Date(a.start).getTime(),
+    );
+
+    return {
+      sessions: recentSessions,
+      perUser,
+      totals: {
+        sessions: totalSessions,
+        timeMs: totalTimeMs,
+        avgSessionMs,
+        activeToday,
+        sessionsToday: sessionsToday.length,
+        timeTodayMs,
+      },
+    };
+  }, [analyticsEvents]);
+
+  const pageViewStats = useMemo(() => {
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const last24h = pageViews.filter((pv) => new Date(pv.created_at).getTime() >= cutoff).length;
+    return { last24h, total: pageViews.length };
+  }, [pageViews]);
+
+  const analyticsCards = useMemo(() => {
+    return [
+      {
+        title: "Active users (24h)",
+        metric: sessionStats.totals.activeToday ? `${sessionStats.totals.activeToday}` : "—",
+        detail: "",
+      },
+      {
+        title: "Time spent (24h)",
+        metric: sessionStats.totals.timeTodayMs ? formatDuration(sessionStats.totals.timeTodayMs) : "—",
+        detail: "",
+      },
+      {
+        title: "Page views",
+        metric: `${pageViewStats.last24h}`,
+        detail: "",
+      },
+    ];
+  }, [
+    sessionStats.totals.activeToday,
+    sessionStats.totals.sessionsToday,
+    pageViewStats.last24h,
+    pageViewStats.total,
+    userCount,
+    userRows,
+  ]);
+
   const sortedUsers = useMemo(() => {
     const copy = [...userRows];
-    copy.sort((a, b): number => {
+    copy.sort((a, b) => {
       switch (userSort.field) {
         case "name": {
           const an = (a.full_name || "").toLowerCase();
           const bn = (b.full_name || "").toLowerCase();
-          if (an === bn) return 0;
+          if (an === bn) break;
           return userSort.dir === "asc" ? an.localeCompare(bn) : bn.localeCompare(an);
         }
         case "role": {
           const ar = (a.displayRole || "").toLowerCase();
           const br = (b.displayRole || "").toLowerCase();
-          if (ar === br) return 0;
+          if (ar === br) break;
           return userSort.dir === "asc" ? ar.localeCompare(br) : br.localeCompare(ar);
         }
         case "subject": {
           const asub = (a.subject || "").toLowerCase();
           const bsub = (b.subject || "").toLowerCase();
-          if (asub === bsub) return 0;
+          if (asub === bsub) break;
           return userSort.dir === "asc" ? asub.localeCompare(bsub) : bsub.localeCompare(asub);
         }
         case "grade": {
           const ag = (a.grade || "").toLowerCase();
           const bg = (b.grade || "").toLowerCase();
-          if (ag === bg) return 0;
+          if (ag === bg) break;
           return userSort.dir === "asc" ? ag.localeCompare(bg) : bg.localeCompare(ag);
         }
         default:
@@ -227,6 +394,45 @@ export default function AdminPage() {
     reorderCurriculum(draggingId, targetId);
     setDraggingId(null);
   };
+
+  const loadData = useCallback(
+    async (statusLabel = "Refreshing data...") => {
+      if (!canEditCurriculum) return;
+      setDataStatus(statusLabel);
+      try {
+        const [nextCurriculum, nextProducts, nextAnalytics, nextPageViews] = await Promise.all([
+          fetchCurriculumModules({ includeUnpublished: true }),
+          isAdmin ? fetchProducts() : Promise.resolve([] as Product[]),
+          isAdmin ? fetchAnalyticsEvents(200) : Promise.resolve([] as AnalyticsEventRow[]),
+          isAdmin ? fetchPageViews(200) : Promise.resolve([] as PageViewRow[]),
+        ]);
+
+        setCurriculumRows(nextCurriculum);
+        setProductRows(isAdmin ? nextProducts : []);
+        setAnalyticsEvents(isAdmin ? nextAnalytics : []);
+        setPageViews(isAdmin ? nextPageViews : []);
+        if (isAdmin) {
+          await reloadUsers();
+        } else {
+          setUserRows([]);
+          setUserCount(null);
+        }
+        setDataStatus(null);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unable to load data";
+        setCurriculumRows([]);
+        setProductRows([]);
+        setUserRows([]);
+        setUserCount(null);
+        setDataStatus(`Database not reachable (${message}).`);
+      }
+    },
+    [canEditCurriculum, isAdmin, reloadUsers],
+  );
+
+  const handleRefresh = useCallback(async () => {
+    await loadData("Refreshing data...");
+  }, [loadData]);
 
   const openUserEditor = (user: AdminUser, event?: MouseEvent<HTMLButtonElement>) => {
     if (event?.currentTarget && typeof window !== "undefined") {
@@ -304,7 +510,7 @@ export default function AdminPage() {
       const message = err instanceof Error ? err.message : "Unable to save user";
       setUserEditStatus(message);
     }
-  }, [editingUser, reloadUsers, userForm.full_name, userForm.grade, userForm.role, userForm.subject]);
+  }, [editingUser, reloadUsers, userForm.grade, userForm.full_name, userForm.role]);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -347,41 +553,14 @@ export default function AdminPage() {
   useEffect(() => {
     let cancelled = false;
 
-    const loadData = async () => {
-      if (!canEditCurriculum) return;
-      setDataStatus("Loading shared data...");
-      try {
-        const [nextCurriculum, nextProducts] = await Promise.all([
-          fetchCurriculumModules({ includeUnpublished: true }),
-          isAdmin ? fetchProducts() : Promise.resolve([] as Product[]),
-        ]);
-        if (cancelled) return;
-
-        setCurriculumRows(nextCurriculum);
-        setProductRows(isAdmin ? nextProducts : []);
-        if (isAdmin) {
-          await reloadUsers();
-        } else {
-            setUserRows([]);
-            setUserCount(null);
-            setDataStatus(null);
-        }
-      } catch (err) {
-        if (cancelled) return;
-        const message = err instanceof Error ? err.message : "Unable to load data";
-        setCurriculumRows([]);
-        setProductRows([]);
-        setUserRows([]);
-        setUserCount(null);
-        setDataStatus(`Database not reachable (${message}).`);
-      }
-    };
-
-    loadData();
+    void (async () => {
+      if (cancelled) return;
+      await loadData("Loading shared data...");
+    })();
     return () => {
       cancelled = true;
     };
-  }, [canEditCurriculum, isAdmin, reloadUsers]);
+  }, [loadData]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -457,7 +636,7 @@ export default function AdminPage() {
     setUserRows((prev) => prev.filter((u) => u.id !== user.id));
     if (editingUser && editingUser.id === user.id) {
       setEditingUser(null);
-      setUserForm({ full_name: "", role: "student", grade: "", subject: "" });
+      setUserForm({ full_name: "", role: "student", grade: "" });
     }
     setDataStatus(null);
   };
@@ -583,6 +762,120 @@ export default function AdminPage() {
             <p className="text-xs text-accent-strong">{item.delta}</p>
           </div>
         ))}
+      </div>
+
+      <div className="glass-panel rounded-2xl p-6 space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Analytics</p>
+            <h2 className="text-xl font-semibold text-white">Engagement pulse</h2>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-black">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-60" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
+              </span>
+              <span>Live</span>
+            </div>
+            <button
+              type="button"
+              aria-label="Refresh analytics"
+              onClick={() => void handleRefresh()}
+              className="inline-flex items-center justify-center rounded-full p-2 text-white/80 hover:text-white transition"
+            >
+              <svg
+                className="h-5 w-5 animate-spin"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M3 10a9 9 0 0 1 9-7 9 9 0 0 1 8.66 6" />
+                <polyline points="3 4 3 10 9 10" />
+                <path d="M21 14a9 9 0 0 1-9 7 9 9 0 0 1-8.66-6" />
+                <polyline points="21 20 21 14 15 14" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <p className="text-sm text-slate-300">
+          Quick snapshot of activities, active users, session health, and page views.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {analyticsCards.map((item) => (
+            <div key={item.title} className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-1">
+              <p className="text-xs uppercase tracking-[0.16em] text-slate-400">{item.title}</p>
+              <p className="text-2xl font-semibold text-white">{item.metric}</p>
+              {item.detail ? <p className="text-xs text-slate-300">{item.detail}</p> : null}
+            </div>
+          ))}
+        </div>
+        {showSessions && (
+          <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-white">Recent sessions</h3>
+                <span className="text-[11px] px-2 py-0.5 rounded-md bg-white/10 text-white/80">Login → logout</span>
+              </div>
+              <span className="text-xs text-white/80">
+                Latest {Math.min(sessionStats.sessions.length, 6)} events
+              </span>
+            </div>
+            <div className="overflow-auto">
+              <table className="min-w-full text-sm text-slate-200">
+                <thead>
+                  <tr className="text-left text-slate-400 border-b border-white/10">
+                    <th className="py-2 pr-3">User</th>
+                    <th className="py-2 pr-3">Start</th>
+                    <th className="py-2 pr-3">End</th>
+                    <th className="py-2 pr-3">Duration</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sessionStats.sessions.length === 0 ? (
+                    <tr className="border-b border-white/5">
+                      <td className="py-2 pr-3 text-slate-300" colSpan={4}>
+                        No session events yet. Encourage users to sign in to see engagement here.
+                      </td>
+                    </tr>
+                  ) : (
+                    sessionStats.sessions.slice(0, 6).map((row, idx) => {
+                      const user = userLookup.get(row.userId);
+                      const name =
+                        user?.full_name ?? (row.userId === "unknown" ? "Unknown user" : `User ${shortId(row.userId)}`);
+                      const role = mapRoleLabel(user?.role);
+                      return (
+                        <tr key={`${row.userId}-${idx}`} className="border-b border-white/5">
+                          <td className="py-2 pr-3">
+                            <span className="font-semibold text-white">{name}</span>
+                            <span className="ml-2 text-xs text-slate-400">{role}</span>
+                          </td>
+                          <td className="py-2 pr-3 text-slate-300">{formatDateTime(row.start)}</td>
+                          <td className="py-2 pr-3 text-slate-300">{row.end ? formatDateTime(row.end) : "Active"}</td>
+                          <td className="py-2 pr-3 text-slate-300">
+                            {row.end ? formatDuration(row.durationMs ?? undefined) : "—"}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => setShowSessions((v) => !v)}
+            className="text-sm px-3 py-1 rounded-lg bg-accent text-true-white font-semibold shadow-glow hover:translate-y-[-1px] transition-transform"
+          >
+            {showSessions ? "Hide sessions" : "Recent sessions"}
+          </button>
+        </div>
       </div>
 
       <div className="glass-panel rounded-2xl p-6 space-y-4">
