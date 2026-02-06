@@ -1,5 +1,7 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import localFont from "next/font/local";
+import SessionAutoLogout from "@/components/SessionAutoLogout";
+import ActivityTracker from "@/components/ActivityTracker";
 import "./globals.css";
 
 const geistSans = localFont({
@@ -29,6 +31,8 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-surface text-slate-900 dynamic-bg`}
       >
+        <ActivityTracker />
+        <SessionAutoLogout />
         {children}
       </body>
     </html>
