@@ -8,11 +8,17 @@ let cachedClient: SupabaseClient | null = null;
 export const getSupabaseClient = (): SupabaseClient | null => {
   if (!supabaseUrl || !supabaseAnonKey) return null;
   if (cachedClient) return cachedClient;
-  const sessionStorage =
-    typeof window !== "undefined" && "sessionStorage" in window ? window.sessionStorage : undefined;
+  const storage =
+    typeof window !== "undefined"
+      ? ("localStorage" in window
+          ? window.localStorage
+          : "sessionStorage" in window
+            ? window.sessionStorage
+            : undefined)
+      : undefined;
   cachedClient = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
-      storage: sessionStorage,
+      storage,
       persistSession: true,
       autoRefreshToken: true,
     },
