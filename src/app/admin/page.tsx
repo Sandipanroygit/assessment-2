@@ -76,6 +76,19 @@ type SentimentFile = {
   createdAt?: string | null;
 };
 
+type TeacherRequest = {
+  id: string;
+  teacher_id?: string | null;
+  teacher_name?: string | null;
+  subject?: string | null;
+  items?: string[] | null;
+  needed_by?: string | null;
+  notes?: string | null;
+  status?: string | null;
+  request_type?: string | null;
+  created_at?: string | null;
+};
+
 export default function AdminPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [role, setRole] = useState<string | null>(null);
@@ -99,6 +112,10 @@ export default function AdminPage() {
   const curriculumEditRef = useRef<HTMLDivElement | null>(null);
   const [dataStatus, setDataStatus] = useState<string | null>(null);
   const [sentimentStatus, setSentimentStatus] = useState<string | null>(null);
+  const [teacherRequests, setTeacherRequests] = useState<TeacherRequest[]>([]);
+  const [teacherRequestStatus, setTeacherRequestStatus] = useState<string | null>(null);
+  const [updatingRequestId, setUpdatingRequestId] = useState<string | null>(null);
+  const [showTeacherRequests, setShowTeacherRequests] = useState(false);
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
   const [userForm, setUserForm] = useState({ full_name: "", role: "student", grade: "", subject: "" });
   const [userEditStatus, setUserEditStatus] = useState<string | null>(null);
@@ -123,6 +140,10 @@ export default function AdminPage() {
     description: "",
     assets: "",
   });
+  const unreadTeacherRequests = useMemo(
+    () => teacherRequests.filter((req) => (req.status ?? "pending") !== "done").length,
+    [teacherRequests],
+  );
   const isTeacher = role === "teacher";
   const canEditCurriculum = isAdmin || isTeacher;
   const dashboardRoleLabel = isAdmin ? "Admin" : isTeacher ? "Teacher" : "User";
@@ -164,6 +185,53 @@ export default function AdminPage() {
       setDataStatus(message);
     }
   }, [isAdmin]);
+  const loadTeacherRequests = useCallback(async () => {
+    if (!isAdmin) return;
+    setTeacherRequestStatus("Loading teacher requests...");
+    try {
+      const { data, error } = await supabase
+        .from("teacher_requests")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(200);
+      if (error) {
+        setTeacherRequestStatus(error.message);
+        setTeacherRequests([]);
+        return;
+      }
+      setTeacherRequests(data ?? []);
+      setTeacherRequestStatus(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to load teacher requests";
+      setTeacherRequestStatus(message);
+      setTeacherRequests([]);
+    }
+  }, [isAdmin]);
+
+  const updateTeacherRequestStatus = useCallback(
+    async (id: string, nextStatus: string) => {
+      if (!isAdmin) return;
+      setUpdatingRequestId(id);
+      try {
+        const { error } = await supabase
+          .from("teacher_requests")
+          .update({ status: nextStatus })
+          .eq("id", id);
+        if (error) {
+          setTeacherRequestStatus(error.message);
+          return;
+        }
+        setTeacherRequests((prev) => prev.map((req) => (req.id === id ? { ...req, status: nextStatus } : req)));
+        setTeacherRequestStatus(null);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unable to update request";
+        setTeacherRequestStatus(message);
+      } finally {
+        setUpdatingRequestId(null);
+      }
+    },
+    [isAdmin],
+  );
   const stats = useMemo(
     () => [
       { label: "Active modules", value: String(curriculumRows.length), delta: "Manage drone modules" },
@@ -253,9 +321,12 @@ export default function AdminPage() {
         setProductRows(isAdmin ? nextProducts : []);
         if (isAdmin) {
           await reloadUsers();
+          await loadTeacherRequests();
         } else {
           setUserRows([]);
           setUserCount(null);
+          setTeacherRequests([]);
+          setTeacherRequestStatus(null);
         }
         setDataStatus(null);
       } catch (err) {
@@ -264,10 +335,12 @@ export default function AdminPage() {
         setProductRows([]);
         setUserRows([]);
         setUserCount(null);
+        setTeacherRequests([]);
+        setTeacherRequestStatus(message);
         setDataStatus(`Database not reachable (${message}).`);
       }
     },
-    [canEditCurriculum, isAdmin, reloadUsers],
+    [canEditCurriculum, isAdmin, loadTeacherRequests, reloadUsers],
   );
 
   const openUserEditor = (user: AdminUser, event?: MouseEvent<HTMLButtonElement>) => {
@@ -560,10 +633,34 @@ export default function AdminPage() {
         <div className="flex gap-3">
           <Link
             href="/"
-            className="px-4 py-2 rounded-xl border border-white/10 text-sm text-slate-900 hover:border-accent-strong"
+            className="px-4 py-2 rounded-xl border border-black/70 text-sm text-slate-900 hover:border-accent-strong"
           >
             Back to Home
           </Link>
+          {isAdmin && (
+            <button
+              type="button"
+              className="relative px-4 py-2 rounded-xl bg-accent text-true-white font-semibold shadow-glow text-sm"
+              onClick={() => {
+                setShowTeacherRequests(true);
+                void loadTeacherRequests();
+                if (typeof window !== "undefined") {
+                  requestAnimationFrame(() => {
+                    document.getElementById("teacher-requests")?.scrollIntoView({ behavior: "smooth" });
+                  });
+                }
+              }}
+            >
+              Teacher Requests
+              {unreadTeacherRequests > 0 && (
+                <span
+                  className="absolute -top-2 -right-2 min-w-[24px] h-6 px-1.5 rounded-full bg-red-700 text-yellow-200 text-base font-extrabold flex items-center justify-center leading-none shadow-lg animate-pulse"
+                >
+                  {unreadTeacherRequests}
+                </span>
+              )}
+            </button>
+          )}
           <button
             onClick={() =>
               startSignOut(async () => {
@@ -599,6 +696,129 @@ export default function AdminPage() {
           </div>
         ))}
       </div>
+
+      {isAdmin && showTeacherRequests && (
+        <div
+          id="teacher-requests"
+          className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 backdrop-blur-sm p-4 pt-16"
+          onClick={() => setShowTeacherRequests(false)}
+        >
+          <div
+            className="w-full max-w-7xl max-h-[92vh] overflow-hidden glass-panel rounded-2xl p-8 space-y-6"
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.16em] text-accent-strong">Teacher requests</p>
+                <h2 className="text-lg font-semibold text-white">VR simulations and add-ons</h2>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  className="text-sm px-3 py-2 rounded-lg border border-black text-white hover:border-black cursor-pointer"
+                  onClick={() => void loadTeacherRequests()}
+                >
+                  Refresh
+                </button>
+                <button
+                  className="text-sm px-3 py-2 rounded-lg border border-black text-white hover:border-black cursor-pointer"
+                  onClick={() => setShowTeacherRequests(false)}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            {teacherRequestStatus && (
+              <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
+                {teacherRequestStatus}
+              </div>
+            )}
+
+            <div className="overflow-auto rounded-xl border border-white/5 bg-white/5 max-h-[65vh]">
+              <table className="min-w-full text-sm text-slate-200">
+                <thead className="bg-white/5">
+                  <tr className="text-left text-slate-400 border-b border-white/10">
+                    <th className="py-2 pr-3">Teacher</th>
+                    <th className="py-2 pr-3">Subject</th>
+                    <th className="py-2 pr-3">Requested items</th>
+                    <th className="py-2 pr-3">Needed by</th>
+                    <th className="py-2 pr-3">Status</th>
+                    <th className="py-2 pr-3">Notes</th>
+                    <th className="py-2 pr-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {teacherRequests.length === 0 ? (
+                    <tr className="border-b border-white/5">
+                      <td className="py-4 pr-3 text-slate-300 text-center" colSpan={7}>
+                        No teacher requests yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    teacherRequests.map((req) => (
+                      <tr key={req.id} className="border-b border-white/5">
+                        <td className="py-2 pr-3">
+                          <div className="font-semibold text-white">{req.teacher_name ?? "Teacher"}</div>
+                          {req.teacher_id && (
+                            <div className="text-xs text-slate-400">{shortId(req.teacher_id)}</div>
+                          )}
+                        </td>
+                        <td className="py-2 pr-3 text-slate-300">{req.subject ?? "-"}</td>
+                        <td className="py-2 pr-3 text-slate-300">
+                          <div className="space-y-1">
+                            {(req.items ?? []).slice(0, 3).map((item) => (
+                              <div key={item} className="text-xs text-slate-200">
+                                {item}
+                              </div>
+                            ))}
+                            {req.items && req.items.length > 3 && (
+                              <div className="text-[11px] text-slate-400">
+                                +{req.items.length - 3} more
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-2 pr-3 text-slate-300">
+                          {req.needed_by ? formatJoinedDate(req.needed_by) : "-"}
+                        </td>
+                        <td className="py-2 pr-3">
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-semibold border ${
+                              (req.status ?? "pending") === "done"
+                                ? "bg-emerald-600/80 border-emerald-300 text-white"
+                                : "bg-amber-600/70 border-amber-300 text-white"
+                            }`}
+                          >
+                            {req.status ?? "pending"}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-3 text-slate-300">{req.notes ?? "—"}</td>
+                        <td className="py-2 pr-3">
+                          <div className="flex gap-2">
+                            <button
+                              className="px-3 py-1 rounded-lg bg-white/10 border border-white/15 text-white text-xs hover:border-accent-strong disabled:opacity-50"
+                              onClick={() => void updateTeacherRequestStatus(req.id, req.status === "done" ? "pending" : "done")}
+                              disabled={updatingRequestId === req.id}
+                            >
+                              {updatingRequestId === req.id
+                                ? "Saving..."
+                                : req.status === "done"
+                                  ? "Mark pending"
+                                  : "Mark done"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="glass-panel rounded-2xl p-6 space-y-4">
         <div className="flex items-center justify-between gap-3">
@@ -1432,7 +1652,7 @@ export default function AdminPage() {
                 <h3 className="text-xl font-semibold text-white">Edit user</h3>
               </div>
             <button
-              className="text-sm px-3 py-1 rounded-lg border border-white/10 text-white hover:border-accent-strong"
+              className="text-sm px-3 py-1 rounded-lg border border-black text-white hover:border-black cursor-pointer"
               onClick={() => {
                 setEditingUser(null);
                 setUserEditStatus(null);

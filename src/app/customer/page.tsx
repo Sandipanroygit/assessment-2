@@ -20,6 +20,101 @@ type NotificationRow = {
   subject?: string | null;
 };
 
+const VR_SIMULATION_LIBRARY: Record<string, string[]> = {
+  Physics: [
+    "Electricity, Mechanics, Optics, Gravitation",
+    "Factors Affecting Resistance of Conductor (Length, Area, Material)",
+    "Resistance of Resistors (Series & Parallel)",
+    "Understanding Resistance & Ohm's Law",
+    "Heating Effect of Electric Current & Applications",
+    "Understanding Refraction of Light",
+    "Refractive Index & Snell's Law",
+    "Understanding Mass & Weight",
+    "Pressure in Solids, Liquids & Pressure at Work",
+    "Classification of Forces (I, II)",
+    "Newton's First Law of Motion",
+    "Understanding Archimedes' Principle",
+    "Understanding Kepler's Law",
+  ],
+  Chemistry: [
+    "Understanding Ionic Compounds",
+    "Properties of Ionic Compounds",
+    "Structural Integrity and Thermal Stability",
+    "Solubility",
+    "Electrical Conductivity",
+    "Physical Properties of Metals",
+    "Hardness and Lustre",
+    "Malleability and Ductility",
+    "Conductivity",
+    "Particle Nature of Matter (I, II)",
+    "States of Matter (Solid, Liquid, Gas)",
+    "Interconversion of States of Matter",
+    "Fusion and Solidification",
+    "Vaporisation and Condensation",
+    "Atomic Number and Mass Number",
+    "Isotopes and Isobars",
+    "Atomic Models",
+    "Rutherford",
+    "J.J. Thomson",
+    "Bohr",
+    "Valency and VSEPR Theory (Concept and Applications I-III)",
+    "Hybridisation",
+    "sp, sp2, sp3, sp3d",
+    "Conformational Isomers",
+    "Ethane",
+    "n-Butane",
+    "Cyclohexane",
+    "SN1 and SN2 Reaction Mechanisms",
+    "Atoms, Elemental Molecules and Compounds",
+    "Pure Substances and Mixtures",
+    "Classification of Pure Substances and Mixtures",
+  ],
+  Mathematics: [
+    "Understanding Coordinate Geometry",
+    "Right Circular Cone",
+    "Surface Area",
+    "Volume (visualization)",
+    "Visualizing the Volume of a Sphere",
+  ],
+  ESS: [
+    "Traditional Water Conservation: Rainwater Harvesting",
+    "Modern Water Conservation: Rainwater Harvesting",
+    "Easter Island",
+    "Indus Valley Civilization",
+    "Cultural Legacy of the Indus Valley Civilization",
+  ],
+  Biology: [
+    "Anatomy of Skeletal Muscle and Function",
+    "Contractile Proteins and Sarcomere",
+    "Mechanism of Muscle Contraction (Sliding Filament Theory)",
+    "Structure of DNA (I and II)",
+  ],
+  "Design & Technology": [
+    "Mission Chandrayaan",
+    "India Gate and National War Memorial",
+    "Stonehenge",
+    "Sanchi Stupa",
+    "Taj Mahal",
+    "Lotus Temple",
+  ],
+};
+
+const ANY_OTHER_OPTION = "Any other";
+
+const resolveVrSubjectKey = (subject?: string | null) => {
+  if (!subject) return null;
+  const normalized = subject.trim().toLowerCase();
+  if (normalized.includes("physics") || normalized === "phy") return "Physics";
+  if (normalized.includes("chem")) return "Chemistry";
+  if (normalized.includes("math")) return "Mathematics";
+  if (normalized.includes("ess") || normalized.includes("environment")) return "ESS";
+  if (normalized.includes("bio") || normalized.includes("life")) return "Biology";
+  if (normalized.includes("design") || normalized.includes("tech") || normalized.includes("d&t")) {
+    return "Design & Technology";
+  }
+  return null;
+};
+
 export default function CustomerPage() {
   const router = useRouter();
   const [fullName, setFullName] = useState("Customer");
@@ -37,6 +132,7 @@ export default function CustomerPage() {
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [studentRows, setStudentRows] = useState<Array<{ id: string; full_name: string; email?: string | null; grade?: string | null; subject?: string | null }>>([]);
+  const [studentSortDir, setStudentSortDir] = useState<"asc" | "desc">("asc");
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [notificationStatus, setNotificationStatus] = useState<string | null>(null);
   const [markingId, setMarkingId] = useState<string | null>(null);
@@ -46,6 +142,14 @@ export default function CustomerPage() {
   );
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const notificationsRef = useRef<HTMLDivElement | null>(null);
+  const [requestOpen, setRequestOpen] = useState(false);
+  const [requestMode, setRequestMode] = useState<"vr" | "drone">("vr");
+  const [requestItems, setRequestItems] = useState<string[]>([]);
+  const [droneConcept, setDroneConcept] = useState("");
+  const [requestDate, setRequestDate] = useState("");
+  const [requestNotes, setRequestNotes] = useState("");
+  const [requestStatus, setRequestStatus] = useState<string | null>(null);
+  const [sendingRequest, setSendingRequest] = useState(false);
 
   useEffect(() => {
     const loadProgress = () => {
@@ -330,6 +434,50 @@ export default function CustomerPage() {
     });
   }, [gradeFilter, subjectFilter, modules, role, userGrade]);
 
+  const vrSubjectKey = useMemo(
+    () => resolveVrSubjectKey(teacherSubject ?? subjectFilter),
+    [subjectFilter, teacherSubject],
+  );
+
+  const vrItems = useMemo(() => (vrSubjectKey ? VR_SIMULATION_LIBRARY[vrSubjectKey] ?? [] : []), [vrSubjectKey]);
+
+  const sortedStudentRows = useMemo(() => {
+    const copy = [...studentRows];
+    copy.sort((a, b) => {
+      const aGrade = (a.grade ?? "").toLowerCase();
+      const bGrade = (b.grade ?? "").toLowerCase();
+      if (!aGrade && !bGrade) return 0;
+      if (!aGrade) return 1;
+      if (!bGrade) return -1;
+      return studentSortDir === "asc" ? aGrade.localeCompare(bGrade) : bGrade.localeCompare(aGrade);
+    });
+    return copy;
+  }, [studentRows, studentSortDir]);
+
+  const requestMinDate = useMemo(() => {
+    const today = new Date();
+    const hasAnyOther = requestItems.includes(ANY_OTHER_OPTION);
+    const offsetDays = requestMode === "vr" ? (hasAnyOther ? 25 : 3) : 8; // extend lead time when "Any other" is selected
+    const minDate = new Date(today);
+    minDate.setDate(today.getDate() + offsetDays);
+    return minDate.toISOString().split("T")[0];
+  }, [requestItems, requestMode]);
+
+  const anyOtherSelected = requestItems.includes(ANY_OTHER_OPTION);
+  const dateHelpText =
+    requestMode === "vr"
+      ? anyOtherSelected
+        ? "Select a date at least 25 days from today (custom VR requests need more lead time)."
+        : "Select a date at least 3 days from today (next 2 days are blocked)."
+      : "Select a date at least 8 days from today; require 7 days for R&D to draft and test.";
+
+  useEffect(() => {
+    // If switching modes makes the previously selected date invalid, clear it.
+    if (requestDate && requestDate < requestMinDate) {
+      setRequestDate("");
+    }
+  }, [requestDate, requestMinDate]);
+
   const togglePublish = async (moduleId: string, nextPublished: boolean) => {
     if (!sessionToken) {
       setDataStatus("Missing session. Please re-login.");
@@ -362,6 +510,109 @@ export default function CustomerPage() {
     }
   };
 
+  const toggleRequestItem = (item: string) => {
+    setRequestItems((prev) => {
+      const isAnyOther = item === ANY_OTHER_OPTION;
+      const prevHasAnyOther = prev.includes(ANY_OTHER_OPTION);
+
+      if (isAnyOther) {
+        return prevHasAnyOther ? [] : [ANY_OTHER_OPTION];
+      }
+
+      if (prevHasAnyOther) {
+        return [item];
+      }
+
+      return prev.includes(item) ? prev.filter((v) => v !== item) : [...prev, item];
+    });
+  };
+
+  const resetRequestForm = () => {
+    setRequestMode("vr");
+    setRequestItems([]);
+    setDroneConcept("");
+    setRequestDate("");
+    setRequestNotes("");
+  };
+
+  const closeRequestModal = () => {
+    setRequestOpen(false);
+    setRequestStatus(null);
+  };
+
+  const submitVrRequest = async () => {
+    if (!sessionToken) {
+      setRequestStatus("Missing session. Please re-login.");
+      return;
+    }
+    if (role !== "teacher") {
+      setRequestStatus("Only teachers can send requests.");
+      return;
+    }
+    if (!vrSubjectKey) {
+      setRequestStatus("Your subject is not set. Ask an admin to add your subject.");
+      return;
+    }
+    if (requestMode === "vr" && requestItems.length === 0) {
+      setRequestStatus("Select at least one VR simulation.");
+      return;
+    }
+    if (requestMode === "vr" && anyOtherSelected && !requestNotes.trim()) {
+      setRequestStatus("Describe the VR module you require in Extra notes.");
+      return;
+    }
+    if (requestMode === "drone" && !droneConcept.trim()) {
+      setRequestStatus("Describe the drone activity concept you need.");
+      return;
+    }
+    if (!requestDate) {
+      setRequestStatus("Pick the date when you need this content.");
+      return;
+    }
+    const selectedDate = new Date(requestDate);
+    const minSelectableDate = new Date(requestMinDate);
+    if (selectedDate < minSelectableDate) {
+      setRequestStatus(
+        requestMode === "vr" && anyOtherSelected
+          ? "For 'Any other' requests, pick a date at least 25 days from today."
+          : "Date is earlier than the allowed window.",
+      );
+      return;
+    }
+
+    setSendingRequest(true);
+    setRequestStatus("Sending request...");
+    try {
+      const res = await fetch("/api/teacher/requests", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${sessionToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          subject: vrSubjectKey,
+          items: requestMode === "vr" ? requestItems : [droneConcept.trim()],
+          neededBy: requestDate,
+          notes: requestNotes.trim() || null,
+          requestType: requestMode === "vr" ? "vr_simulation" : "drone_activity",
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setRequestStatus(body?.error ?? `Request failed (status ${res.status})`);
+        return;
+      }
+      setRequestStatus("Request sent to admin.");
+      resetRequestForm();
+      setRequestOpen(false);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to send request";
+      setRequestStatus(message);
+    } finally {
+      setSendingRequest(false);
+    }
+  };
+
   const formatSubject = (subject: string) => normalizeSubject(subject);
 
   const roleLabel = role === "teacher" ? "Teacher" : "Student";
@@ -375,6 +626,201 @@ export default function CustomerPage() {
         </div>
       )}
 
+      {requestOpen && role === "teacher" && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto px-4 pb-10 pt-12 md:pt-16 bg-slate-900/70 backdrop-blur-sm">
+          <div className="w-full max-w-3xl rounded-2xl bg-slate-900 border border-white/10 shadow-2xl p-6 space-y-4 glass-panel">
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="text-xs uppercase tracking-[0.2em] text-accent-strong">Teacher Request</p>
+                <h3 className="text-2xl font-semibold text-white">Request content</h3>
+                <p className="text-sm text-slate-300">
+                  {vrSubjectKey
+                    ? "Pick what you need."
+                    : "Add your subject in your profile to request content."}
+                </p>
+              </div>
+              <button
+                className="text-sm px-3 py-1 rounded-lg border border-black text-white hover:border-black cursor-pointer"
+                onClick={() => {
+                  closeRequestModal();
+                  resetRequestForm();
+                }}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-3">
+              <button
+                type="button"
+                className={`w-full text-left rounded-xl border px-4 py-3 transition ${
+                  requestMode === "vr"
+                    ? "border-accent bg-accent text-true-white font-semibold shadow-glow"
+                    : "border-black/60 bg-white/5 text-slate-900 hover:border-accent"
+                }`}
+                onClick={() => setRequestMode("vr")}
+              >
+                <p
+                  className={`text-sm font-semibold ${
+                    requestMode === "vr" ? "text-true-white" : "text-slate-900"
+                  }`}
+                >
+                  VR simulations
+                </p>
+                <p
+                  className={`text-xs mt-1 ${
+                    requestMode === "vr" ? "text-true-white/90" : "text-slate-900/80"
+                  }`}
+                >
+                  Select ready-made VR labs by topic.
+                </p>
+              </button>
+              <button
+                type="button"
+                className={`w-full text-left rounded-xl border px-4 py-3 transition ${
+                  requestMode === "drone"
+                    ? "border-accent bg-accent text-true-white font-semibold shadow-glow"
+                    : "border-black/60 bg-white/5 text-slate-900 hover-border-accent"
+                }`}
+                onClick={() => setRequestMode("drone")}
+              >
+                <p
+                  className={`text-sm font-semibold ${
+                    requestMode === "drone" ? "text-true-white" : "text-slate-900"
+                  }`}
+                >
+                  Drone activity
+                </p>
+                <p
+                  className={`text-xs mt-1 ${
+                    requestMode === "drone" ? "text-true-white/90" : "text-slate-900/80"
+                  }`}
+                >
+                  Describe a concept to deliver with drones.
+                </p>
+              </button>
+            </div>
+
+            {requestMode === "vr" ? (
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-slate-200">VR simulations</p>
+                {vrItems.length === 0 && (
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+                    {vrSubjectKey
+                      ? "No VR simulations listed for this subject yet. You can still request a custom one."
+                      : "Subject not set; ask an admin to assign your subject."}
+                  </div>
+                )}
+                <div className="grid sm:grid-cols-2 gap-2 max-h-72 overflow-auto pr-1">
+                  {vrItems.map((item) => (
+                    <label
+                      key={item}
+                      className={`flex items-start gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 hover:border-accent-strong ${
+                        anyOtherSelected ? "opacity-60" : ""
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 h-4 w-4 rounded border-slate-400/70 bg-slate-900"
+                        checked={requestItems.includes(item)}
+                        onChange={() => toggleRequestItem(item)}
+                        disabled={anyOtherSelected}
+                      />
+                      <span>{item}</span>
+                    </label>
+                  ))}
+                  <label className="flex items-start gap-2 rounded-xl border border-accent/40 bg-accent/10 px-3 py-2 text-sm text-slate-100 hover:border-accent-strong">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-4 w-4 rounded border-slate-400/70 bg-slate-900"
+                      checked={anyOtherSelected}
+                      onChange={() => toggleRequestItem(ANY_OTHER_OPTION)}
+                    />
+                    <span className="font-semibold">Any other</span>
+                  </label>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-slate-200">Drone activity concept</p>
+                <textarea
+                  value={droneConcept}
+                  onChange={(e) => setDroneConcept(e.target.value)}
+                  rows={4}
+                  className="w-full rounded-xl border border-slate-400/60 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none"
+                  placeholder="Describe the concept or outcome you want to deliver with the drone activity."
+                />
+              </div>
+            )}
+
+            <div className="grid sm:grid-cols-2 gap-3">
+              <label className="text-sm text-slate-200 space-y-2">
+                Needed by
+                <input
+                  type="date"
+                  value={requestDate}
+                  onChange={(e) => setRequestDate(e.target.value)}
+                  min={requestMinDate}
+                  title={dateHelpText}
+                  className="w-full rounded-xl border border-slate-400/60 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none"
+                />
+                <p className={`text-xs text-slate-400 ${requestMode === "drone" ? "font-semibold" : ""}`}>
+                  {dateHelpText}
+                </p>
+              </label>
+              <label className="text-sm text-slate-200 space-y-2">
+                <span className="flex items-center gap-2">
+                  <span>Extra notes</span>
+                  {requestMode === "vr" && anyOtherSelected && <span className="text-rose-400">*</span>}
+                  <span className="text-xs text-slate-400">
+                    {requestMode === "vr" && anyOtherSelected ? "" : "(optional)"}
+                  </span>
+                </span>
+                <textarea
+                  value={requestNotes}
+                  onChange={(e) => setRequestNotes(e.target.value)}
+                  rows={3}
+                  className="w-full rounded-xl border border-slate-400/60 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none"
+                  placeholder={
+                    requestMode === "vr" && anyOtherSelected
+                      ? "Describe the VR module you require."
+                      : "Describe what you need added or any context for admin."
+                  }
+                  aria-required={requestMode === "vr" && anyOtherSelected}
+                  required={requestMode === "vr" && anyOtherSelected}
+                />
+              </label>
+            </div>
+
+            {requestStatus && (
+              <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
+                {requestStatus}
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-3 justify-end">
+              <button
+                className="px-4 py-2 rounded-xl border border-white/10 text-white hover:border-accent-strong"
+                onClick={() => {
+                  closeRequestModal();
+                  resetRequestForm();
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 rounded-xl bg-accent text-true-white font-semibold shadow-glow disabled:opacity-60"
+                onClick={() => void submitVrRequest()}
+                disabled={sendingRequest}
+              >
+                {sendingRequest ? "Sending..." : "Send to Admin"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-2">
           <p className="text-accent-strong uppercase text-xs tracking-[0.2em]">{roleLabel}</p>
@@ -384,10 +830,21 @@ export default function CustomerPage() {
         <div className="flex gap-3">
           <Link
             href="/"
-            className="px-4 py-2 rounded-xl border border-white/10 text-sm text-slate-900 text-center hover:border-accent-strong"
+            className="px-4 py-2 rounded-xl border border-black/70 text-sm text-slate-900 text-center hover:border-accent-strong"
           >
             Back to Home
           </Link>
+          {role === "teacher" && (
+            <button
+              className="px-4 py-2 rounded-xl bg-accent text-true-white font-semibold shadow-glow disabled:opacity-60"
+              onClick={() => {
+                setRequestStatus(null);
+                setRequestOpen(true);
+              }}
+            >
+              Raise a Request
+            </button>
+          )}
           {role === "teacher" && (
             <Link
               href="/teacher/progress"
@@ -539,14 +996,14 @@ export default function CustomerPage() {
         <div className="glass-panel rounded-2xl p-5">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <p className="text-base font-semibold text-slate-100">
-              For first-time users, it is recommended to install all dependencies using the Windows installer before performing the activity.
+              For first-time users, it is recommended to install all dependencies using the "<span className="underline">Download Installer</span>" before performing the activity.
             </p>
             <a
               href="https://1drv.ms/u/c/d5c868b4d9600368/IQCspO91wHTLQINVFln61jdhAaeVZC9a_i_Tl8Xd-bU4AW4?e=gqzZN6"
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-true-white shadow-glow hover:opacity-90"
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-true-white underline shadow-glow hover:opacity-90"
               download
             >
-              Download installer
+              Download Installer
             </a>
           </div>
         </div>
@@ -616,7 +1073,15 @@ export default function CustomerPage() {
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold text-white">Students (subject-matched)</h2>
-            <p className="text-sm text-slate-400">{studentRows.length} visible</p>
+            <div className="flex items-center gap-3">
+              <p className="text-sm text-slate-400">{sortedStudentRows.length} visible</p>
+              <button
+                className="px-3 py-1 rounded-lg border border-white/10 text-white text-xs hover:border-accent-strong"
+                onClick={() => setStudentSortDir((prev) => (prev === "asc" ? "desc" : "asc"))}
+              >
+                Sort by Grade ({studentSortDir === "asc" ? "A→Z" : "Z→A"})
+              </button>
+            </div>
           </div>
           <div className="glass-panel rounded-2xl p-4 overflow-auto">
             <table className="min-w-full text-sm text-slate-200">
@@ -628,14 +1093,14 @@ export default function CustomerPage() {
                 </tr>
               </thead>
               <tbody>
-                {studentRows.length === 0 ? (
+                {sortedStudentRows.length === 0 ? (
                   <tr>
                     <td className="py-2 pr-3 text-slate-300" colSpan={3}>
                       No students found for this subject yet.
                     </td>
                   </tr>
                 ) : (
-                  studentRows.map((student) => (
+                  sortedStudentRows.map((student) => (
                     <tr key={student.id} className="border-b border-white/5">
                       <td className="py-2 pr-3 font-semibold text-white">{student.full_name}</td>
                       <td className="py-2 pr-3 text-slate-300">{student.email ?? "—"}</td>
