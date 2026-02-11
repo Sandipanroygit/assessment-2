@@ -22,7 +22,6 @@ type NotificationRow = {
 
 const VR_SIMULATION_LIBRARY: Record<string, string[]> = {
   Physics: [
-    "Electricity, Mechanics, Optics, Gravitation",
     "Factors Affecting Resistance of Conductor (Length, Area, Material)",
     "Resistance of Resistors (Series & Parallel)",
     "Understanding Resistance & Ohm's Law",
@@ -100,6 +99,18 @@ const VR_SIMULATION_LIBRARY: Record<string, string[]> = {
 };
 
 const ANY_OTHER_OPTION = "Any other";
+const BOLD_VR_ITEMS = new Set<string>([
+  "Factors Affecting Resistance of Conductor (Length, Area, Material)",
+  "Resistance of Resistors (Series & Parallel)",
+  "Understanding Resistance & Ohm's Law",
+  "Heating Effect of Electric Current & Applications",
+  "Understanding Refraction of Light",
+  "Refractive Index & Snell's Law",
+  "Understanding Mass & Weight",
+  "Pressure in Solids, Liquids & Pressure at Work",
+  "Classification of Forces (I, II)",
+  "Newton's First Law of Motion",
+]);
 
 const resolveVrSubjectKey = (subject?: string | null) => {
   if (!subject) return null;
@@ -142,6 +153,8 @@ export default function CustomerPage() {
   );
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const notificationsRef = useRef<HTMLDivElement | null>(null);
+  const [teacherMenuOpen, setTeacherMenuOpen] = useState(false);
+  const teacherMenuRef = useRef<HTMLDivElement | null>(null);
   const [requestOpen, setRequestOpen] = useState(false);
   const [requestMode, setRequestMode] = useState<"vr" | "drone">("vr");
   const [requestItems, setRequestItems] = useState<string[]>([]);
@@ -191,6 +204,18 @@ export default function CustomerPage() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [notificationsOpen]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!teacherMenuOpen) return;
+      const target = event.target as Node | null;
+      if (teacherMenuRef.current && target && !teacherMenuRef.current.contains(target)) {
+        setTeacherMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [teacherMenuOpen]);
 
   useEffect(() => {
     if (role !== "teacher") return;
@@ -251,6 +276,7 @@ export default function CustomerPage() {
 
     return { ...module, codeSnippet, assets };
   }, [decodeDataUrl, encodeToBase64]);
+
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -756,7 +782,7 @@ export default function CustomerPage() {
                         onChange={() => toggleRequestItem(item)}
                         disabled={anyOtherSelected}
                       />
-                      <span>{item}</span>
+                      <span className={BOLD_VR_ITEMS.has(item) ? "font-semibold text-white" : undefined}>{item}</span>
                     </label>
                   ))}
                   <label className="flex items-start gap-2 rounded-xl border border-accent/40 bg-accent/10 px-3 py-2 text-sm text-slate-100 hover:border-accent-strong">
@@ -785,7 +811,7 @@ export default function CustomerPage() {
 
             <div className="grid sm:grid-cols-2 gap-3">
               <label className="text-sm text-slate-200 space-y-2">
-                Needed by
+                <span className="font-semibold text-white">Needed by</span>
                 <input
                   type="date"
                   value={requestDate}
@@ -800,9 +826,9 @@ export default function CustomerPage() {
               </label>
               <label className="text-sm text-slate-200 space-y-2">
                 <span className="flex items-center gap-2">
-                  <span>Extra notes</span>
+                  <span className="font-semibold text-white">Extra notes</span>
                   {requestMode === "vr" && anyOtherSelected && <span className="text-rose-400">*</span>}
-                  <span className="text-xs text-slate-400">
+                  <span className="text-xs text-slate-400 font-semibold">
                     {requestMode === "vr" && anyOtherSelected ? "" : "(optional)"}
                   </span>
                 </span>
@@ -857,45 +883,162 @@ export default function CustomerPage() {
           <h1 className="text-3xl font-semibold text-white leading-tight">Hi {fullName}</h1>
           <p className="text-slate-300 text-sm">{roleSubline}</p>
         </div>
-        <div className="flex gap-3">
-          <Link
-            href="/"
-            className="px-4 py-2 rounded-xl border border-black/70 text-sm text-slate-900 text-center hover:border-accent-strong"
-          >
-            Back to Home
-          </Link>
-          {role === "teacher" && (
+
+        {role === "teacher" ? (
+          <div className="relative" ref={teacherMenuRef}>
             <button
-              className="px-4 py-2 rounded-xl bg-accent text-true-white font-semibold shadow-glow disabled:opacity-60"
-              onClick={() => {
-                setRequestStatus(null);
-                setRequestOpen(true);
-              }}
+              type="button"
+              aria-expanded={teacherMenuOpen}
+              aria-haspopup="menu"
+              onClick={() => setTeacherMenuOpen((open) => !open)}
+              className="group flex items-center gap-3 rounded-xl px-4 py-2 bg-emerald-800 hover:bg-emerald-700 text-white font-semibold shadow-md ring-1 ring-white/10 hover:-translate-y-0.5 transition-transform duration-150"
             >
-              Raise a Request
+              <span className="sr-only">Open teacher menu</span>
+              <span className="space-y-1.5">
+                <span className="block h-0.5 w-5 rounded-full bg-white"></span>
+                <span className="block h-0.5 w-5 rounded-full bg-white"></span>
+                <span className="block h-0.5 w-5 rounded-full bg-white"></span>
+              </span>
+              <span className="text-sm font-semibold text-white/90">Teacher Menu</span>
             </button>
-          )}
-          {role === "teacher" && (
+
+            {teacherMenuOpen && (
+              <div className="absolute right-0 mt-3 w-72 rounded-2xl bg-gradient-to-b from-slate-900/98 via-slate-900/94 to-slate-950/98 border border-white/12 outline outline-1 outline-white/15 backdrop-blur-xl shadow-2xl shadow-emerald-900/40 ring-1 ring-white/10 p-4 space-y-3 z-40 transition">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs uppercase tracking-[0.16em] text-accent-strong">Teacher actions</p>
+                  <span className="text-[11px] text-slate-400">Quick access</span>
+                </div>
+                <div className="space-y-2">
+                  <button
+                    className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 bg-white/8 hover:bg-emerald-500/20 border border-white/15 hover:border-emerald-300/50 text-sm text-white transition"
+                    onClick={() => {
+                      setTeacherMenuOpen(false);
+                      setRequestStatus(null);
+                      setRequestOpen(true);
+                    }}
+                  >
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-700/70 border border-emerald-200/70 shadow-inner">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        className="h-5 w-5 text-white"
+                      >
+                        <path d="M12 5v14" />
+                        <path d="M5 12h14" />
+                      </svg>
+                    </span>
+                    <div className="text-left">
+                      <p className="font-semibold">Raise a Request</p>
+                      <p className="text-xs text-slate-300">Ask admin for VR or drone content</p>
+                    </div>
+                  </button>
+                  <Link
+                    href="/teacher/progress"
+                    onClick={() => setTeacherMenuOpen(false)}
+                    className="flex items-center gap-3 rounded-xl px-3 py-2.5 bg-white/6 hover:bg-white/12 border border-white/15 hover:border-emerald-300/50 text-sm text-white transition"
+                  >
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-sky-700/70 border border-sky-200/70 shadow-inner">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        className="h-5 w-5 text-white"
+                      >
+                        <path d="M4 19h16" />
+                        <path d="M4 10h16" />
+                        <path d="M4 5h16" />
+                        <path d="M9 19V5" />
+                      </svg>
+                    </span>
+                    <div className="text-left">
+                      <p className="font-semibold">Student Progress</p>
+                      <p className="text-xs text-slate-300">Track submissions and attempts</p>
+                    </div>
+                  </Link>
+                  <Link
+                    href="/"
+                    onClick={() => setTeacherMenuOpen(false)}
+                    className="flex items-center gap-3 rounded-xl px-3 py-2.5 bg-white/6 hover:bg-white/12 border border-white/15 hover:border-emerald-300/50 text-sm text-white transition"
+                  >
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500/70 border border-amber-200/80 shadow-inner">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        className="h-5 w-5 text-white"
+                      >
+                        <path d="M3 12l9-9 9 9" />
+                        <path d="M9 21V9h6v12" />
+                      </svg>
+                    </span>
+                    <div className="text-left">
+                      <p className="font-semibold">Back to Home</p>
+                      <p className="text-xs text-slate-300">Customer dashboard</p>
+                    </div>
+                  </Link>
+                  <button
+                    className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 bg-rose-700/60 hover:bg-rose-600/70 border border-rose-200/70 text-sm text-white font-semibold transition disabled:opacity-60"
+                    onClick={() =>
+                      startSignOut(async () => {
+                        setTeacherMenuOpen(false);
+                        await supabase.auth.signOut();
+                        router.push("/login");
+                      })
+                    }
+                    disabled={signingOut}
+                  >
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-rose-800/70 border border-rose-100/70 shadow-inner">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        className="h-5 w-5 text-white"
+                      >
+                        <path d="M9 21h-4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                        <path d="M16 17l5-5-5-5" />
+                        <path d="M21 12H9" />
+                      </svg>
+                    </span>
+                    <div className="text-left">
+                      <p className="font-semibold">{signingOut ? "Signing out..." : "Sign out"}</p>
+                      <p className="text-xs text-rose-100/80">End session safely</p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="flex gap-3">
             <Link
-              href="/teacher/progress"
-              className="px-4 py-2 rounded-xl bg-accent text-true-white font-semibold shadow-glow disabled:opacity-60"
+              href="/"
+              className="px-4 py-2 rounded-xl border border-black/70 text-sm text-slate-900 text-center hover:border-accent-strong"
             >
-              Student Progress
+              Back to Home
             </Link>
-          )}
-          <button
-            onClick={() =>
-              startSignOut(async () => {
-                await supabase.auth.signOut();
-                router.push("/login");
-              })
-            }
-            className="px-4 py-2 rounded-xl bg-accent text-true-white font-semibold shadow-glow disabled:opacity-60"
-            disabled={signingOut}
-          >
-            {signingOut ? "Signing out..." : "Sign out"}
-          </button>
-        </div>
+            <button
+              onClick={() =>
+                startSignOut(async () => {
+                  await supabase.auth.signOut();
+                  router.push("/login");
+                })
+              }
+              className="px-4 py-2 rounded-xl bg-accent text-true-white font-semibold shadow-glow disabled:opacity-60"
+              disabled={signingOut}
+            >
+              {signingOut ? "Signing out..." : "Sign out"}
+            </button>
+          </div>
+        )}
       </div>
 
       {role !== "teacher" && (

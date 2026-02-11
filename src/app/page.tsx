@@ -335,12 +335,20 @@ export default function Home() {
           </div>
           <button
             onClick={openPanel}
-            className="h-11 w-11 rounded-full border border-accent/20 bg-white/70 flex flex-col items-center justify-center gap-1 hover:border-accent-strong hover:bg-white shadow-glow transition"
+            className="h-11 w-11 rounded-full border border-accent/20 bg-white/70 grid place-items-center hover:border-accent-strong hover:bg-white shadow-glow transition"
             aria-label="Open quick panel"
           >
-            <span className="block w-5 h-0.5 bg-foreground rounded-full"></span>
-            <span className="block w-5 h-0.5 bg-foreground rounded-full"></span>
-            <span className="block w-5 h-0.5 bg-foreground rounded-full"></span>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              className="h-6 w-6 text-foreground"
+            >
+              <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
+              <path d="M19.4 13.5a7.5 7.5 0 0 0 .05-3l1.65-1.23a.6.6 0 0 0 .14-.78l-1.56-2.7a.6.6 0 0 0-.75-.24l-1.94.78a7.6 7.6 0 0 0-2.6-1.5l-.3-2.05A.6.6 0 0 0 13.5 2h-3a.6.6 0 0 0-.6.51l-.3 2.05a7.6 7.6 0 0 0-2.6 1.5l-1.94-.78a.6.6 0 0 0-.75.24l-1.56 2.7a.6.6 0 0 0 .14.78L4.55 10.5a7.5 7.5 0 0 0 0 3l-1.65 1.23a.6.6 0 0 0-.14.78l1.56 2.7a.6.6 0 0 0 .75.24l1.94-.78a7.6 7.6 0 0 0 2.6 1.5l.3 2.05a.6.6 0 0 0 .6.51h3a.6.6 0 0 0 .6-.51l.3-2.05a7.6 7.6 0 0 0 2.6-1.5l1.94.78a.6.6 0 0 0 .75-.24l1.56-2.7a.6.6 0 0 0-.14-.78Z" />
+            </svg>
           </button>
         </nav>
         <button
