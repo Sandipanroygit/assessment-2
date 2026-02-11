@@ -23,7 +23,10 @@ export default function UploadCurriculumPage() {
   const [pythonFile, setPythonFile] = useState<File | null>(null);
   const [manualFileName, setManualFileName] = useState("");
   const [manualFile, setManualFile] = useState<File | null>(null);
+  const [stlFiles, setStlFiles] = useState<File[]>([]);
+  const [stlFileNames, setStlFileNames] = useState<string[]>([]);
   const [status, setStatus] = useState<string | null>(null);
+  const isDesignTech = subject.toLowerCase().includes("design");
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -53,6 +56,11 @@ export default function UploadCurriculumPage() {
         return;
       }
 
+      if (isDesignTech && stlFiles.length === 0) {
+        setStatus("Upload at least one STL file for Design Technology.");
+        return;
+      }
+
       const assets: CurriculumModule["assets"] = [];
 
       if (videoFile) {
@@ -64,31 +72,50 @@ export default function UploadCurriculumPage() {
         assets.push({ type: "video", url, label: videoFileName || videoFile.name });
       }
 
-      const codeFileToUpload =
-        pythonFile ||
-        (finalCode
-          ? new File([finalCode], pythonFileName || `${title.replace(/[^\w\-]+/g, "-").toLowerCase() || "code"}.py`, {
-              type: "text/plain",
-            })
-          : null);
+      if (isDesignTech) {
+        for (const file of stlFiles) {
+          const url = await uploadFileToBucket({
+            bucket: "curriculum-assets",
+            file,
+            pathPrefix: `stl/${authData.user.id}`,
+          });
+          assets.push({ type: "stl", url, label: file.name });
+        }
+        if (manualFile) {
+          const url = await uploadFileToBucket({
+            bucket: "curriculum-assets",
+            file: manualFile,
+            pathPrefix: `docs/${authData.user.id}`,
+          });
+          assets.push({ type: "doc", url, label: manualFileName || manualFile.name || "SOP" });
+        }
+      } else {
+        const codeFileToUpload =
+          pythonFile ||
+          (finalCode
+            ? new File([finalCode], pythonFileName || `${title.replace(/[^\w\\-]+/g, "-").toLowerCase() || "code"}.py`, {
+                type: "text/plain",
+              })
+            : null);
 
-      if (codeFileToUpload) {
-        const url = await uploadFileToBucket({
-          bucket: "curriculum-assets",
-          file: codeFileToUpload,
-          pathPrefix: `code/${authData.user.id}`,
-          fileName: pythonFileName || codeFileToUpload.name,
-        });
-        assets.push({ type: "code", url, label: pythonFileName || codeFileToUpload.name || "Python code" });
-      }
+        if (codeFileToUpload) {
+          const url = await uploadFileToBucket({
+            bucket: "curriculum-assets",
+            file: codeFileToUpload,
+            pathPrefix: `code/${authData.user.id}`,
+            fileName: pythonFileName || codeFileToUpload.name,
+          });
+          assets.push({ type: "code", url, label: pythonFileName || codeFileToUpload.name || "Python code" });
+        }
 
-      if (manualFile) {
-        const url = await uploadFileToBucket({
-          bucket: "curriculum-assets",
-          file: manualFile,
-          pathPrefix: `docs/${authData.user.id}`,
-        });
-        assets.push({ type: "doc", url, label: manualFileName || manualFile.name });
+        if (manualFile) {
+          const url = await uploadFileToBucket({
+            bucket: "curriculum-assets",
+            file: manualFile,
+            pathPrefix: `docs/${authData.user.id}`,
+          });
+          assets.push({ type: "doc", url, label: manualFileName || manualFile.name });
+        }
       }
 
       const { error } = await supabase.from("curriculum_modules").insert({
@@ -188,11 +215,11 @@ export default function UploadCurriculumPage() {
         </label>
 
         <div className="grid md:grid-cols-2 gap-4">
-        <label className="block text-sm text-slate-300 space-y-2">
-          Upload video (MP4)
-          <input
-            type="file"
-            accept="video/mp4"
+          <label className="block text-sm text-slate-300 space-y-2">
+            Upload video (MP4)
+            <input
+              type="file"
+              accept="video/mp4"
               onChange={(e) => {
                 const file = e.target.files?.[0] ?? null;
                 setVideoFile(file);
@@ -203,54 +230,82 @@ export default function UploadCurriculumPage() {
             {videoFileName && <p className="text-xs text-slate-400">Selected: {videoFileName}</p>}
           </label>
           <label className="block text-sm text-slate-300 space-y-2">
-          Upload user manual (PDF/PPT/DOC)
-          <input
-            type="file"
-            accept=".pdf,.ppt,.pptx,.doc,.docx"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              setManualFile(file ?? null);
-              setManualFileName(file?.name ?? "");
-            }}
-            className="w-full rounded-xl border border-slate-400/60 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none file-accent"
-          />
-          {manualFileName && <p className="text-xs text-slate-400">Selected: {manualFileName}</p>}
-        </label>
+            {isDesignTech ? "Upload SOP (PDF/PPT/DOC)" : "Upload user manual (PDF/PPT/DOC)"}
+            <input
+              type="file"
+              accept=".pdf,.ppt,.pptx,.doc,.docx"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                setManualFile(file ?? null);
+                setManualFileName(file?.name ?? "");
+              }}
+              className="w-full rounded-xl border border-slate-400/60 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none file-accent"
+            />
+            {manualFileName && <p className="text-xs text-slate-400">Selected: {manualFileName}</p>}
+          </label>
         </div>
 
-        <label className="block text-sm text-slate-300 space-y-2">
-          Python code (paste or link)
-          <textarea
-            value={pythonCode}
-            onChange={(e) => setPythonCode(e.target.value)}
-            className="w-full rounded-xl border border-slate-400/60 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none font-mono"
-            rows={4}
-            placeholder="Paste code snippet or link to file"
-          />
-        </label>
+        {isDesignTech ? (
+          <label className="block text-sm text-slate-300 space-y-2">
+            Upload STL models (multiple)
+            <input
+              type="file"
+              accept=".stl,.STL,application/octet-stream,model/stl,model/*,application/sla,*/*"
+              multiple
+              onChange={(e) => {
+                const files = Array.from(e.target.files ?? []);
+                setStlFiles(files as File[]);
+                setStlFileNames(files.map((f) => f.name));
+              }}
+              className="w-full rounded-xl border border-slate-400/60 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none file-accent"
+            />
+            {stlFileNames.length > 0 ? (
+              <ul className="text-xs text-slate-400 space-y-1 list-disc list-inside">
+                {stlFileNames.map((name) => (
+                  <li key={name}>{name}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-xs text-slate-500">Upload at least one STL file.</p>
+            )}
+          </label>
+        ) : (
+          <>
+            <label className="block text-sm text-slate-300 space-y-2">
+              Python code (paste or link)
+              <textarea
+                value={pythonCode}
+                onChange={(e) => setPythonCode(e.target.value)}
+                className="w-full rounded-xl border border-slate-400/60 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none font-mono"
+                rows={4}
+                placeholder="Paste code snippet or link to file"
+              />
+            </label>
 
-        <label className="block text-sm text-slate-300 space-y-2">
-          Upload Python file
-          <input
-            type="file"
-            accept=".py"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              setPythonFile(file ?? null);
-              setPythonFileName(file?.name ?? "");
-              if (!file) return;
-              const reader = new FileReader();
-              reader.onload = () => {
-                if (typeof reader.result === "string") {
-                  setPythonCode(reader.result);
-                }
-              };
-              reader.readAsText(file);
-            }}
-            className="w-full rounded-xl border border-slate-400/60 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none file-accent"
-          />
-          {pythonFileName && <p className="text-xs text-slate-400">Selected: {pythonFileName}</p>}
-        </label>
+            <label className="block text-sm text-slate-300 space-y-2">
+              Upload Python file
+              <input
+                type="file"
+                accept=".py"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  setPythonFile(file ?? null);
+                  setPythonFileName(file?.name ?? "");
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    if (typeof reader.result === "string") {
+                      setPythonCode(reader.result);
+                    }
+                  };
+                  reader.readAsText(file);
+                }}
+                className="w-full rounded-xl border border-slate-400/60 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none file-accent"
+              />
+              {pythonFileName && <p className="text-xs text-slate-400">Selected: {pythonFileName}</p>}
+            </label>
+          </>
+        )}
 
         {status && (
           <div className="rounded-xl border border-accent/30 bg-accent/10 px-3 py-2 text-sm text-accent-strong">
@@ -277,6 +332,8 @@ export default function UploadCurriculumPage() {
               setPythonFile(null);
               setManualFileName("");
               setManualFile(null);
+              setStlFiles([]);
+              setStlFileNames([]);
               setStatus(null);
             }}
             className="px-4 py-3 rounded-xl border border-white/10 text-white hover:border-accent-strong"

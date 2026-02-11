@@ -150,6 +150,7 @@ export default function CustomerPage() {
   const [requestNotes, setRequestNotes] = useState("");
   const [requestStatus, setRequestStatus] = useState<string | null>(null);
   const [sendingRequest, setSendingRequest] = useState(false);
+  const [seenModules, setSeenModules] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const loadProgress = () => {
@@ -190,6 +191,20 @@ export default function CustomerPage() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [notificationsOpen]);
+
+  useEffect(() => {
+    if (role !== "teacher") return;
+    try {
+      const raw = localStorage.getItem("teacherModuleSeen");
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setSeenModules(new Set(parsed.filter((id) => typeof id === "string")));
+      }
+    } catch {
+      // ignore errors reading localStorage
+    }
+  }, [role]);
 
   const decodeDataUrl = useCallback((url?: string) => {
     if (!url || !url.startsWith("data:")) return null;
@@ -341,6 +356,20 @@ export default function CustomerPage() {
     };
   }, [authChecked, isAuthenticated, enhanceModule, role, teacherSubject, sessionToken]);
 
+  const markModuleSeen = useCallback((id: string) => {
+    setSeenModules((prev) => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      try {
+        localStorage.setItem("teacherModuleSeen", JSON.stringify(Array.from(next)));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     if (!authChecked || !isAuthenticated || role === "teacher") return;
     let cancelled = false;
@@ -429,7 +458,8 @@ export default function CustomerPage() {
       const gradeMatch = effectiveGrade === "all" || m.grade === effectiveGrade;
       const normalizedSubject = normalizeSubject(m.subject);
       const subjectMatch = subjectFilter === "all" || normalizedSubject === subjectFilter;
-      const publishedMatch = role === "teacher" ? true : m.published !== false;
+      const isDesignTech = normalizedSubject === "Design & Technology" || normalizedSubject === "Design Technology";
+      const publishedMatch = role === "teacher" ? true : m.published !== false || isDesignTech;
       return gradeMatch && subjectMatch && publishedMatch;
     });
   }, [gradeFilter, subjectFilter, modules, role, userGrade]);
@@ -1017,10 +1047,15 @@ export default function CustomerPage() {
         <div className="grid md:grid-cols-3 gap-6">
           {filteredModules.map((module) => (
             <div key={module.id} className="glass-panel rounded-2xl p-5 space-y-3 hover:border-accent-strong">
-              <div className="flex items-center justify-between text-xs text-accent-strong uppercase tracking-[0.2em]">
+              <div className="flex items-center justify-between text-xs uppercase tracking-[0.2em] font-semibold text-accent-strong">
                 <span>Grade {module.grade}</span>
-                <span>{formatSubject(module.subject)}</span>
+                <span className="text-emerald-800">{formatSubject(module.subject)}</span>
               </div>
+              {role === "teacher" && !seenModules.has(module.id) && (
+                <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-700 text-white text-[11px] font-bold animate-pulse border border-rose-400/70 shadow-glow">
+                  NEWLY ADDED
+                </span>
+              )}
               <h3 className="text-lg font-semibold text-white">{module.title}</h3>
               {role === "teacher" && (
                 <div className="flex items-center gap-2 text-xs">
@@ -1061,6 +1096,7 @@ export default function CustomerPage() {
               <Link
                 href={`/customer/activity/${module.id}`}
                 className="block w-full text-center mt-2 py-2 rounded-lg bg-accent text-true-white font-semibold"
+                onClick={() => markModuleSeen(module.id)}
               >
                 Show activity/code
               </Link>

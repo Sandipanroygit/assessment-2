@@ -68,14 +68,30 @@ export const mapProductRow = (row: ProductRow): Product => {
 
 export async function fetchCurriculumModules(options?: { includeUnpublished?: boolean; subject?: string }) {
   const includeUnpublished = options?.includeUnpublished ?? false;
+  const subjectFilter = options?.subject ?? null;
+  const isDesignTech = subjectFilter ? subjectFilter.toLowerCase().includes("design") : false;
   let query = supabase
     .from("curriculum_modules")
     .select("id,title,grade,subject,module,description,asset_urls,price_yearly,published,created_at")
     .order("created_at", { ascending: false });
-  if (options?.subject) {
-    query = query.eq("subject", options.subject);
+
+  if (subjectFilter) {
+    query = query.eq("subject", subjectFilter);
   }
-  const { data, error } = includeUnpublished ? await query : await query.eq("published", true);
+
+  if (!includeUnpublished) {
+    if (isDesignTech) {
+      // allow unpublished Design Technology modules
+      // no published filter
+    } else if (!subjectFilter) {
+      // show all published modules, plus any Design Technology modules even if unpublished
+      query = query.or("published.eq.true,subject.eq.Design Technology,subject.eq.Design & Technology");
+    } else {
+      query = query.eq("published", true);
+    }
+  }
+
+  const { data, error } = await query;
   if (error) throw error;
   return (data as CurriculumRow[]).map(mapCurriculumRow);
 }
@@ -86,11 +102,14 @@ export async function fetchCurriculumModuleById(id: string, options?: { includeU
     .from("curriculum_modules")
     .select("id,title,grade,subject,module,description,asset_urls,price_yearly,published,created_at")
     .eq("id", id);
-  if (!includeUnpublished) query = query.eq("published", true);
   const { data, error } = await query.maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  return mapCurriculumRow(data as CurriculumRow);
+  const mapped = mapCurriculumRow(data as CurriculumRow);
+  if (includeUnpublished) return mapped;
+  if (mapped.published === true) return mapped;
+  if ((mapped.subject ?? "").toLowerCase().includes("design")) return mapped;
+  return null;
 }
 
 export async function fetchProducts() {

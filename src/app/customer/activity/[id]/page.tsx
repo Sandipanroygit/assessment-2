@@ -2,12 +2,26 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { use, useCallback, useEffect, useMemo, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
 import { fetchCurriculumModuleById, uploadFileToBucket } from "@/lib/supabaseData";
 import type { CurriculumModule } from "@/types";
 import logo from "../../../../../image/logo.jpg";
+import {
+  AmbientLight,
+  Box3,
+  Color,
+  DirectionalLight,
+  Mesh,
+  MeshStandardMaterial,
+  PerspectiveCamera,
+  Scene,
+  Vector3,
+  WebGLRenderer,
+} from "three";
+import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 const formatSubject = (subject: string) => (subject.toLowerCase() === "maths" ? "Mathematics" : subject);
 const progressStorageKey = "activityProgress";
@@ -368,6 +382,8 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
   const [status, setStatus] = useState<string | null>(null);
   const [codeDisplay, setCodeDisplay] = useState("Loading code...");
   const [userId, setUserId] = useState<string | null>(null);
+  const [role, setRole] = useState<string | null>(null);
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [quizStatus, setQuizStatus] = useState<string | null>(null);
   const [generatingQuiz, setGeneratingQuiz] = useState(false);
   const [quizQuestions, setQuizQuestions] = useState<
@@ -396,6 +412,110 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
   const [pdfLogoSrc, setPdfLogoSrc] = useState<string | null>(null);
   const [pdfStatus, setPdfStatus] = useState<string | null>(null);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const isDesignTech = useMemo(() => (module?.subject ?? "").toLowerCase().includes("design"), [module?.subject]);
+  const stlAssets = useMemo(() => (module?.assets ?? []).filter((a) => a.type === "stl"), [module]);
+
+  const StlPreview = ({ url, name }: { url: string; name: string }) => {
+    const containerRef = useRef<HTMLDivElement | null>(null);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+      const container = containerRef.current;
+      if (!container) return;
+
+      let frameId = 0;
+      let mounted = true;
+
+      const scene = new Scene();
+      scene.background = new Color("#ffffff");
+
+      const renderer = new WebGLRenderer({ antialias: true, alpha: false });
+      renderer.setPixelRatio(window.devicePixelRatio || 1);
+      renderer.setSize(container.clientWidth, container.clientHeight);
+      renderer.shadowMap.enabled = true;
+      container.appendChild(renderer.domElement);
+
+      const camera = new PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+      camera.position.set(80, 80, 120);
+
+      const ambient = new AmbientLight(0xffffff, 0.6);
+      const dir = new DirectionalLight(0xffffff, 0.9);
+      dir.position.set(60, 100, 80);
+      dir.castShadow = true;
+      scene.add(ambient);
+      scene.add(dir);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+
+      const loader = new STLLoader();
+      loader.load(
+        url,
+        (geometry) => {
+          if (!mounted) return;
+          geometry.computeBoundingBox();
+          const box = geometry.boundingBox ?? new Box3();
+          const size = new Vector3();
+          box.getSize(size);
+          const center = new Vector3();
+          box.getCenter(center);
+          geometry.center();
+
+          const maxDim = Math.max(size.x, size.y, size.z) || 1;
+          const scale = 80 / maxDim;
+          geometry.scale(scale, scale, scale);
+
+          camera.position.set(0, 0, 150);
+          controls.target.set(0, 0, 0);
+          controls.update();
+
+          const material = new MeshStandardMaterial({ color: 0x16a34a, metalness: 0.15, roughness: 0.55 });
+          const mesh = new Mesh(geometry, material);
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          scene.add(mesh);
+        },
+        undefined,
+        (err) => {
+          console.error("STL load failed", err);
+          setError("Unable to preview this STL. You can still download it.");
+        },
+      );
+
+      const handleResize = () => {
+        if (!container) return;
+        const { clientWidth, clientHeight } = container;
+        renderer.setSize(clientWidth, clientHeight);
+        camera.aspect = clientWidth / clientHeight;
+        camera.updateProjectionMatrix();
+      };
+      const observer = new ResizeObserver(handleResize);
+      observer.observe(container);
+
+      const animate = () => {
+        controls.update();
+        renderer.render(scene, camera);
+        frameId = requestAnimationFrame(animate);
+      };
+      animate();
+
+      return () => {
+        mounted = false;
+        cancelAnimationFrame(frameId);
+        observer.disconnect();
+        renderer.dispose();
+        scene.clear();
+        container.innerHTML = "";
+      };
+    }, [url]);
+
+    return (
+      <div className="rounded-lg border border-white/10 bg-slate-950/70 h-64 overflow-hidden" ref={containerRef}>
+        {error && <p className="text-xs text-amber-300 p-2">{error}</p>}
+        <span className="sr-only">3D preview of {name}</span>
+      </div>
+    );
+  };
 
   const applyQuizQuestions = (
     questions: Array<{
@@ -777,14 +897,45 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
     const load = async () => {
       try {
         setStatus("Loading activity...");
-        const row = await fetchCurriculumModuleById(id);
+        const ensureAssets = (row: any) =>
+          Array.isArray(row?.assets)
+            ? row.assets
+            : Array.isArray(row?.asset_urls)
+              ? (row.asset_urls as CurriculumModule["assets"])
+              : [];
+
+        const row = await fetchCurriculumModuleById(id, { includeUnpublished: true });
         if (cancelled) return;
-        if (!row) {
-          setStatus("Activity not found.");
+        if (row) {
+          const normalized = {
+            ...row,
+            assets: ensureAssets(row),
+          };
+          setModule(normalized);
+          setStatus(null);
           return;
         }
-        setModule(row);
-        setStatus(null);
+
+        if (role === "teacher" && sessionToken) {
+          const res = await fetch("/api/teacher/modules", {
+            headers: { Authorization: `Bearer ${sessionToken}` },
+          });
+          const body = await res.json().catch(() => ({}));
+          if (res.ok && Array.isArray(body.modules)) {
+            const found = (body.modules as CurriculumModule[]).find((m) => m.id === id);
+            if (found) {
+              const normalized = {
+                ...found,
+                assets: ensureAssets(found),
+              };
+              setModule(normalized);
+              setStatus(null);
+              return;
+            }
+          }
+        }
+
+        setStatus("Activity not found.");
       } catch {
         if (cancelled) return;
         setStatus("Unable to load this activity.");
@@ -794,7 +945,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
     return () => {
       cancelled = true;
     };
-  }, [authChecked, isAuthenticated, id]);
+  }, [authChecked, isAuthenticated, id, role, sessionToken]);
 
   useEffect(() => {
     if (!module) return;
@@ -815,6 +966,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
     const loadProfile = async () => {
       try {
         const { data } = await supabase.auth.getUser();
+        const { data: sessionData } = await supabase.auth.getSession();
         const user = data.user;
         if (!user) {
           setIsAuthenticated(false);
@@ -828,6 +980,9 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
         setUserId(user.id);
         const profile = await ensureProfile(user);
         setStudentName(profile?.full_name ?? user.user_metadata.full_name ?? user.email ?? "Student");
+        const derivedRole = profile?.role ?? (user.user_metadata?.role as string | undefined) ?? null;
+        setRole(derivedRole);
+        setSessionToken(sessionData.session?.access_token ?? null);
       } catch {
         setIsAuthenticated(false);
         setAuthChecked(true);
@@ -870,11 +1025,17 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
         setCodeDisplay("Loading code...");
         return;
       }
+      if (isDesignTech) {
+        setCodeDisplay("No code required for Design Technology. View STL models above.");
+        return;
+      }
       if (module.codeSnippet) {
         setCodeDisplay(module.codeSnippet);
         return;
       }
-      const codeAsset = module.assets.find((a) => a.type === "code");
+      const codeAsset = Array.isArray(module.assets)
+        ? module.assets.find((a) => a.type === "code")
+        : undefined;
       if (codeAsset?.url) {
         const decoded = decodeDataUrl(codeAsset.url);
         if (decoded) {
@@ -903,7 +1064,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
       setCodeDisplay("No code snippet available.");
     };
     loadCode();
-  }, [module, decodeDataUrl]);
+  }, [module, decodeDataUrl, isDesignTech]);
 
   const loadSubmissions = useCallback(async () => {
     if (!module) return;
@@ -1295,6 +1456,75 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
       setUploadStatus("Sign in to upload your submission.");
       return;
     }
+
+    // Design Technology: single document upload
+    if (isDesignTech) {
+      if (!plotFile) {
+        setUploadStatus("Upload a document (PDF/DOC/TXT) to mark this activity as done.");
+        return;
+      }
+      setSavingUploads(true);
+      setUploadStatus("Generating AI report...");
+      try {
+        const textContent = await plotFile.text();
+        const sopAsset = module.assets.find((a) => a.type === "doc");
+        const res = await fetch("/api/report", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: module.title,
+            subject: module.subject,
+            grade: module.grade,
+            description: module.description,
+            sopUrl: sopAsset?.url,
+            logText: textContent,
+            parsedPoints: [],
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        const nextReport = res.ok && data?.report ? (data.report as AiReport) : null;
+        if (!nextReport) {
+          setReportStatus("AI report unavailable for this upload.");
+        } else {
+          setReport(nextReport);
+          setReportStatus(null);
+        }
+
+        setUploadStatus("Uploading file...");
+        const pathPrefix = `${submissionPathPrefix}/${userId}/${module.id}`;
+        const fileUrl = await uploadFileToBucket({ bucket: submissionsBucket, file: plotFile, pathPrefix });
+        const submissionNumber = nextSubmissionNumber;
+        const fallbackSubmission: ActivitySubmission = {
+          id: `local-${module.id}-${submissionNumber}-${Date.now()}`,
+          submissionNumber,
+          logUrl: fileUrl,
+          logName: plotFile.name,
+          plotUrl: "",
+          plotName: "",
+          plotType: plotFile.type || plotFile.name,
+          report: nextReport,
+          reportStatus: nextReport ? "Report ready" : "Uploaded; report pending",
+          createdAt: new Date().toISOString(),
+        };
+        setSubmissions((prev) => [...prev, fallbackSubmission]);
+        setSelectedSubmissionId(fallbackSubmission.id);
+        setStoredUploads({
+          logFile: { name: plotFile.name, size: plotFile.size, type: plotFile.type },
+          uploadedAt: fallbackSubmission.createdAt,
+        });
+        writeLocalSubmissionHistory(module.id, [...submissions, fallbackSubmission]);
+        setMarkedDone(true);
+        setUploadStatus("Saved and analyzed.");
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unable to process submission.";
+        setUploadStatus(message);
+      } finally {
+        setSavingUploads(false);
+      }
+      return;
+    }
+
+    // Other subjects: require log + plot
     if (!logFile || !plotFile) {
       setUploadStatus("Add both the log file and plots to mark this activity as done.");
       return;
@@ -1427,60 +1657,113 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
       {module && (
         <section className="space-y-4">
           <div className="space-y-2">
-            <p className="text-xs uppercase tracking-[0.2em] text-accent-strong">
-              Grade {module.grade} ? {formatSubject(module.subject)}
+            <p className="text-xs uppercase tracking-[0.2em] font-semibold text-accent-strong">
+              Grade {module.grade} • <span className="text-emerald-800">{formatSubject(module.subject)}</span>
             </p>
             <h1 className="text-3xl font-semibold text-white leading-tight">{module.title}</h1>
             <p className="text-slate-300 text-base">{module.description}</p>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="glass-panel rounded-2xl p-4 border border-white/10 h-full flex flex-col">
-              <div className="flex items-start justify-between mb-2">
-                <div>
-                  <h3 className="text-lg font-semibold text-white">Code</h3>
-                  <p className="text-xs text-slate-400">{module.assets.find((a) => a.type === "code")?.label || "Python file"}</p>
+            {isDesignTech ? (
+              <div className="glass-panel rounded-2xl p-4 border border-white/10 h-full flex flex-col space-y-3">
+                <div className="flex items-start justify-between mb-1">
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">3D Models</h3>
+                    <p className="text-xs text-slate-400">
+                      {stlAssets.length ? `${stlAssets.length} STL file${stlAssets.length > 1 ? "s" : ""}` : "Upload STL files in admin panel."}
+                    </p>
+                  </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    className="px-3 py-2 rounded-lg bg-emerald-500 text-true-white text-sm font-semibold shadow-glow disabled:opacity-40 disabled:bg-emerald-500/60"
-                    onClick={openCodeInEditor}
-                    disabled={!module.codeSnippet && !module.assets.find((a) => a.type === "code")}
-                    title="Open in your default editor (e.g. VS Code)"
-                  >
-                    Run
-                  </button>
-                  <button
-                    type="button"
-                    className="text-xs text-slate-200 underline"
-                    onClick={() => setCodeExpanded((prev) => !prev)}
-                  >
-                    {codeExpanded ? "Collapse" : "Expand"}
-                  </button>
+                {stlAssets.length ? (
+                  <div className="space-y-3">
+                    {stlAssets.map((asset, idx) => {
+                      const name = asset.label || `Model ${idx + 1}`;
+                      const fileName = name.toLowerCase().endsWith(".stl") ? name : `${name}.stl`;
+                      return (
+                        <div key={asset.url} className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-sm font-semibold text-white truncate" title={name}>
+                              {name}
+                            </p>
+                            <button
+                              type="button"
+                              className="px-3 py-1.5 rounded-lg bg-accent text-true-white text-xs font-semibold shadow-glow hover:opacity-90 border border-accent/60"
+                              onClick={() => triggerDownload(asset.url, fileName)}
+                            >
+                              Download
+                            </button>
+                          </div>
+                          <StlPreview url={asset.url} name={name} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-xl border border-dashed border-white/15 bg-white/5 text-sm text-slate-300">
+                    No STL models uploaded yet.
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="glass-panel rounded-2xl p-4 border border-white/10 h-full flex flex-col">
+                <div className="flex items-start justify-between mb-2">
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">Code</h3>
+                    <p className="text-xs text-slate-400">
+                      {Array.isArray(module.assets)
+                        ? module.assets.find((a) => a.type === "code")?.label || "Python file"
+                        : "Python file"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      className="px-3 py-2 rounded-lg bg-emerald-500 text-true-white text-sm font-semibold shadow-glow disabled:opacity-40 disabled:bg-emerald-500/60"
+                      onClick={openCodeInEditor}
+                      disabled={
+                        !module.codeSnippet &&
+                        (!Array.isArray(module.assets) || !module.assets.find((a) => a.type === "code"))
+                      }
+                      title="Open in your default editor (e.g. VS Code)"
+                    >
+                      Run
+                    </button>
+                    <button
+                      type="button"
+                      className="text-xs text-slate-200 underline"
+                      onClick={() => setCodeExpanded((prev) => !prev)}
+                    >
+                      {codeExpanded ? "Collapse" : "Expand"}
+                    </button>
+                  </div>
+                </div>
+                <div
+                  className={`bg-black rounded-xl border border-white/15 shadow-inner overflow-hidden ${codeExpanded ? "h-[70vh]" : "h-[320px]"}`}
+                >
+                  <pre className="p-4 text-sm text-true-white overflow-auto h-full whitespace-pre-wrap">
+                    <code>{codeDisplay}</code>
+                  </pre>
                 </div>
               </div>
-              <div
-                className={`bg-black rounded-xl border border-white/15 shadow-inner overflow-hidden ${codeExpanded ? "h-[70vh]" : "h-[320px]"}`}
-              >
-                <pre className="p-4 text-sm text-true-white overflow-auto h-full whitespace-pre-wrap">
-                  <code>{codeDisplay}</code>
-                </pre>
-              </div>
-            </div>
+            )}
 
             <div className="glass-panel rounded-2xl p-4 border border-white/10 h-full flex flex-col">
               <div className="flex items-start justify-between mb-2">
                 <div>
                   <h3 className="text-lg font-semibold text-white">SOP</h3>
-                  <p className="text-xs text-slate-400">{module.assets.find((a) => a.type === "doc")?.label || "Document"}</p>
+                  <p className="text-xs text-slate-400">
+                    {Array.isArray(module.assets)
+                      ? module.assets.find((a) => a.type === "doc")?.label || "Document"
+                      : "Document"}
+                  </p>
                 </div>
                 <div className="flex items-center gap-3">
                   <button
                     type="button"
                     className="px-3 py-2 rounded-lg bg-emerald-500 text-true-white text-sm font-semibold shadow-glow disabled:opacity-40 disabled:bg-emerald-500/60"
                     onClick={openDocInViewer}
-                    disabled={!module.assets.find((a) => a.type === "doc")}
+                    disabled={!Array.isArray(module.assets) || !module.assets.find((a) => a.type === "doc")}
                     title="Open in your default viewer"
                   >
                     Download
@@ -1497,7 +1780,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
               <div
                 className={`bg-black/20 rounded-xl border border-white/10 shadow-inner overflow-hidden ${sopExpanded ? "h-[70vh]" : "h-[320px]"}`}
               >
-                {module.assets.filter((a) => a.type === "doc").length > 0 ? (
+                {Array.isArray(module.assets) && module.assets.filter((a) => a.type === "doc").length > 0 ? (
                   <iframe
                     src={module.assets.find((a) => a.type === "doc")?.url}
                     title={module.assets.find((a) => a.type === "doc")?.label}
@@ -1506,9 +1789,9 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
                 ) : (
                   <div className="p-4 text-sm text-slate-300">No documents available.</div>
                 )}
+              </div>
             </div>
           </div>
-        </div>
 
         <div className="glass-panel rounded-2xl p-4 border border-white/10 space-y-3">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -1532,10 +1815,37 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-[0.2em] text-accent-strong">Submission</p>
-              <h3 className="text-lg font-semibold text-white">Upload log + plots</h3>
-                <p className="text-sm text-slate-400">Add your activity log file and plots, then mark this activity as done.</p>
-              </div>
+              <h3 className="text-lg font-semibold text-white">
+                {isDesignTech ? "Upload design report" : "Upload log + plots"}
+              </h3>
+              <p className="text-sm text-slate-400">
+                {isDesignTech
+                  ? "Upload a PDF/DOC/TXT with your design work."
+                  : "Add your activity log file and plots, then mark this activity as done."}
+              </p>
             </div>
+          </div>
+
+          {isDesignTech ? (
+            <div className="grid md:grid-cols-2 gap-4">
+              <label className="block text-sm text-slate-300 space-y-2">
+                Upload design document
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx,.txt"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null;
+                    setPlotFile(file); // reuse plotFile slot
+                    if (file) setUploadStatus(null);
+                    setReport(null);
+                    setReportStatus(null);
+                  }}
+                  className="w-full rounded-xl border border-slate-400/60 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none file-accent"
+                />
+                {plotFile?.name && <p className="text-xs text-slate-400">Selected: {plotFile.name}</p>}
+              </label>
+            </div>
+          ) : (
             <div className="grid gap-4 md:grid-cols-2">
               <label className="block text-sm text-slate-300 space-y-2">
                 Upload log file
@@ -1578,30 +1888,35 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
                 )}
               </label>
             </div>
-            {uploadStatus && <div className="text-sm text-slate-300">{uploadStatus}</div>}
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                className="px-4 py-2 rounded-xl bg-accent text-true-white text-sm font-semibold shadow-glow disabled:opacity-50"
-                onClick={handleMarkDone}
-                disabled={savingUploads || !logFile || !plotFile}
-              >
-                {savingUploads ? "Saving..." : `Save submission #${nextSubmissionNumber}`}
-              </button>
-              <button
-                type="button"
-                className="px-3 py-2 rounded-xl border border-white/20 text-xs text-slate-200 hover:border-accent-strong disabled:opacity-60"
-                onClick={() => void loadSubmissions()}
-                disabled={submissionsLoading || savingUploads}
-              >
-                {submissionsLoading ? "Refreshing..." : "Refresh saved files"}
-              </button>
-            </div>
+          )}
+
+          {uploadStatus && <div className="text-sm text-slate-300">{uploadStatus}</div>}
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              className="px-4 py-2 rounded-xl bg-accent text-true-white text-sm font-semibold shadow-glow disabled:opacity-50"
+              onClick={handleMarkDone}
+              disabled={
+                savingUploads ||
+                (!isDesignTech && (!logFile || !plotFile)) ||
+                (isDesignTech && !plotFile)
+              }
+            >
+              {savingUploads ? "Saving..." : `Save submission #${nextSubmissionNumber}`}
+            </button>
+            <button
+              type="button"
+              className="px-3 py-2 rounded-xl border border-black text-xs text-slate-200 hover:border-accent-strong disabled:opacity-60 outline outline-1 outline-transparent focus:outline-black focus-visible:outline-black"
+              onClick={() => void loadSubmissions()}
+              disabled={submissionsLoading || savingUploads}
+            >
+              {submissionsLoading ? "Refreshing..." : "Refresh saved files"}
+            </button>
+          </div>
             <div className="rounded-2xl border border-white/10 bg-white/5 p-3 space-y-3">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs uppercase tracking-[0.2em] text-accent-strong">Saved submissions</p>
-                  <p className="text-xs text-slate-400">Every upload stays here. Pick one to view, download, or delete.</p>
                 </div>
               </div>
               {submissionsLoading ? (

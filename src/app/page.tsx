@@ -110,9 +110,13 @@ export default function Home() {
   const [contactSubmitted, setContactSubmitted] = useState(false);
   const [faqOpen, setFaqOpen] = useState(false);
   const [footfall, setFootfall] = useState<number | null>(null);
+  const [footfallSpin, setFootfallSpin] = useState(0);
+  const [footfallLoaded, setFootfallLoaded] = useState(false);
   const footfallOffset = 822;
   const footfallDisplay =
-    footfall === null ? "0822" : String(footfall + footfallOffset).padStart(4, "0");
+    footfallLoaded && footfall !== null
+      ? String(footfall + footfallOffset).padStart(4, "0")
+      : String(footfallSpin).padStart(4, "0");
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -120,6 +124,14 @@ export default function Home() {
     }, 5000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (footfallLoaded) return;
+    const spin = setInterval(() => {
+      setFootfallSpin((prev) => (prev + 37) % 10000);
+    }, 60);
+    return () => clearInterval(spin);
+  }, [footfallLoaded]);
 
   useEffect(() => {
     const checkUser = async () => {
@@ -148,7 +160,11 @@ export default function Home() {
         });
         if (!res.ok) throw new Error("Failed to fetch footfall.");
         const data = (await res.json()) as { count?: number };
-        if (active && typeof data.count === "number") setFootfall(data.count);
+        if (active && typeof data.count === "number") {
+          setFootfall(data.count);
+          setFootfallSpin((data.count + footfallOffset) % 10000);
+          setFootfallLoaded(true);
+        }
       } catch {
         // ignore count errors
       }
@@ -167,6 +183,8 @@ export default function Home() {
           const data = (await res.json()) as { count?: number };
           if (active && typeof data.count === "number") {
             setFootfall(data.count);
+            setFootfallSpin((data.count + footfallOffset) % 10000);
+            setFootfallLoaded(true);
             return;
           }
         }
