@@ -1,4 +1,3 @@
-
 "use client";
 
 import Link from "next/link";
@@ -7,7 +6,7 @@ import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
 
-type AuthMode = "login" | "signup" | "reset";
+type AuthMode = "login" | "signup";
 type UserRole = "admin" | "teacher" | "student";
 type Profile = { full_name?: string; role?: string; grade?: string };
 
@@ -22,9 +21,6 @@ const subjectOptions = [
 
 export default function LoginPage() {
   const router = useRouter();
-  const siteUrl =
-    process.env.NEXT_PUBLIC_SITE_URL ??
-    (typeof window !== "undefined" ? window.location.origin : undefined);
   const defaultAdminEmail = process.env.NEXT_PUBLIC_DEFAULT_ADMIN_EMAIL ?? "";
   const [mode, setMode] = useState<AuthMode>("login");
   const [email, setEmail] = useState("");
@@ -35,10 +31,6 @@ export default function LoginPage() {
   const [subject, setSubject] = useState<string>(subjectOptions[0]);
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    setStatus(null);
-  }, [mode]);
 
   const ensureProfile = useCallback(
     async (user: User): Promise<Profile | null> => {
@@ -165,7 +157,9 @@ export default function LoginPage() {
     if (role === "student") {
       metadata.grade = grade;
     }
-    const redirectTo = siteUrl ? `${siteUrl}/login` : undefined;
+    const redirectTo =
+      process.env.NEXT_PUBLIC_SITE_URL ??
+      (typeof window !== "undefined" ? `${window.location.origin}/login` : undefined);
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -181,29 +175,6 @@ export default function LoginPage() {
     }
     setStatus("Account created. Check your email to confirm, then sign in.");
     setMode("login");
-    setLoading(false);
-  };
-
-  const handlePasswordReset = async () => {
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-      setStatus("Supabase is not configured. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.");
-      return;
-    }
-    if (!email.trim()) {
-      setStatus("Enter the email you use to sign in.");
-      return;
-    }
-    setLoading(true);
-    setStatus(null);
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: siteUrl ? `${siteUrl}/reset-password` : undefined,
-    });
-    if (error) {
-      setStatus(error.message ?? "Unable to send password reset email.");
-      setLoading(false);
-      return;
-    }
-    setStatus("Password reset link sent. Check your email (and spam).");
     setLoading(false);
   };
 
@@ -228,10 +199,10 @@ export default function LoginPage() {
           <div className="flex gap-2 bg-white/5 p-1 rounded-xl">
             <button
               onClick={() => setMode("login")}
-              className={`flex-1 py-2 rounded-lg text-sm font-semibold transition ${
-                mode === "login" ? "bg-accent text-true-white shadow-glow" : "text-white"
-              }`}
-            >
+                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition ${
+                  mode === "login" ? "bg-accent text-true-white shadow-glow" : "text-white"
+                }`}
+              >
               Log In
             </button>
             <button
@@ -244,164 +215,111 @@ export default function LoginPage() {
             </button>
           </div>
 
-          {mode === "reset" ? (
-            <div className="space-y-4 rounded-xl border border-white/10 bg-white/5 p-4">
-              <p className="text-sm text-slate-200">
-                Enter your account email and we will email you a link to choose a new password.
-              </p>
-              <label className="block text-sm text-slate-300 space-y-2">
-                Email
-                <input
-                  type="email"
-                  className="w-full rounded-xl border border-slate-500/70 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </label>
-              {status && (
-                <div className="rounded-xl border border-accent/30 bg-accent/10 px-3 py-2 text-sm text-accent-strong">
-                  {status}
-                </div>
-              )}
-              <div className="flex flex-col sm:flex-row gap-3">
-                <button
-                  onClick={handlePasswordReset}
-                  disabled={loading}
-                  className="flex-1 py-3 rounded-xl bg-accent text-true-white font-semibold shadow-glow hover:translate-y-[-1px] transition-transform disabled:opacity-70"
-                >
-                  {loading ? "Sending..." : "Send reset link"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMode("login")}
-                  className="px-4 py-3 rounded-xl border border-white/15 text-slate-200 hover:border-accent-strong"
-                >
-                  Back to login
-                </button>
-              </div>
-              <p className="text-xs text-slate-400">Links expire quickly; request a new one if it stops working.</p>
-            </div>
-          ) : (
-            <>
-              {mode === "signup" && (
-                <label className="block text-sm text-slate-300 space-y-2">
-                  Role
-                  <select
-                    className="w-full rounded-xl border border-slate-500/70 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none"
-                    value={role}
-                    onChange={(e) => handleRoleChange(e.target.value as UserRole)}
-                  >
-                    <option value="teacher" className="text-black">
-                      Teacher
-                    </option>
-                    <option value="student" className="text-black">
-                      Student
-                    </option>
-                  </select>
-                </label>
-              )}
-
-              {mode === "signup" && (
-                <label className="block text-sm text-slate-300 space-y-2">
-                  Full name
-                  <input
-                    type="text"
-                    className="w-full rounded-xl border border-slate-500/70 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none"
-                    placeholder="Your name"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                  />
-                </label>
-              )}
-
-              {role === "student" && mode === "signup" && (
-                <label className="block text-sm text-slate-300 space-y-2">
-                  Grade
-                  <select
-                    className="w-full rounded-xl border border-slate-500/70 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none"
-                    value={grade}
-                    onChange={(e) => setGrade(e.target.value)}
-                  >
-                    {gradeOptions.map((option) => (
-                      <option key={option} value={option} className="text-black">
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-
-              {role === "teacher" && mode === "signup" && (
-                <label className="block text-sm text-slate-300 space-y-2">
-                  Subject
-                  <select
-                    className="w-full rounded-xl border border-slate-500/70 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none"
-                    value={subject}
-                    onChange={(e) => setSubject(e.target.value)}
-                  >
-                    {subjectOptions.map((option) => (
-                      <option key={option} value={option} className="text-black">
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-
-              <label className="block text-sm text-slate-300 space-y-2">
-                Email
-                <input
-                  type="email"
-                  className="w-full rounded-xl border border-slate-500/70 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </label>
-
-              <label className="block text-sm text-slate-300 space-y-2">
-                Password
-                <input
-                  type="password"
-                  className="w-full rounded-xl border border-slate-500/70 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </label>
-
-              {mode === "login" && (
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setMode("reset")}
-                    className="text-xs text-accent-strong hover:underline"
-                  >
-                    Forgot password?
-                  </button>
-                </div>
-              )}
-
-              {status && (
-                <div className="rounded-xl border border-accent/30 bg-accent/10 px-3 py-2 text-sm text-accent-strong">
-                  {status}
-                </div>
-              )}
-
-              <button
-                onClick={mode === "login" ? handleLogin : handleSignup}
-                disabled={loading}
-                className="w-full py-3 rounded-xl bg-accent text-true-white font-semibold shadow-glow hover:translate-y-[-1px] transition-transform disabled:opacity-70"
+          {mode === "signup" && (
+            <label className="block text-sm text-slate-300 space-y-2">
+              Role
+              <select
+                className="w-full rounded-xl border border-slate-500/70 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none"
+                value={role}
+                onChange={(e) => handleRoleChange(e.target.value as UserRole)}
               >
-                {loading ? "Please wait..." : mode === "login" ? "Log In" : "Create account"}
-              </button>
-
-              <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-1">
-                <p className="text-xs text-slate-400 uppercase tracking-[0.14em]">What happens next</p>
-                <p className="text-sm text-slate-200">
-                  Admins land on the admin suite (curriculum uploads, products, analytics). Teachers land on review and publish. Students get read-only browsing.
-                </p>
-              </div>
-            </>
+                <option value="teacher" className="text-black">
+                  Teacher
+                </option>
+                <option value="student" className="text-black">
+                  Student
+                </option>
+              </select>
+            </label>
           )}
+
+          {mode === "signup" && (
+            <label className="block text-sm text-slate-300 space-y-2">
+              Full name
+              <input
+                type="text"
+                className="w-full rounded-xl border border-slate-500/70 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none"
+                placeholder="Your name"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+              />
+            </label>
+          )}
+
+          {role === "student" && mode === "signup" && (
+            <label className="block text-sm text-slate-300 space-y-2">
+              Grade
+              <select
+                className="w-full rounded-xl border border-slate-500/70 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none"
+                value={grade}
+                onChange={(e) => setGrade(e.target.value)}
+              >
+                {gradeOptions.map((option) => (
+                  <option key={option} value={option} className="text-black">
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          {role === "teacher" && mode === "signup" && (
+            <label className="block text-sm text-slate-300 space-y-2">
+              Subject
+              <select
+                className="w-full rounded-xl border border-slate-500/70 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+              >
+                {subjectOptions.map((option) => (
+                  <option key={option} value={option} className="text-black">
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          <label className="block text-sm text-slate-300 space-y-2">
+            Email
+            <input
+              type="email"
+              className="w-full rounded-xl border border-slate-500/70 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </label>
+
+          <label className="block text-sm text-slate-300 space-y-2">
+            Password
+            <input
+              type="password"
+              className="w-full rounded-xl border border-slate-500/70 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </label>
+
+          {status && (
+            <div className="rounded-xl border border-accent/30 bg-accent/10 px-3 py-2 text-sm text-accent-strong">
+              {status}
+            </div>
+          )}
+
+          <button
+            onClick={mode === "login" ? handleLogin : handleSignup}
+            disabled={loading}
+            className="w-full py-3 rounded-xl bg-accent text-true-white font-semibold shadow-glow hover:translate-y-[-1px] transition-transform disabled:opacity-70"
+          >
+            {loading ? "Please wait..." : mode === "login" ? "Log In" : "Create account"}
+          </button>
+
+          <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-1">
+            <p className="text-xs text-slate-400 uppercase tracking-[0.14em]">What happens next</p>
+            <p className="text-sm text-slate-200">
+              Admins land on the admin suite (curriculum uploads, products, analytics). Teachers land on review and publish. Students get read-only browsing.
+            </p>
+          </div>
         </div>
       </div>
     </main>

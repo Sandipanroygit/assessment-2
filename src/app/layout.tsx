@@ -2,7 +2,6 @@
 import localFont from "next/font/local";
 import SessionAutoLogout from "@/components/SessionAutoLogout";
 import ActivityTracker from "@/components/ActivityTracker";
-import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const geistSans = localFont({
@@ -34,7 +33,6 @@ export default function RootLayout({
       >
         <ActivityTracker />
         <SessionAutoLogout />
-        <Analytics />
         {children}
       </body>
     </html>
