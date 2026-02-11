@@ -251,30 +251,30 @@ export default function AdminPage() {
   const sortedUsers = useMemo(() => {
     const copy = [...userRows];
     copy.sort((a, b) => {
-      const dir = userSort.dir === "asc" ? 1 : -1;
-      const compareStrings = (left: string, right: string) =>
-        left === right ? 0 : dir * left.localeCompare(right);
-
       switch (userSort.field) {
         case "name": {
           const an = (a.full_name || "").toLowerCase();
           const bn = (b.full_name || "").toLowerCase();
-          return compareStrings(an, bn);
+          if (an === bn) break;
+          return userSort.dir === "asc" ? an.localeCompare(bn) : bn.localeCompare(an);
         }
         case "role": {
           const ar = (a.displayRole || "").toLowerCase();
           const br = (b.displayRole || "").toLowerCase();
-          return compareStrings(ar, br);
+          if (ar === br) break;
+          return userSort.dir === "asc" ? ar.localeCompare(br) : br.localeCompare(ar);
         }
         case "subject": {
           const asub = (a.subject || "").toLowerCase();
           const bsub = (b.subject || "").toLowerCase();
-          return compareStrings(asub, bsub);
+          if (asub === bsub) break;
+          return userSort.dir === "asc" ? asub.localeCompare(bsub) : bsub.localeCompare(asub);
         }
         case "grade": {
           const ag = (a.grade || "").toLowerCase();
           const bg = (b.grade || "").toLowerCase();
-          return compareStrings(ag, bg);
+          if (ag === bg) break;
+          return userSort.dir === "asc" ? ag.localeCompare(bg) : bg.localeCompare(ag);
         }
         default:
           return 0;
