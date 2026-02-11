@@ -27,7 +27,7 @@ export async function GET(req: Request) {
   }
 
   const userId = userData.user.id;
-  const { data: profile } = await supabaseAdmin
+  const { data: profile, error: profileError } = await supabaseAdmin
     .from("profiles")
     .select("role")
     .eq("id", userId)
