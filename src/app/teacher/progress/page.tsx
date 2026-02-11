@@ -36,7 +36,7 @@ export default function TeacherProgressPage() {
   const [submissions, setSubmissions] = useState<ProgressRow[]>([]);
   const [students, setStudents] = useState<StudentRow[]>([]);
   const [status, setStatus] = useState<string | null>(null);
-  const [loading, startLoading] = useTransition();
+  const [, startLoading] = useTransition();
   const [moduleFilter, setModuleFilter] = useState<string>("all");
   const [remindingId, setRemindingId] = useState<string | null>(null);
   const [reminderBanner, setReminderBanner] = useState<string | null>(null);

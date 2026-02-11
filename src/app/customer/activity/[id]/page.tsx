@@ -897,11 +897,12 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
     const load = async () => {
       try {
         setStatus("Loading activity...");
-        const ensureAssets = (row: any) =>
+        type RowWithAssets = Partial<CurriculumModule> & { asset_urls?: CurriculumModule["assets"] };
+        const ensureAssets = (row: RowWithAssets | null | undefined) =>
           Array.isArray(row?.assets)
             ? row.assets
             : Array.isArray(row?.asset_urls)
-              ? (row.asset_urls as CurriculumModule["assets"])
+              ? row.asset_urls
               : [];
 
         const row = await fetchCurriculumModuleById(id, { includeUnpublished: true });

@@ -10,8 +10,6 @@ export default function ActivityTracker() {
 
   useEffect(() => {
     if (!pathname) return;
-    const query = searchParams?.toString();
-    const fullPath = query ? `${pathname}?${query}` : pathname;
     void logPageView();
   }, [pathname, searchParams]);
 
