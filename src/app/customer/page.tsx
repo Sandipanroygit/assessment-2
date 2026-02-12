@@ -934,8 +934,8 @@ export default function CustomerPage() {
                         strokeWidth="1.8"
                         className="h-5 w-5 text-white"
                       >
-                        <path d="M7 7h10M7 12h10M7 17h6" />
-                        <path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
+                        <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z" />
+                        <path d="M5 20a7 7 0 0 1 14 0" />
                       </svg>
                     </span>
                     <div className="text-left">
