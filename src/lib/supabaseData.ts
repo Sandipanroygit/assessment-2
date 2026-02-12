@@ -98,7 +98,7 @@ export async function fetchCurriculumModules(options?: { includeUnpublished?: bo
 
 export async function fetchCurriculumModuleById(id: string, options?: { includeUnpublished?: boolean }) {
   const includeUnpublished = options?.includeUnpublished ?? false;
-  let query = supabase
+  const query = supabase
     .from("curriculum_modules")
     .select("id,title,grade,subject,module,description,asset_urls,price_yearly,published,created_at")
     .eq("id", id);

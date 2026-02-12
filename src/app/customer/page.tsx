@@ -1169,7 +1169,7 @@ export default function CustomerPage() {
         <div className="glass-panel rounded-2xl p-5">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <p className="text-base font-semibold text-slate-100">
-              For first-time users, it is recommended to install all dependencies using the "<span className="underline">Download Installer</span>" before performing the activity.
+              For first-time users, it is recommended to install all dependencies using the &ldquo;<span className="underline">Download Installer</span>&rdquo; before performing the activity.
             </p>
             <a
               href="https://1drv.ms/u/c/d5c868b4d9600368/IQCspO91wHTLQINVFln61jdhAaeVZC9a_i_Tl8Xd-bU4AW4?e=gqzZN6"

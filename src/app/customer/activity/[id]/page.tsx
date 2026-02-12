@@ -897,9 +897,9 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
     const load = async () => {
       try {
         setStatus("Loading activity...");
-        const ensureAssets = (row: any) =>
+        const ensureAssets = (row: { assets?: unknown; asset_urls?: unknown }): CurriculumModule["assets"] =>
           Array.isArray(row?.assets)
-            ? row.assets
+            ? (row.assets as CurriculumModule["assets"])
             : Array.isArray(row?.asset_urls)
               ? (row.asset_urls as CurriculumModule["assets"])
               : [];

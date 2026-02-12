@@ -118,6 +118,7 @@ export default function AdminPage() {
   const [showTeacherRequests, setShowTeacherRequests] = useState(false);
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
   const [userForm, setUserForm] = useState({ full_name: "", role: "student", grade: "", subject: "" });
+  const [sopFile, setSopFile] = useState<File | null>(null);
   const [userEditStatus, setUserEditStatus] = useState<string | null>(null);
   const [userPopover, setUserPopover] = useState<{ top: number; left: number } | null>(null);
   const [editForm, setEditForm] = useState({
@@ -139,6 +140,7 @@ export default function AdminPage() {
     module: "",
     description: "",
     assets: "",
+    sopLabel: "",
   });
   const unreadTeacherRequests = useMemo(
     () => teacherRequests.filter((req) => (req.status ?? "pending") !== "done").length,
@@ -410,16 +412,16 @@ export default function AdminPage() {
       if (warning) {
         setDataStatus(`Profile saved, but profile table update warned: ${warning}`);
       } else {
-        setDataStatus("Profile saved.");
-      }
-      await reloadUsers();
-      setEditingUser(null);
-      setUserForm({ full_name: "", role: "student", grade: "", subject: "" });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Unable to save user";
-      setUserEditStatus(message);
+      setDataStatus("Profile saved.");
     }
-  }, [editingUser, reloadUsers, userForm.grade, userForm.full_name, userForm.role]);
+    await reloadUsers();
+    setEditingUser(null);
+    setUserForm({ full_name: "", role: "student", grade: "", subject: "" });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unable to save user";
+    setUserEditStatus(message);
+  }
+  }, [editingUser, reloadUsers, userForm.grade, userForm.full_name, userForm.role, userForm.subject]);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -886,6 +888,8 @@ export default function AdminPage() {
                         <button
                           className="px-3 py-1 rounded-lg bg-white/10 border border-white/15 text-white text-xs"
                           onClick={() => {
+                            const docAsset = item.assets.find((a) => a.type === "doc") || null;
+                            const otherAssets = item.assets.filter((a) => a.type !== "doc");
                             setEditingCurriculumId(item.id);
                             setCurriculumForm({
                               title: item.title,
@@ -893,8 +897,10 @@ export default function AdminPage() {
                               subject: item.subject,
                               module: item.module,
                               description: item.description,
-                              assets: item.assets.map((a) => a.label).join(", "),
+                              assets: otherAssets.map((a) => a.label).join(", "),
+                              sopLabel: docAsset?.label ?? "",
                             });
+                            setSopFile(null);
                             requestAnimationFrame(() => {
                               curriculumEditRef.current?.scrollIntoView({ behavior: "smooth" });
                             });
@@ -1450,7 +1456,10 @@ export default function AdminPage() {
             <h3 className="text-lg font-semibold text-white">Edit curriculum</h3>
             <button
               className="text-sm px-3 py-1 rounded-lg bg-emerald-500 text-white font-semibold shadow-glow hover:bg-emerald-400 transition"
-              onClick={() => setEditingCurriculumId(null)}
+              onClick={() => {
+                setEditingCurriculumId(null);
+                setSopFile(null);
+              }}
             >
               Cancel
             </button>
@@ -1514,8 +1523,50 @@ export default function AdminPage() {
               disabled={!isAdmin}
             />
           </label>
+          {(() => {
+            if (!editingCurriculumId) return null;
+            const doc =
+              curriculumRows
+                .find((c) => c.id === editingCurriculumId)
+                ?.assets.find((a) => a.type === "doc") ?? null;
+            if (!doc) return null;
+            return (
+              <p className="text-xs text-slate-400">
+                Current SOP:{" "}
+                <a
+                  href={doc.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-accent underline underline-offset-4"
+                >
+                  {doc.label || "Download"}
+                </a>
+              </p>
+            );
+          })()}
           <label className="block text-sm text-slate-300 space-y-2">
-            Assets (comma separated labels)
+            SOP label
+            <input
+              value={curriculumForm.sopLabel ?? ""}
+              onChange={(e) => setCurriculumForm((f) => ({ ...f, sopLabel: e.target.value }))}
+              className="w-full rounded-xl border border-slate-400/60 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none"
+              disabled={!isAdmin}
+              placeholder="e.g., Flight SOP v2"
+            />
+          </label>
+          <label className="block text-sm text-slate-300 space-y-2">
+            Upload SOP (PDF/PPT/DOC)
+            <input
+              type="file"
+              accept=".pdf,.ppt,.pptx,.doc,.docx"
+              onChange={(e) => setSopFile(e.target.files?.[0] ?? null)}
+              className="w-full rounded-xl border border-slate-400/60 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none file-accent"
+              disabled={!isAdmin}
+            />
+            {sopFile?.name && <p className="text-xs text-slate-400">Selected: {sopFile.name}</p>}
+          </label>
+          <label className="block text-sm text-slate-300 space-y-2">
+            Other assets (comma separated labels)
             <input
               value={curriculumForm.assets}
               onChange={(e) => setCurriculumForm((f) => ({ ...f, assets: e.target.value }))}
@@ -1549,15 +1600,28 @@ export default function AdminPage() {
                       .map((a) => a.trim())
                       .filter(Boolean);
 
-                    nextAssets =
+                    const otherAssets = (existing.assets ?? []).filter((a) => a.type !== "doc");
+                    const relabeledOthers =
                       assetLabels.length === 0
-                        ? existing.assets ?? []
-                        : (existing.assets?.length ?? 0) > 0
-                          ? (existing.assets ?? []).map((asset, idx) => ({
-                              ...asset,
-                              label: assetLabels[idx] ?? asset.label,
-                            }))
-                          : assetLabels.map((label) => ({ type: "doc" as const, url: label, label }));
+                        ? otherAssets
+                        : otherAssets.map((asset, idx) => ({
+                            ...asset,
+                            label: assetLabels[idx] ?? asset.label,
+                          }));
+
+                    let updatedDoc = (existing.assets ?? []).find((a) => a.type === "doc") ?? null;
+                    if (sopFile) {
+                      const url = await uploadFileToBucket({
+                        bucket: "curriculum-assets",
+                        file: sopFile,
+                        pathPrefix: `docs/${currentUserId ?? "admin"}`,
+                      });
+                      updatedDoc = { type: "doc" as const, url, label: curriculumForm.sopLabel || sopFile.name };
+                    } else if (curriculumForm.sopLabel.trim() && updatedDoc) {
+                      updatedDoc = { ...updatedDoc, label: curriculumForm.sopLabel.trim() };
+                    }
+
+                    nextAssets = [...relabeledOthers, ...(updatedDoc ? [updatedDoc] : [])];
 
                     updatePayload = {
                       title: curriculumForm.title,
@@ -1607,7 +1671,9 @@ export default function AdminPage() {
                     module: "",
                     description: "",
                     assets: "",
+                    sopLabel: "",
                   });
+                  setSopFile(null);
                   setDataStatus(null);
                 } catch (err) {
                   const message = err instanceof Error ? err.message : "Unknown error";
