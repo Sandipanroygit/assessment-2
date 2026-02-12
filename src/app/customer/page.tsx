@@ -142,8 +142,6 @@ export default function CustomerPage() {
   const [progressMap, setProgressMap] = useState<Record<string, { completed?: boolean; score?: number; total?: number; completedAt?: string }>>({});
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
-  const [studentRows, setStudentRows] = useState<Array<{ id: string; full_name: string; email?: string | null; grade?: string | null; subject?: string | null }>>([]);
-  const [studentSortDir, setStudentSortDir] = useState<"asc" | "desc">("asc");
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [notificationStatus, setNotificationStatus] = useState<string | null>(null);
   const [markingId, setMarkingId] = useState<string | null>(null);
@@ -447,31 +445,6 @@ export default function CustomerPage() {
     [],
   );
 
-  useEffect(() => {
-    if (role !== "teacher" || !sessionToken) return;
-    let cancelled = false;
-    const loadStudents = async () => {
-      try {
-        const res = await fetch("/api/teacher/students", {
-          headers: { Authorization: `Bearer ${sessionToken}` },
-        });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          setDataStatus(body?.error ?? "Unable to load students");
-          return;
-        }
-        if (cancelled) return;
-        setStudentRows(body.students ?? []);
-      } catch (err) {
-        if (!cancelled) setDataStatus(err instanceof Error ? err.message : "Unable to load students");
-      }
-    };
-    void loadStudents();
-    return () => {
-      cancelled = true;
-    };
-  }, [role, sessionToken]);
-
   const gradeOptions = useMemo(() => {
     if (userGrade) return [userGrade];
     const uniqueGrades = Array.from(new Set(modules.map((m) => m.grade)));
@@ -496,19 +469,6 @@ export default function CustomerPage() {
   );
 
   const vrItems = useMemo(() => (vrSubjectKey ? VR_SIMULATION_LIBRARY[vrSubjectKey] ?? [] : []), [vrSubjectKey]);
-
-  const sortedStudentRows = useMemo(() => {
-    const copy = [...studentRows];
-    copy.sort((a, b) => {
-      const aGrade = (a.grade ?? "").toLowerCase();
-      const bGrade = (b.grade ?? "").toLowerCase();
-      if (!aGrade && !bGrade) return 0;
-      if (!aGrade) return 1;
-      if (!bGrade) return -1;
-      return studentSortDir === "asc" ? aGrade.localeCompare(bGrade) : bGrade.localeCompare(aGrade);
-    });
-    return copy;
-  }, [studentRows, studentSortDir]);
 
   const requestMinDate = useMemo(() => {
     const today = new Date();
@@ -1247,51 +1207,6 @@ export default function CustomerPage() {
           ))}
         </div>
       </section>
-
-      {role === "teacher" && (
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-white">Students (subject-matched)</h2>
-            <div className="flex items-center gap-3">
-              <p className="text-sm text-slate-400">{sortedStudentRows.length} visible</p>
-              <button
-                className="px-3 py-1 rounded-lg border border-white/10 text-white text-xs hover:border-accent-strong"
-                onClick={() => setStudentSortDir((prev) => (prev === "asc" ? "desc" : "asc"))}
-              >
-                Sort by Grade ({studentSortDir === "asc" ? "A→Z" : "Z→A"})
-              </button>
-            </div>
-          </div>
-          <div className="glass-panel rounded-2xl p-4 overflow-auto">
-            <table className="min-w-full text-sm text-slate-200">
-              <thead>
-                <tr className="text-left text-slate-400 border-b border-white/10">
-                  <th className="py-2 pr-3">Name</th>
-                  <th className="py-2 pr-3">Email</th>
-                  <th className="py-2 pr-3">Grade</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedStudentRows.length === 0 ? (
-                  <tr>
-                    <td className="py-2 pr-3 text-slate-300" colSpan={3}>
-                      No students found for this subject yet.
-                    </td>
-                  </tr>
-                ) : (
-                  sortedStudentRows.map((student) => (
-                    <tr key={student.id} className="border-b border-white/5">
-                      <td className="py-2 pr-3 font-semibold text-white">{student.full_name}</td>
-                      <td className="py-2 pr-3 text-slate-300">{student.email ?? "—"}</td>
-                      <td className="py-2 pr-3 text-slate-300">{student.grade ?? "—"}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
 
     </main>
   );

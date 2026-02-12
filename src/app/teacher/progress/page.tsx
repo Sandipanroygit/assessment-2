@@ -35,6 +35,7 @@ export default function TeacherProgressPage() {
   const [modules, setModules] = useState<ModuleRow[]>([]);
   const [submissions, setSubmissions] = useState<ProgressRow[]>([]);
   const [students, setStudents] = useState<StudentRow[]>([]);
+  const [studentSortDir, setStudentSortDir] = useState<"asc" | "desc">("asc");
   const [status, setStatus] = useState<string | null>(null);
   const [, startLoading] = useTransition();
   const [moduleFilter, setModuleFilter] = useState<string>("all");
@@ -102,6 +103,19 @@ export default function TeacherProgressPage() {
         };
       });
   }, [filteredModule, modules, students, submissions]);
+
+  const sortedStudents = useMemo(() => {
+    const copy = [...students];
+    copy.sort((a, b) => {
+      const aGrade = (a.grade ?? "").toLowerCase();
+      const bGrade = (b.grade ?? "").toLowerCase();
+      if (!aGrade && !bGrade) return 0;
+      if (!aGrade) return 1;
+      if (!bGrade) return -1;
+      return studentSortDir === "asc" ? aGrade.localeCompare(bGrade) : bGrade.localeCompare(aGrade);
+    });
+    return copy;
+  }, [students, studentSortDir]);
 
   const sendReminder = useCallback(
     async (studentId: string, studentName: string, moduleId?: string | null, moduleTitle?: string | null, subject?: string | null) => {
@@ -179,6 +193,49 @@ export default function TeacherProgressPage() {
           </div>
         )}
       </div>
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold text-white">Registered student</h2>
+          <div className="flex items-center gap-3">
+            <p className="text-sm text-slate-400">{sortedStudents.length} visible</p>
+            <button
+              className="px-3 py-1 rounded-lg border border-white/10 text-white text-xs hover:border-accent-strong"
+              onClick={() => setStudentSortDir((prev) => (prev === "asc" ? "desc" : "asc"))}
+            >
+              Sort by Grade ({studentSortDir === "asc" ? "A→Z" : "Z→A"})
+            </button>
+          </div>
+        </div>
+        <div className="glass-panel rounded-2xl p-4 overflow-auto">
+          <table className="min-w-full text-sm text-slate-200">
+            <thead>
+              <tr className="text-left text-slate-400 border-b border-white/10">
+                <th className="py-2 pr-3">Name</th>
+                <th className="py-2 pr-3">Email</th>
+                <th className="py-2 pr-3">Grade</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedStudents.length === 0 ? (
+                <tr>
+                  <td className="py-2 pr-3 text-slate-300" colSpan={3}>
+                    No students found for this subject yet.
+                  </td>
+                </tr>
+              ) : (
+                sortedStudents.map((student) => (
+                  <tr key={student.id} className="border-b border-white/5">
+                    <td className="py-2 pr-3 font-semibold text-white">{student.full_name}</td>
+                    <td className="py-2 pr-3 text-slate-300">{student.email ?? "—"}</td>
+                    <td className="py-2 pr-3 text-slate-300">{student.grade ?? "—"}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       <div className="glass-panel rounded-2xl p-4 overflow-auto">
         <table className="min-w-full text-sm text-slate-200">
