@@ -877,14 +877,14 @@ export default function CustomerPage() {
                       setRequestOpen(true);
                     }}
                   >
-                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-700/70 border border-emerald-200/70 shadow-inner">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-900/80 border border-amber-200/70 shadow-inner">
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
                         viewBox="0 0 24 24"
                         fill="none"
                         stroke="currentColor"
                         strokeWidth="1.8"
-                        className="h-5 w-5 text-white"
+                        className="h-5 w-5 text-amber-50"
                       >
                         <path d="M12 5v14" />
                         <path d="M5 12h14" />
