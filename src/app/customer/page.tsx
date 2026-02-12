@@ -142,8 +142,6 @@ export default function CustomerPage() {
   const [progressMap, setProgressMap] = useState<Record<string, { completed?: boolean; score?: number; total?: number; completedAt?: string }>>({});
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
-  const [studentRows, setStudentRows] = useState<Array<{ id: string; full_name: string; email?: string | null; grade?: string | null; subject?: string | null }>>([]);
-  const [studentSortDir, setStudentSortDir] = useState<"asc" | "desc">("asc");
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [notificationStatus, setNotificationStatus] = useState<string | null>(null);
   const [markingId, setMarkingId] = useState<string | null>(null);
@@ -216,31 +214,6 @@ export default function CustomerPage() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [teacherMenuOpen]);
-
-  useEffect(() => {
-    if (role !== "teacher" || !sessionToken) return;
-    let cancelled = false;
-    const loadStudents = async () => {
-      try {
-        const res = await fetch("/api/teacher/students", {
-          headers: { Authorization: `Bearer ${sessionToken}` },
-        });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          setDataStatus(body?.error ?? "Unable to load students");
-          return;
-        }
-        if (cancelled) return;
-        setStudentRows(body.students ?? []);
-      } catch (err) {
-        if (!cancelled) setDataStatus(err instanceof Error ? err.message : "Unable to load students");
-      }
-    };
-    void loadStudents();
-    return () => {
-      cancelled = true;
-    };
-  }, [role, sessionToken]);
 
   useEffect(() => {
     if (role !== "teacher") return;
@@ -496,19 +469,6 @@ export default function CustomerPage() {
   );
 
   const vrItems = useMemo(() => (vrSubjectKey ? VR_SIMULATION_LIBRARY[vrSubjectKey] ?? [] : []), [vrSubjectKey]);
-
-  const sortedStudentRows = useMemo(() => {
-    const copy = [...studentRows];
-    copy.sort((a, b) => {
-      const aGrade = (a.grade ?? "").toLowerCase();
-      const bGrade = (b.grade ?? "").toLowerCase();
-      if (!aGrade && !bGrade) return 0;
-      if (!aGrade) return 1;
-      if (!bGrade) return -1;
-      return studentSortDir === "asc" ? aGrade.localeCompare(bGrade) : bGrade.localeCompare(aGrade);
-    });
-    return copy;
-  }, [studentRows, studentSortDir]);
 
   const requestMinDate = useMemo(() => {
     const today = new Date();
@@ -960,51 +920,29 @@ export default function CustomerPage() {
                       <p className="text-xs text-slate-300">Track submissions and attempts</p>
                     </div>
                   </Link>
-                  <div className="rounded-xl border border-white/12 bg-white/4 p-3 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-semibold text-white text-sm">Registered student</p>
-                        <p className="text-xs text-slate-400">Subject-matched list</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <p className="text-[11px] text-slate-400">{sortedStudentRows.length} visible</p>
-                        <button
-                          className="px-2 py-1 rounded-lg border border-white/10 text-[11px] text-white hover:border-accent-strong"
-                          onClick={() => setStudentSortDir((prev) => (prev === "asc" ? "desc" : "asc"))}
-                        >
-                          Sort ({studentSortDir === "asc" ? "A→Z" : "Z→A"})
-                        </button>
-                      </div>
+                  <Link
+                    href="/teacher/students"
+                    onClick={() => setTeacherMenuOpen(false)}
+                    className="flex items-center gap-3 rounded-xl px-3 py-2.5 bg-white/6 hover:bg-white/12 border border-white/15 hover:border-emerald-300/50 text-sm text-white transition"
+                  >
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-700/70 border border-emerald-200/70 shadow-inner">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        className="h-5 w-5 text-white"
+                      >
+                        <path d="M7 7h10M7 12h10M7 17h6" />
+                        <path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
+                      </svg>
+                    </span>
+                    <div className="text-left">
+                      <p className="font-semibold">Registered student</p>
+                      <p className="text-xs text-slate-300">View subject-matched list</p>
                     </div>
-                    <div className="rounded-lg border border-white/8 bg-slate-900/60 max-h-60 overflow-auto">
-                      <table className="min-w-full text-[12px] text-slate-200">
-                        <thead>
-                          <tr className="text-left text-slate-400 border-b border-white/10">
-                            <th className="py-2 px-2">Name</th>
-                            <th className="py-2 px-2">Email</th>
-                            <th className="py-2 px-2">Grade</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {sortedStudentRows.length === 0 ? (
-                            <tr>
-                              <td className="py-2 px-2 text-slate-300" colSpan={3}>
-                                No students yet.
-                              </td>
-                            </tr>
-                          ) : (
-                            sortedStudentRows.map((student) => (
-                              <tr key={student.id} className="border-b border-white/5">
-                                <td className="py-2 px-2 font-semibold text-white">{student.full_name}</td>
-                                <td className="py-2 px-2 text-slate-300">{student.email ?? "—"}</td>
-                                <td className="py-2 px-2 text-slate-300">{student.grade ?? "—"}</td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
+                  </Link>
                   <Link
                     href="/"
                     onClick={() => setTeacherMenuOpen(false)}
