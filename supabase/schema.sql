@@ -23,11 +23,14 @@ create table if not exists public.curriculum_modules (
   subject text not null,
   module text not null,
   description text,
+  judging_logic text,
   asset_urls jsonb default '[]',
   price_yearly numeric,
   published boolean default true,
   created_at timestamp with time zone default now()
 );
+
+alter table public.curriculum_modules add column if not exists judging_logic text;
 
 create table if not exists public.products (
   id uuid primary key default gen_random_uuid(),
@@ -72,6 +75,17 @@ create table if not exists public.page_views (
   created_at timestamp with time zone default now()
 );
 
+create table if not exists public.sales_inquiries (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  email text not null,
+  school text,
+  message text not null,
+  status text check (status in ('new', 'reviewed', 'closed')) default 'new',
+  source_page text default 'home',
+  created_at timestamp with time zone default now()
+);
+
 create table if not exists public.activity_submissions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references public.profiles (id) on delete set null,
@@ -112,6 +126,7 @@ alter table public.orders enable row level security;
 alter table public.order_items enable row level security;
 alter table public.analytics_events enable row level security;
 alter table public.page_views enable row level security;
+alter table public.sales_inquiries enable row level security;
 alter table public.activity_submissions enable row level security;
 alter table public.notifications enable row level security;
 
@@ -182,6 +197,7 @@ create policy "Teachers update curriculum grade" on public.curriculum_modules
         and old.subject is not distinct from curriculum_modules.subject
         and old.module is not distinct from curriculum_modules.module
         and old.description is not distinct from curriculum_modules.description
+        and old.judging_logic is not distinct from curriculum_modules.judging_logic
         and old.asset_urls is not distinct from curriculum_modules.asset_urls
         and old.price_yearly is not distinct from curriculum_modules.price_yearly
         and old.published is not distinct from curriculum_modules.published
@@ -230,6 +246,17 @@ create policy "Public read page views" on public.page_views
   for select using (true);
 create policy "Public insert page views" on public.page_views
   for insert with check (true);
+
+-- Sales inquiries: public can submit; admins can read and update
+drop policy if exists "Public insert sales inquiries" on public.sales_inquiries;
+drop policy if exists "Admins read sales inquiries" on public.sales_inquiries;
+drop policy if exists "Admins update sales inquiries" on public.sales_inquiries;
+create policy "Public insert sales inquiries" on public.sales_inquiries
+  for insert with check (true);
+create policy "Admins read sales inquiries" on public.sales_inquiries
+  for select using (public.is_admin());
+create policy "Admins update sales inquiries" on public.sales_inquiries
+  for update using (public.is_admin()) with check (public.is_admin());
 
 -- Activity submissions: students manage their own; admins can read all
 drop policy if exists "Students read own submissions" on public.activity_submissions;

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { logActivity } from "@/lib/activityLogger";
 
 export default function ResetPasswordPage() {
   const router = useRouter();
@@ -73,6 +74,10 @@ export default function ResetPasswordPage() {
       setLoading(false);
       return;
     }
+    await logActivity("auth_logout", {
+      category: "auth",
+      metadata: { reason: "password_reset" },
+    });
     await supabase.auth.signOut();
     setStatus("Password updated. Redirecting to login...");
     setLoading(false);

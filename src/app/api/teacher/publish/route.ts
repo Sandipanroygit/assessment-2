@@ -47,7 +47,7 @@ export async function POST(req: Request) {
   // Ensure the module belongs to the teacher's subject (if provided)
   const { data: moduleRow, error: moduleError } = await supabaseAdmin
     .from("curriculum_modules")
-    .select("id, subject")
+    .select("id, title, subject")
     .eq("id", moduleId)
     .maybeSingle();
 
@@ -68,6 +68,24 @@ export async function POST(req: Request) {
 
   if (updateError) {
     return NextResponse.json({ error: updateError.message }, { status: 500 });
+  }
+
+  // Logging failure should not block publish action.
+  const { error: logError } = await supabaseAdmin.from("analytics_events").insert({
+    user_id: userData.user.id,
+    event_type: "teacher_module_publish",
+    payload: {
+      role: role,
+      email: userData.user.email ?? null,
+      full_name: (userMeta.full_name as string | undefined) ?? userData.user.email ?? "Teacher",
+      module_id: moduleId,
+      module_title: moduleRow.title ?? null,
+      module_subject: moduleRow.subject,
+      published,
+    },
+  });
+  if (logError) {
+    console.warn("teacher_module_publish log error:", logError.message);
   }
 
   return NextResponse.json({ success: true, published });

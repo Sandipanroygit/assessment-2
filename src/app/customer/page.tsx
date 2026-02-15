@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import type { CurriculumModule } from "@/types";
 import { fetchCurriculumModules } from "@/lib/supabaseData";
+import { logActivity } from "@/lib/activityLogger";
 
 const normalizeSubject = (subject: string) =>
   subject?.toLowerCase() === "maths" ? "Mathematics" : subject;
@@ -101,6 +102,8 @@ const VR_SIMULATION_LIBRARY: Record<string, string[]> = {
 const ANY_OTHER_OPTION = "Any other";
 const BOLD_VR_ITEMS = new Set<string>([
   "Factors Affecting Resistance of Conductor (Length, Area, Material)",
+  "Understanding Archimedes' Principle",
+  "Understanding Kepler's Law",
   "Resistance of Resistors (Series & Parallel)",
   "Understanding Resistance & Ohm's Law",
   "Heating Effect of Electric Current & Applications",
@@ -656,7 +659,7 @@ export default function CustomerPage() {
                 </p>
               </div>
               <button
-                className="text-sm px-3 py-1 rounded-lg border border-black text-white hover:border-black cursor-pointer"
+                className="text-sm px-3 py-1 rounded-lg border border-rose-400 bg-rose-700 text-true-white hover:bg-rose-600 hover:border-rose-300 cursor-pointer"
                 onClick={() => {
                   closeRequestModal();
                   resetRequestForm();
@@ -727,17 +730,17 @@ export default function CustomerPage() {
                       : "Subject not set; ask an admin to assign your subject."}
                   </div>
                 )}
-                <div className="grid sm:grid-cols-2 gap-2 max-h-72 overflow-auto pr-1">
+                <div className="grid sm:grid-cols-2 gap-2 max-h-72 overflow-auto p-1">
                   {vrItems.map((item) => (
                     <label
                       key={item}
-                      className={`flex items-start gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 hover:border-accent-strong ${
+                      className={`flex items-start gap-2 rounded-xl border border-white/10 ring-1 ring-inset ring-blue-500/70 bg-white/5 px-3 py-2 text-sm text-slate-100 hover:border-accent-strong ${
                         anyOtherSelected ? "opacity-60" : ""
                       }`}
                     >
                       <input
                         type="checkbox"
-                        className="mt-0.5 h-4 w-4 rounded border-slate-400/70 bg-slate-900"
+                        className="mt-0.5 h-4 w-4 rounded border-slate-400/70 bg-slate-900 outline outline-1 outline-slate-300/60"
                         checked={requestItems.includes(item)}
                         onChange={() => toggleRequestItem(item)}
                         disabled={anyOtherSelected}
@@ -745,10 +748,10 @@ export default function CustomerPage() {
                       <span className={BOLD_VR_ITEMS.has(item) ? "font-semibold text-white" : undefined}>{item}</span>
                     </label>
                   ))}
-                  <label className="flex items-start gap-2 rounded-xl border border-accent/40 bg-accent/10 px-3 py-2 text-sm text-slate-100 hover:border-accent-strong">
+                  <label className="flex items-start gap-2 rounded-xl border border-accent/40 ring-1 ring-inset ring-blue-500/70 bg-accent/10 px-3 py-2 text-sm text-slate-100 hover:border-accent-strong">
                     <input
                       type="checkbox"
-                      className="mt-0.5 h-4 w-4 rounded border-slate-400/70 bg-slate-900"
+                      className="mt-0.5 h-4 w-4 rounded border-slate-400/70 bg-slate-900 outline outline-1 outline-slate-300/60"
                       checked={anyOtherSelected}
                       onChange={() => toggleRequestItem(ANY_OTHER_OPTION)}
                     />
@@ -816,7 +819,7 @@ export default function CustomerPage() {
 
             <div className="flex flex-wrap gap-3 justify-end">
               <button
-                className="px-4 py-2 rounded-xl border border-white/10 text-white hover:border-accent-strong"
+                className="px-4 py-2 rounded-xl border border-white/10 outline outline-1 outline-black text-white hover:border-accent-strong"
                 onClick={() => {
                   closeRequestModal();
                   resetRequestForm();
@@ -971,6 +974,10 @@ export default function CustomerPage() {
                     onClick={() =>
                       startSignOut(async () => {
                         setTeacherMenuOpen(false);
+                        await logActivity("auth_logout", {
+                          category: "auth",
+                          metadata: { reason: "manual" },
+                        });
                         await supabase.auth.signOut();
                         router.push("/login");
                       })
@@ -1011,6 +1018,10 @@ export default function CustomerPage() {
             <button
               onClick={() =>
                 startSignOut(async () => {
+                  await logActivity("auth_logout", {
+                    category: "auth",
+                    metadata: { reason: "manual" },
+                  });
                   await supabase.auth.signOut();
                   router.push("/login");
                 })
@@ -1031,22 +1042,24 @@ export default function CustomerPage() {
               <button
                 type="button"
                 onClick={() => setNotificationsOpen((open) => !open)}
-                className="relative inline-flex items-center justify-center h-11 w-11 rounded-full border border-white/10 bg-white/5 hover:border-accent-strong"
+                className="relative inline-flex items-center justify-center h-11 w-11 rounded-full border border-white/10 outline outline-2 outline-black/50 bg-white/5 hover:border-accent-strong"
                 aria-label="Notifications"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
+                  fill="#facc15"
+                  stroke="#111827"
                   strokeWidth="1.8"
-                  className="h-6 w-6 text-white"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className={`h-6 w-6 ${unreadCount > 0 ? "customer-bell-ring" : ""}`}
                 >
                   <path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.172V11a6 6 0 1 0-12 0v3.172a2 2 0 0 1-.6 1.428L4 17h5" />
                   <path d="M9 17a3 3 0 0 0 6 0" />
                 </svg>
                 {unreadCount > 0 && (
-                  <span className="absolute top-1.5 right-1.5 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-slate-900"></span>
+                  <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-rose-500 ring-1 ring-slate-900"></span>
                 )}
               </button>
 
@@ -1099,6 +1112,24 @@ export default function CustomerPage() {
         </section>
       )}
 
+      <section className="space-y-3">
+        <h2 className="text-xl font-semibold text-white">System requirements</h2>
+        <div className="glass-panel rounded-2xl p-5">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p className="text-base font-semibold text-slate-100">
+              For first-time users, it is recommended to install all dependencies using the &ldquo;<span className="underline">Download Installer</span>&rdquo; before performing the activity.
+            </p>
+            <a
+              href="https://1drv.ms/u/c/d5c868b4d9600368/IQCspO91wHTLQINVFln61jdhAaeVZC9a_i_Tl8Xd-bU4AW4?e=gqzZN6"
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-true-white underline shadow-glow hover:opacity-90"
+              download
+            >
+              Download Installer
+            </a>
+          </div>
+        </div>
+      </section>
+
       <div className="space-y-3">
         <h2 className="text-xl font-semibold text-white">Browse activities</h2>
         <div className="glass-panel rounded-2xl p-4 grid sm:grid-cols-3 gap-3">
@@ -1147,24 +1178,6 @@ export default function CustomerPage() {
         </div>
       </div>
 
-      <section className="space-y-3">
-        <h2 className="text-xl font-semibold text-white">System requirements</h2>
-        <div className="glass-panel rounded-2xl p-5">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <p className="text-base font-semibold text-slate-100">
-              For first-time users, it is recommended to install all dependencies using the &ldquo;<span className="underline">Download Installer</span>&rdquo; before performing the activity.
-            </p>
-            <a
-              href="https://1drv.ms/u/c/d5c868b4d9600368/IQCspO91wHTLQINVFln61jdhAaeVZC9a_i_Tl8Xd-bU4AW4?e=gqzZN6"
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-true-white underline shadow-glow hover:opacity-90"
-              download
-            >
-              Download Installer
-            </a>
-          </div>
-        </div>
-      </section>
-
       <section id="curriculum" className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-semibold text-white">Activities</h2>
@@ -1182,13 +1195,21 @@ export default function CustomerPage() {
                   NEWLY ADDED
                 </span>
               )}
-              <h3 className="text-lg font-semibold text-white">{module.title}</h3>
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-lg font-semibold text-white">{module.title}</h3>
+                {role === "teacher" && module.published && (
+                  <div className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold text-red-500">
+                    <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" aria-hidden="true" />
+                    Live
+                  </div>
+                )}
+              </div>
               {role === "teacher" && (
                 <div className="flex items-center gap-2 text-xs">
                   <span
-                    className={`px-2 py-1 rounded-full font-semibold border ${
+                    className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full font-semibold border ${
                       module.published
-                        ? "bg-emerald-600 text-white border-emerald-300"
+                        ? "bg-blue-600 text-true-white border-blue-300"
                         : "bg-amber-600 text-white border-amber-300"
                     }`}
                   >

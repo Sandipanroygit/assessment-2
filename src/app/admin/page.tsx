@@ -22,6 +22,9 @@ import {
   fetchProducts,
   uploadFileToBucket,
 } from "@/lib/supabaseData";
+import { UploadCurriculumView } from "@/components/admin/UploadCurriculumView";
+import { AdminQuestionsView } from "@/components/admin/AdminQuestionsView";
+import { logActivity } from "@/lib/activityLogger";
 type AdminUser = {
   id: string;
   full_name: string;
@@ -47,6 +50,7 @@ const formatPrice = (value: number) =>
   );
 
 const formatJoinedDate = (value?: string | null) => (value ? new Date(value).toLocaleDateString() : "-");
+const formatDateTime = (value?: string | null) => (value ? new Date(value).toLocaleString() : "-");
 const sanitizeSegment = (value: string) =>
   value.replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase() || "item";
 const studentLabelFromFile = (fileName: string) => {
@@ -89,6 +93,19 @@ type TeacherRequest = {
   created_at?: string | null;
 };
 
+type SalesInquiry = {
+  id: string;
+  name: string;
+  email: string;
+  school?: string | null;
+  message: string;
+  status?: string | null;
+  source_page?: string | null;
+  created_at?: string | null;
+};
+
+type AdminRibbonSection = "drone" | "upload" | "questions" | "products" | "sentiment" | "users" | "orders";
+
 export default function AdminPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [role, setRole] = useState<string | null>(null);
@@ -116,6 +133,18 @@ export default function AdminPage() {
   const [teacherRequestStatus, setTeacherRequestStatus] = useState<string | null>(null);
   const [updatingRequestId, setUpdatingRequestId] = useState<string | null>(null);
   const [showTeacherRequests, setShowTeacherRequests] = useState(false);
+  const [adminMenuOpen, setAdminMenuOpen] = useState(false);
+  const adminMenuRef = useRef<HTMLDivElement | null>(null);
+  const [adminNotificationsOpen, setAdminNotificationsOpen] = useState(false);
+  const adminNotificationsRef = useRef<HTMLDivElement | null>(null);
+  const lastScrollYRef = useRef(0);
+  const statsExpandGuardUntilRef = useRef(0);
+  const [salesInquiries, setSalesInquiries] = useState<SalesInquiry[]>([]);
+  const [salesInquiryStatus, setSalesInquiryStatus] = useState<string | null>(null);
+  const [updatingSalesInquiryId, setUpdatingSalesInquiryId] = useState<string | null>(null);
+  const [showSalesInquiries, setShowSalesInquiries] = useState(false);
+  const [activeAdminSection, setActiveAdminSection] = useState<AdminRibbonSection>("drone");
+  const [statsExpanded, setStatsExpanded] = useState(true);
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
   const [userForm, setUserForm] = useState({ full_name: "", role: "student", grade: "", subject: "" });
   const [sopFile, setSopFile] = useState<File | null>(null);
@@ -142,13 +171,153 @@ export default function AdminPage() {
     assets: "",
     sopLabel: "",
   });
-  const unreadTeacherRequests = useMemo(
-    () => teacherRequests.filter((req) => (req.status ?? "pending") !== "done").length,
+  const unreadTeacherRequestItems = useMemo(
+    () => teacherRequests.filter((req) => (req.status ?? "pending") !== "done"),
     [teacherRequests],
   );
+  const unreadSalesInquiryItems = useMemo(
+    () => salesInquiries.filter((item) => (item.status ?? "new") === "new"),
+    [salesInquiries],
+  );
+  const unreadTeacherRequests = unreadTeacherRequestItems.length;
+  const unreadSalesInquiries = unreadSalesInquiryItems.length;
+  const unreadNotifications = useMemo(() => {
+    const teacherItems = unreadTeacherRequestItems.map((req) => ({
+      key: `teacher-${req.id}`,
+      kind: "teacher_request" as const,
+      title: req.teacher_name ? `Teacher request from ${req.teacher_name}` : "Teacher request",
+      detail: [req.subject, req.needed_by ? `Needed by ${formatJoinedDate(req.needed_by)}` : null]
+        .filter(Boolean)
+        .join(" | "),
+      createdAt: req.created_at ?? null,
+    }));
+    const salesItems = unreadSalesInquiryItems.map((item) => ({
+      key: `sales-${item.id}`,
+      kind: "sales_query" as const,
+      title: `Sales query from ${item.name}`,
+      detail: item.email,
+      createdAt: item.created_at ?? null,
+    }));
+
+    return [...teacherItems, ...salesItems].sort((a, b) => {
+      const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return bTime - aTime;
+    });
+  }, [unreadTeacherRequestItems, unreadSalesInquiryItems]);
+  const unreadNotificationCount = unreadNotifications.length;
   const isTeacher = role === "teacher";
   const canEditCurriculum = isAdmin || isTeacher;
   const dashboardRoleLabel = isAdmin ? "Admin" : isTeacher ? "Teacher" : "User";
+  const ribbonSections: Array<{ id: AdminRibbonSection; label: string; adminOnly?: boolean }> = [
+    { id: "drone", label: "Drone Activity" },
+    { id: "upload", label: "Upload Content", adminOnly: true },
+    { id: "questions", label: "Manage Questions" },
+    { id: "sentiment", label: "Sentiment Summaries" },
+    { id: "users", label: "Reg Users" },
+    { id: "products", label: "Product Catalogue" },
+    { id: "orders", label: "Orders" },
+  ];
+  const renderRibbonIcon = (sectionId: AdminRibbonSection) => {
+    switch (sectionId) {
+      case "drone":
+        return (
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-4 w-4">
+            <path d="M12 10v4" />
+            <path d="M10 12h4" />
+            <path d="M5 5l4 4" />
+            <path d="M19 5l-4 4" />
+            <path d="M5 19l4-4" />
+            <path d="M19 19l-4-4" />
+            <circle cx="5" cy="5" r="2.5" />
+            <circle cx="19" cy="5" r="2.5" />
+            <circle cx="5" cy="19" r="2.5" />
+            <circle cx="19" cy="19" r="2.5" />
+          </svg>
+        );
+      case "upload":
+        return (
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-4 w-4">
+            <path d="M12 16V4" />
+            <path d="m7 9 5-5 5 5" />
+            <path d="M4 20h16" />
+          </svg>
+        );
+      case "questions":
+        return (
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-4 w-4">
+            <path d="M12 18h.01" />
+            <path d="M9.2 9.6a2.8 2.8 0 1 1 5.6 0c0 1.7-2.8 2.2-2.8 4.2" />
+            <circle cx="12" cy="12" r="9" />
+          </svg>
+        );
+      case "products":
+        return (
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-4 w-4">
+            <path d="M3 7h18l-2 11H5L3 7Z" />
+            <path d="M8 7V5a4 4 0 0 1 8 0v2" />
+          </svg>
+        );
+      case "sentiment":
+        return (
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-4 w-4">
+            <path d="M4 20h16" />
+            <path d="M6 16l3-4 3 2 4-6 2 2" />
+          </svg>
+        );
+      case "users":
+        return (
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-4 w-4">
+            <circle cx="9" cy="8" r="3" />
+            <path d="M3.5 19a5.5 5.5 0 0 1 11 0" />
+            <circle cx="17" cy="9" r="2.5" />
+            <path d="M14.5 19a4 4 0 0 1 6 0" />
+          </svg>
+        );
+      case "orders":
+        return (
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-4 w-4">
+            <path d="M3 6h15l2 10H5L3 6Z" />
+            <circle cx="9" cy="19" r="1.5" />
+            <circle cx="17" cy="19" r="1.5" />
+          </svg>
+        );
+      default:
+        return null;
+    }
+  };
+  const renderSectionRibbonButton = (section: { id: AdminRibbonSection; label: string; adminOnly?: boolean }) => {
+    const isActive = activeAdminSection === section.id;
+    const isDisabled = section.adminOnly && !isAdmin;
+    const buttonClass = isDisabled
+      ? "bg-stone-100/85 text-stone-400 border-stone-300/70 ring-black/5 cursor-not-allowed"
+      : isActive
+        ? "bg-amber-100 text-slate-900 border-amber-300 shadow-[0_8px_18px_rgba(120,113,108,0.18)] ring-black/20"
+        : "bg-white/85 text-slate-700 border-stone-200 ring-black/10 hover:border-stone-400 hover:bg-white hover:ring-black/20";
+    const iconClass = isDisabled
+      ? "bg-stone-100 border-stone-300/80 text-stone-400"
+      : isActive
+        ? "bg-amber-200/70 border-amber-300 text-amber-900"
+        : "bg-stone-100 border-stone-300/80 text-slate-700 group-hover:bg-stone-200";
+    return (
+      <button
+        key={section.id}
+        type="button"
+        onClick={() => {
+          if (isDisabled) return;
+          setActiveAdminSection(section.id);
+        }}
+        disabled={isDisabled}
+        aria-disabled={isDisabled}
+        className={`group relative shrink-0 inline-flex items-center gap-2 rounded-2xl border ring-1 ring-inset px-4 py-2.5 text-sm font-semibold transition-all ${buttonClass}`}
+      >
+        <span className={`inline-flex h-7 w-7 items-center justify-center rounded-lg border ${iconClass}`}>
+          {renderRibbonIcon(section.id)}
+        </span>
+        {section.label}
+      </button>
+    );
+  };
   const reloadUsers = useCallback(async () => {
     if (!isAdmin) return;
     setDataStatus("Refreshing users...");
@@ -210,6 +379,36 @@ export default function AdminPage() {
     }
   }, [isAdmin]);
 
+  const loadSalesInquiries = useCallback(async () => {
+    if (!isAdmin) return;
+    setSalesInquiryStatus("Loading sales queries...");
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        setSalesInquiryStatus("No active session; please sign in again.");
+        return;
+      }
+
+      const response = await fetch("/api/sales-inquiries", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const body = (await response.json().catch(() => ({}))) as { inquiries?: SalesInquiry[]; error?: string };
+      if (!response.ok) {
+        setSalesInquiryStatus(body?.error ?? `Failed to load sales queries (status ${response.status}).`);
+        setSalesInquiries([]);
+        return;
+      }
+
+      setSalesInquiries(body.inquiries ?? []);
+      setSalesInquiryStatus(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to load sales queries";
+      setSalesInquiryStatus(message);
+      setSalesInquiries([]);
+    }
+  }, [isAdmin]);
+
   const updateTeacherRequestStatus = useCallback(
     async (id: string, nextStatus: string) => {
       if (!isAdmin) return;
@@ -230,6 +429,44 @@ export default function AdminPage() {
         setTeacherRequestStatus(message);
       } finally {
         setUpdatingRequestId(null);
+      }
+    },
+    [isAdmin],
+  );
+
+  const updateSalesInquiryStatus = useCallback(
+    async (id: string, nextStatus: "new" | "reviewed" | "closed") => {
+      if (!isAdmin) return;
+      setUpdatingSalesInquiryId(id);
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+        if (!token) {
+          setSalesInquiryStatus("No active session; please sign in again.");
+          return;
+        }
+
+        const response = await fetch("/api/sales-inquiries", {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ id, status: nextStatus }),
+        });
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        if (!response.ok) {
+          setSalesInquiryStatus(body?.error ?? `Unable to update query (status ${response.status}).`);
+          return;
+        }
+
+        setSalesInquiries((prev) => prev.map((item) => (item.id === id ? { ...item, status: nextStatus } : item)));
+        setSalesInquiryStatus(null);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unable to update query";
+        setSalesInquiryStatus(message);
+      } finally {
+        setUpdatingSalesInquiryId(null);
       }
     },
     [isAdmin],
@@ -257,25 +494,25 @@ export default function AdminPage() {
         case "name": {
           const an = (a.full_name || "").toLowerCase();
           const bn = (b.full_name || "").toLowerCase();
-          if (an === bn) break;
+          if (an === bn) return 0;
           return userSort.dir === "asc" ? an.localeCompare(bn) : bn.localeCompare(an);
         }
         case "role": {
           const ar = (a.displayRole || "").toLowerCase();
           const br = (b.displayRole || "").toLowerCase();
-          if (ar === br) break;
+          if (ar === br) return 0;
           return userSort.dir === "asc" ? ar.localeCompare(br) : br.localeCompare(ar);
         }
         case "subject": {
           const asub = (a.subject || "").toLowerCase();
           const bsub = (b.subject || "").toLowerCase();
-          if (asub === bsub) break;
+          if (asub === bsub) return 0;
           return userSort.dir === "asc" ? asub.localeCompare(bsub) : bsub.localeCompare(asub);
         }
         case "grade": {
           const ag = (a.grade || "").toLowerCase();
           const bg = (b.grade || "").toLowerCase();
-          if (ag === bg) break;
+          if (ag === bg) return 0;
           return userSort.dir === "asc" ? ag.localeCompare(bg) : bg.localeCompare(ag);
         }
         default:
@@ -324,25 +561,38 @@ export default function AdminPage() {
         if (isAdmin) {
           await reloadUsers();
           await loadTeacherRequests();
+          await loadSalesInquiries();
         } else {
           setUserRows([]);
           setUserCount(null);
           setTeacherRequests([]);
           setTeacherRequestStatus(null);
+          setSalesInquiries([]);
+          setSalesInquiryStatus(null);
         }
         setDataStatus(null);
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Unable to load data";
+        const message =
+          err instanceof Error
+            ? err.message
+            : err && typeof err === "object" && "message" in err && typeof (err as { message?: unknown }).message === "string"
+              ? (err as { message: string }).message
+              : "Unable to load data";
         setCurriculumRows([]);
         setProductRows([]);
         setUserRows([]);
         setUserCount(null);
         setTeacherRequests([]);
         setTeacherRequestStatus(message);
-        setDataStatus(`Database not reachable (${message}).`);
+        setSalesInquiries([]);
+        setSalesInquiryStatus(message);
+        const setupHint = isMissingTableSchemaCacheError(message)
+          ? " Apply `supabase/schema.sql` in your Supabase SQL editor, then retry."
+          : "";
+        setDataStatus(`Unable to load shared data (${message}).${setupHint}`);
       }
     },
-    [canEditCurriculum, isAdmin, loadTeacherRequests, reloadUsers],
+    [canEditCurriculum, isAdmin, loadSalesInquiries, loadTeacherRequests, reloadUsers],
   );
 
   const openUserEditor = (user: AdminUser, event?: MouseEvent<HTMLButtonElement>) => {
@@ -547,7 +797,7 @@ export default function AdminPage() {
     setUserRows((prev) => prev.filter((u) => u.id !== user.id));
     if (editingUser && editingUser.id === user.id) {
       setEditingUser(null);
-      setUserForm({ full_name: "", role: "student", grade: "" });
+      setUserForm({ full_name: "", role: "student", grade: "", subject: "" });
     }
     setDataStatus(null);
   };
@@ -620,62 +870,394 @@ export default function AdminPage() {
     }
   };
 
+  useEffect(() => {
+    const handleClickOutside = (event: globalThis.MouseEvent) => {
+      if (!adminMenuOpen) return;
+      const target = event.target as Node | null;
+      if (adminMenuRef.current && target && !adminMenuRef.current.contains(target)) {
+        setAdminMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [adminMenuOpen]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: globalThis.MouseEvent) => {
+      if (!adminNotificationsOpen) return;
+      const target = event.target as Node | null;
+      if (adminNotificationsRef.current && target && !adminNotificationsRef.current.contains(target)) {
+        setAdminNotificationsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [adminNotificationsOpen]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    lastScrollYRef.current = window.scrollY;
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      if (Date.now() < statsExpandGuardUntilRef.current) {
+        lastScrollYRef.current = currentScrollY;
+        return;
+      }
+      if (currentScrollY > lastScrollYRef.current + 4) {
+        setStatsExpanded(false);
+      }
+      lastScrollYRef.current = currentScrollY;
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  const openTeacherRequestsModal = () => {
+    setShowTeacherRequests(true);
+    void loadTeacherRequests();
+    if (typeof window !== "undefined") {
+      requestAnimationFrame(() => {
+        document.getElementById("teacher-requests")?.scrollIntoView({ behavior: "smooth" });
+      });
+    }
+  };
+
+  const openSalesInquiriesModal = () => {
+    setShowSalesInquiries(true);
+    void loadSalesInquiries();
+    if (typeof window !== "undefined") {
+      requestAnimationFrame(() => {
+        document.getElementById("sales-inquiries")?.scrollIntoView({ behavior: "smooth" });
+      });
+    }
+  };
+
+  const expandStatsCards = useCallback(() => {
+    setStatsExpanded(true);
+    if (typeof window !== "undefined") {
+      lastScrollYRef.current = window.scrollY;
+      statsExpandGuardUntilRef.current = Date.now() + 350;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeAdminSection !== "products" && editingId) {
+      setEditingId(null);
+    }
+    if (activeAdminSection !== "drone" && editingCurriculumId) {
+      setEditingCurriculumId(null);
+      setSopFile(null);
+    }
+    if (activeAdminSection !== "users" && editingUser) {
+      setEditingUser(null);
+      setUserEditStatus(null);
+      setUserPopover(null);
+    }
+  }, [activeAdminSection, editingCurriculumId, editingId, editingUser]);
+
   return (
     <main className="section-padding space-y-8">
+      <div className="sticky top-0 z-30 space-y-4 rounded-2xl border border-white/10 bg-surface/65 p-3 shadow-[0_10px_30px_rgba(0,0,0,0.2)] backdrop-blur-xl">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <p className="text-accent-strong uppercase text-xs tracking-[0.2em]">{dashboardRoleLabel}</p>
           <h1 className="text-3xl font-semibold text-white">Welcome {dashboardRoleLabel} to your Control Room</h1>
           <p className="text-slate-300 text-sm mt-2">
             {isAdmin
-              ? "Manage curriculum, products, orders, and promotions in one dashboard."
+              ? ""
               : "You can update activity grade labels; admins handle the rest of the control room."}
           </p>
         </div>
-        <div className="flex gap-3">
-          <Link
-            href="/"
-            className="px-4 py-2 rounded-xl border border-black/70 text-sm text-slate-900 hover:border-accent-strong"
-          >
-            Back to Home
-          </Link>
+        <div className="flex items-start gap-3">
           {isAdmin && (
+            <div className="relative" ref={adminNotificationsRef}>
+              <button
+                type="button"
+                onClick={() => {
+                  setAdminMenuOpen(false);
+                  setAdminNotificationsOpen((open) => !open);
+                }}
+                className="relative inline-flex items-center justify-center h-11 w-11 rounded-full border border-white/10 outline outline-1 outline-black/50 bg-white/5 hover:border-accent-strong"
+                aria-label="Unread notifications"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="#facc15"
+                  stroke="#111827"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className={`h-6 w-6 ${unreadNotificationCount > 0 ? "customer-bell-ring" : ""}`}
+                >
+                  <path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.172V11a6 6 0 1 0-12 0v3.172a2 2 0 0 1-.6 1.428L4 17h5" />
+                  <path d="M9 17a3 3 0 0 0 6 0" />
+                </svg>
+                {unreadNotificationCount > 0 && (
+                  <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-rose-500 ring-1 ring-slate-900"></span>
+                )}
+              </button>
+
+              {adminNotificationsOpen && (
+                <div className="absolute right-0 mt-2 w-96 max-h-96 overflow-auto rounded-2xl border border-stone-300 bg-white shadow-2xl p-3 space-y-2 z-50 text-slate-900">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-semibold">Notifications</span>
+                    <span className="text-xs text-slate-500">{unreadNotificationCount} unread</span>
+                  </div>
+                  {unreadNotifications.length === 0 ? (
+                    <div className="text-sm text-slate-500">No unread notifications.</div>
+                  ) : (
+                    <>
+                      {unreadNotifications.slice(0, 12).map((item) => (
+                        <button
+                          key={item.key}
+                          type="button"
+                          className="w-full text-left rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 p-3 transition"
+                          onClick={() => {
+                            setAdminNotificationsOpen(false);
+                            if (item.kind === "teacher_request") {
+                              openTeacherRequestsModal();
+                              return;
+                            }
+                            openSalesInquiriesModal();
+                          }}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="space-y-1">
+                              <p className="text-sm font-semibold text-slate-900">{item.title}</p>
+                              {item.detail && <p className="text-xs text-slate-700">{item.detail}</p>}
+                              <p className="text-[11px] text-slate-500">{formatDateTime(item.createdAt)}</p>
+                            </div>
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                item.kind === "teacher_request"
+                                  ? "bg-amber-100 text-amber-800"
+                                  : "bg-sky-100 text-sky-800"
+                              }`}
+                            >
+                              {item.kind === "teacher_request" ? "Teacher" : "Sales"}
+                            </span>
+                          </div>
+                        </button>
+                      ))}
+                      {unreadNotifications.length > 12 && (
+                        <div className="text-[11px] text-slate-500 text-center">
+                          +{unreadNotifications.length - 12} more unread
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="relative" ref={adminMenuRef}>
             <button
               type="button"
-              className="relative px-4 py-2 rounded-xl bg-accent text-true-white font-semibold shadow-glow text-sm"
+              aria-expanded={adminMenuOpen}
+              aria-haspopup="menu"
               onClick={() => {
-                setShowTeacherRequests(true);
-                void loadTeacherRequests();
-                if (typeof window !== "undefined") {
-                  requestAnimationFrame(() => {
-                    document.getElementById("teacher-requests")?.scrollIntoView({ behavior: "smooth" });
-                  });
-                }
+                setAdminNotificationsOpen(false);
+                setAdminMenuOpen((open) => !open);
               }}
+              className="group flex items-center gap-3 rounded-xl px-4 py-2 bg-emerald-800 hover:bg-emerald-700 text-white font-semibold shadow-md ring-1 ring-white/10 hover:-translate-y-0.5 transition-transform duration-150"
             >
-              Teacher Requests
-              {unreadTeacherRequests > 0 && (
-                <span
-                  className="absolute -top-2 -right-2 min-w-[24px] h-6 px-1.5 rounded-full bg-red-700 text-yellow-200 text-base font-extrabold flex items-center justify-center leading-none shadow-lg animate-pulse"
-                >
-                  {unreadTeacherRequests}
-                </span>
-              )}
+              <span className="sr-only">Open admin menu</span>
+              <span className="space-y-1.5">
+                <span className="block h-0.5 w-5 rounded-full bg-white"></span>
+                <span className="block h-0.5 w-5 rounded-full bg-white"></span>
+                <span className="block h-0.5 w-5 rounded-full bg-white"></span>
+              </span>
+              <span className="text-sm font-semibold text-white/90">Menu</span>
             </button>
+
+            {adminMenuOpen && (
+              <div className="absolute right-0 mt-3 w-80 rounded-2xl bg-white border border-stone-300 outline outline-1 outline-black/5 shadow-2xl shadow-slate-900/15 ring-1 ring-black/5 p-4 space-y-3 z-40 transition">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs uppercase tracking-[0.16em] text-accent-strong">{dashboardRoleLabel} actions</p>
+                  <span className="text-[11px] text-slate-400">Quick access</span>
+                </div>
+
+                <div className="space-y-2">
+                  <Link
+                    href="/"
+                    onClick={() => setAdminMenuOpen(false)}
+                    className="flex items-center gap-3 rounded-xl px-3 py-2.5 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300/60 text-sm text-slate-800 transition"
+                  >
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500 border border-emerald-300 text-true-white shadow-glow">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="h-5 w-5"
+                      >
+                        <path d="M3 11.5 12 4l9 7.5" />
+                        <path d="M6 10v9h12v-9" />
+                        <path d="M10 19v-5h4v5" />
+                      </svg>
+                    </span>
+                    <div className="text-left">
+                      <p className="font-semibold">Back to Home</p>
+                        <p className="text-xs text-slate-500">Go to landing page</p>
+                    </div>
+                  </Link>
+
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAdminMenuOpen(false);
+                      openTeacherRequestsModal();
+                    }}
+                    className="w-full flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300/60 text-sm text-slate-800 transition"
+                  >
+                    <span className="flex items-center gap-3 min-w-0">
+                      <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500 border border-amber-300 text-true-white shadow-glow">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="h-5 w-5"
+                        >
+                          <path d="M10 6h10" />
+                          <path d="M10 12h10" />
+                          <path d="M10 18h10" />
+                          <path d="m4 6 2 2 2-2" />
+                          <path d="m4 12 2 2 2-2" />
+                          <path d="m4 18 2 2 2-2" />
+                        </svg>
+                      </span>
+                      <span className="text-left">
+                        <span className="block font-semibold">Teacher Requests</span>
+                        <span className="text-xs text-slate-500">Review pending content asks</span>
+                      </span>
+                    </span>
+                    {unreadTeacherRequests > 0 && (
+                      <span className="min-w-[22px] h-5 px-1.5 rounded-full bg-red-700 text-yellow-200 text-[11px] font-extrabold flex items-center justify-center leading-none shadow-lg">
+                        {unreadTeacherRequests}
+                      </span>
+                    )}
+                  </button>
+                )}
+
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAdminMenuOpen(false);
+                      openSalesInquiriesModal();
+                    }}
+                    className="w-full flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300/60 text-sm text-slate-800 transition"
+                  >
+                    <span className="flex items-center gap-3 min-w-0">
+                      <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-sky-500 border border-sky-300 text-true-white shadow-glow">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="h-5 w-5"
+                        >
+                          <path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                          <path d="M8 8h8" />
+                          <path d="M8 12h5" />
+                        </svg>
+                      </span>
+                      <span className="text-left">
+                        <span className="block font-semibold">Sales Queries</span>
+                        <span className="text-xs text-slate-500">Check talk-to-sales messages</span>
+                      </span>
+                    </span>
+                    {unreadSalesInquiries > 0 && (
+                      <span className="min-w-[22px] h-5 px-1.5 rounded-full bg-red-700 text-yellow-200 text-[11px] font-extrabold flex items-center justify-center leading-none shadow-lg">
+                        {unreadSalesInquiries}
+                      </span>
+                    )}
+                  </button>
+                )}
+
+                {isAdmin && (
+                  <Link
+                    href="/admin/user-activity"
+                    onClick={() => setAdminMenuOpen(false)}
+                    className="flex items-center gap-3 rounded-xl px-3 py-2.5 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300/60 text-sm text-slate-800 transition"
+                  >
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-500 border border-purple-300 text-true-white shadow-glow">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="h-5 w-5"
+                      >
+                        <path d="M3 3v18h18" />
+                        <path d="m7 14 3-3 3 2 4-5" />
+                      </svg>
+                    </span>
+                    <div className="text-left">
+                      <p className="font-semibold">User Analytics</p>
+                        <p className="text-xs text-slate-500">Login logs and score analytics</p>
+                    </div>
+                  </Link>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAdminMenuOpen(false);
+                    startSignOut(async () => {
+                      await logActivity("auth_logout", {
+                        category: "auth",
+                        metadata: { reason: "manual" },
+                      });
+                      await supabase.auth.signOut();
+                      router.push("/login");
+                    });
+                  }}
+                  className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-sm text-rose-700 transition disabled:opacity-60"
+                  disabled={signingOut}
+                >
+                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-rose-500 border border-rose-300 text-true-white shadow-glow">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="h-5 w-5"
+                    >
+                      <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+                      <path d="m10 17 5-5-5-5" />
+                      <path d="M15 12H3" />
+                    </svg>
+                  </span>
+                  <div className="text-left">
+                    <p className="font-semibold">{signingOut ? "Signing out..." : "Sign out"}</p>
+                    <p className="text-xs text-rose-600">End current session</p>
+                  </div>
+                </button>
+              </div>
+            </div>
           )}
-          <button
-            onClick={() =>
-              startSignOut(async () => {
-                await supabase.auth.signOut();
-                router.push("/login");
-              })
-            }
-            className="px-4 py-2 rounded-xl bg-accent text-true-white font-semibold shadow-glow disabled:opacity-60"
-            disabled={signingOut}
-          >
-            {signingOut ? "Signing out..." : "Sign out"}
-          </button>
         </div>
+      </div>
       </div>
 
       {dataStatus && (
@@ -691,12 +1273,39 @@ export default function AdminPage() {
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((item) => (
-          <div key={item.label} className="glass-panel rounded-2xl p-4 space-y-2">
-            <p className="text-sm text-slate-400">{item.label}</p>
-            <p className="text-2xl font-semibold text-white">{item.value}</p>
-            <p className="text-xs text-accent-strong">{item.delta}</p>
+          <div
+            key={item.label}
+            onClick={expandStatsCards}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                expandStatsCards();
+              }
+            }}
+            role="button"
+            tabIndex={0}
+            className="glass-panel rounded-2xl p-4 cursor-pointer select-none"
+          >
+            <div className="flex items-center">
+              <div className="rounded-lg bg-accent px-3 py-2 shadow-[inset_0_-1px_0_rgba(255,255,255,0.12)]">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-true-white">{item.label}</p>
+              </div>
+            </div>
+            {statsExpanded && (
+              <div className="mt-3 space-y-2">
+                <p className="text-2xl font-semibold text-white">{item.value}</p>
+                <p className="text-xs text-accent-strong">{item.delta}</p>
+              </div>
+            )}
           </div>
         ))}
+      </div>
+
+      <div className="relative rounded-3xl border border-stone-300/75 bg-gradient-to-r from-stone-100 via-amber-50/80 to-zinc-100/95 p-2.5 ring-1 ring-white/70 shadow-[0_20px_38px_rgba(120,113,108,0.22),inset_0_2px_0_rgba(255,255,255,0.88)]">
+        <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {ribbonSections.map((section) => renderSectionRibbonButton(section))}
+        </div>
+      </div>
       </div>
 
       {isAdmin && showTeacherRequests && (
@@ -718,13 +1327,13 @@ export default function AdminPage() {
               </div>
               <div className="flex gap-2">
                 <button
-                  className="text-sm px-3 py-2 rounded-lg border border-black text-white hover:border-black cursor-pointer"
+                  className="text-sm px-3 py-2 rounded-lg bg-accent text-true-white font-semibold border border-emerald-300/70 hover:bg-accent-strong transition"
                   onClick={() => void loadTeacherRequests()}
                 >
                   Refresh
                 </button>
                 <button
-                  className="text-sm px-3 py-2 rounded-lg border border-black text-white hover:border-black cursor-pointer"
+                  className="text-sm px-3 py-2 rounded-lg bg-accent text-true-white font-semibold border border-emerald-300/70 hover:bg-accent-strong transition"
                   onClick={() => setShowTeacherRequests(false)}
                 >
                   Close
@@ -739,7 +1348,7 @@ export default function AdminPage() {
             )}
 
             <div className="overflow-auto rounded-xl border border-white/5 bg-white/5 max-h-[65vh]">
-              <table className="min-w-full text-sm text-slate-200">
+              <table className="table-v1">
                 <thead className="bg-white/5">
                   <tr className="text-left text-slate-400 border-b border-white/10">
                     <th className="py-2 pr-3">Teacher</th>
@@ -822,34 +1431,136 @@ export default function AdminPage() {
         </div>
       )}
 
+      {isAdmin && showSalesInquiries && (
+        <div
+          id="sales-inquiries"
+          className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 backdrop-blur-sm p-4 pt-16"
+          onClick={() => setShowSalesInquiries(false)}
+        >
+          <div
+            className="w-full max-w-7xl max-h-[92vh] overflow-hidden glass-panel rounded-2xl p-8 space-y-6"
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.16em] text-accent-strong">Sales queries</p>
+                <h2 className="text-lg font-semibold text-white">Talk to sales submissions</h2>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  className="text-sm px-3 py-2 rounded-lg border border-black text-white hover:border-black cursor-pointer"
+                  onClick={() => void loadSalesInquiries()}
+                >
+                  Refresh
+                </button>
+                <button
+                  className="text-sm px-3 py-2 rounded-lg border border-black text-white hover:border-black cursor-pointer"
+                  onClick={() => setShowSalesInquiries(false)}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            {salesInquiryStatus && (
+              <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
+                {salesInquiryStatus}
+              </div>
+            )}
+
+            <div className="overflow-auto rounded-xl border border-white/5 bg-white/5 max-h-[65vh]">
+              <table className="table-v1">
+                <thead className="bg-white/5">
+                  <tr className="text-left text-slate-400 border-b border-white/10">
+                    <th className="py-2 pr-3">Name</th>
+                    <th className="py-2 pr-3">Email</th>
+                    <th className="py-2 pr-3">Organization</th>
+                    <th className="py-2 pr-3">Message</th>
+                    <th className="py-2 pr-3">Submitted</th>
+                    <th className="py-2 pr-3">Status</th>
+                    <th className="py-2 pr-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {salesInquiries.length === 0 ? (
+                    <tr className="border-b border-white/5">
+                      <td className="py-4 pr-3 text-slate-300 text-center" colSpan={7}>
+                        No sales queries yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    salesInquiries.map((item) => (
+                      <tr key={item.id} className="border-b border-white/5">
+                        <td className="py-2 pr-3 text-white font-semibold">{item.name}</td>
+                        <td className="py-2 pr-3 text-slate-300">
+                          <a href={`mailto:${item.email}`} className="underline decoration-dotted hover:text-white">
+                            {item.email}
+                          </a>
+                        </td>
+                        <td className="py-2 pr-3 text-slate-300">{item.school || "—"}</td>
+                        <td className="py-2 pr-3 text-slate-300 max-w-xs">
+                          <p className="whitespace-pre-wrap break-words">{item.message}</p>
+                        </td>
+                        <td className="py-2 pr-3 text-slate-300">{formatDateTime(item.created_at)}</td>
+                        <td className="py-2 pr-3">
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-semibold border ${
+                              (item.status ?? "new") === "closed"
+                                ? "bg-emerald-600/80 border-emerald-300 text-white"
+                                : (item.status ?? "new") === "reviewed"
+                                  ? "bg-sky-600/80 border-sky-300 text-white"
+                                  : "bg-amber-600/70 border-amber-300 text-white"
+                            }`}
+                          >
+                            {item.status ?? "new"}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-3">
+                          <div className="flex gap-2">
+                            <button
+                              className="px-3 py-1 rounded-lg bg-white/10 border border-white/15 text-white text-xs hover:border-accent-strong disabled:opacity-50"
+                              onClick={() =>
+                                void updateSalesInquiryStatus(
+                                  item.id,
+                                  item.status === "new" ? "reviewed" : item.status === "reviewed" ? "closed" : "new",
+                                )
+                              }
+                              disabled={updatingSalesInquiryId === item.id}
+                            >
+                              {updatingSalesInquiryId === item.id
+                                ? "Saving..."
+                                : item.status === "new"
+                                  ? "Mark reviewed"
+                                  : item.status === "reviewed"
+                                    ? "Mark closed"
+                                    : "Reopen"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeAdminSection === "drone" && (
       <div className="glass-panel rounded-2xl p-6 space-y-4">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-white">Drone Activities</h2>
-          <div className="flex gap-2">
-            <Link
-              href="/admin/questions"
-              className="text-sm px-3 py-2 rounded-lg font-semibold border border-accent/40 text-accent-strong hover:border-accent hover:text-true-white transition"
-            >
-              Manage questions
-            </Link>
-            <Link
-              href="/admin/upload"
-              className={`text-sm px-3 py-2 rounded-lg font-semibold shadow-glow ${
-                isAdmin ? "bg-accent text-true-white" : "bg-white/5 text-slate-400 pointer-events-none"
-              }`}
-            >
-              Upload content
-            </Link>
-          </div>
         </div>
-        <p className="text-sm text-slate-300">
-          List every drone activity with grade and subject before publishing to students.
-          {canEditCurriculum && !isAdmin
-            ? " You can change the Grade field; other fields stay locked for teacher accounts."
-            : ""}
-        </p>
+        {canEditCurriculum && !isAdmin && (
+          <p className="text-sm text-slate-300">
+            You can change the Grade field; other fields stay locked for teacher accounts.
+          </p>
+        )}
         <div className="overflow-auto">
-          <table className="min-w-full text-sm text-slate-200">
+          <table className="table-v1">
             <thead>
               <tr className="text-left text-slate-400 border-b border-white/10">
                 <th className="py-2 pr-3">Title</th>
@@ -884,9 +1595,9 @@ export default function AdminPage() {
                       {item.assets.map((asset) => asset.label).join(", ")}
                     </td>
                     <td className="py-2 pr-3">
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap items-center gap-3">
                         <button
-                          className="px-3 py-1 rounded-lg bg-white/10 border border-white/15 text-white text-xs"
+                          className="px-3 py-1 rounded-lg border border-blue-500 text-blue-400 text-xs font-semibold hover:bg-blue-500/10 transition"
                           onClick={() => {
                             const docAsset = item.assets.find((a) => a.type === "doc") || null;
                             const otherAssets = item.assets.filter((a) => a.type !== "doc");
@@ -909,7 +1620,7 @@ export default function AdminPage() {
                           Edit
                         </button>
                         <button
-                          className="px-3 py-1 rounded-lg border border-red-600/70 text-red-400 text-xs hover:bg-red-600/25 transition"
+                          className="px-3 py-1 rounded-lg border border-red-600/70 text-red-400 text-xs font-semibold hover:bg-red-600/25 transition"
                           onClick={async () => {
                             try {
                               if (!isAdmin) {
@@ -941,7 +1652,21 @@ export default function AdminPage() {
           </table>
         </div>
       </div>
+      )}
 
+      {activeAdminSection === "upload" && (
+        <UploadCurriculumView
+          embedded
+          onDone={() => {
+            setActiveAdminSection("drone");
+            void loadData("Refreshing data...");
+          }}
+        />
+      )}
+
+      {activeAdminSection === "questions" && <AdminQuestionsView embedded />}
+
+      {activeAdminSection === "products" && (
       <div className="glass-panel rounded-2xl p-6 space-y-4">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-white">Product catalogue</h2>
@@ -963,7 +1688,7 @@ export default function AdminPage() {
           </Link>
         </div>
         <div className="overflow-auto">
-          <table className="min-w-full text-sm text-slate-200">
+          <table className="table-v1">
             <thead>
               <tr className="text-left text-slate-400 border-b border-white/10">
                 <th className="py-2 pr-3">Name</th>
@@ -1059,18 +1784,19 @@ export default function AdminPage() {
           </table>
         </div>
       </div>
+      )}
 
+      {activeAdminSection === "sentiment" && (
       <div className="glass-panel rounded-2xl p-6 space-y-4">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-white">Sentiment summaries</h2>
           <span className="text-sm text-slate-400">{sentimentFiles.length} files</span>
         </div>
-        <p className="text-sm text-slate-300">JSON summaries from MoodAI guided questions, grouped by activity.</p>
         {sentimentStatus && (
           <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">{sentimentStatus}</div>
         )}
         <div className="overflow-auto">
-          <table className="min-w-full text-sm text-slate-200">
+          <table className="table-v1">
             <thead>
               <tr className="text-left text-slate-400 border-b border-white/10">
                 <th className="py-2 pr-3">Activity</th>
@@ -1117,7 +1843,9 @@ export default function AdminPage() {
           </table>
         </div>
       </div>
+      )}
 
+      {activeAdminSection === "users" && (
       <div className="glass-panel rounded-2xl p-6 space-y-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
@@ -1154,7 +1882,7 @@ export default function AdminPage() {
         </div>
         <p className="text-sm text-slate-300">See everyone who has signed up for the platform.</p>
         <div className="overflow-auto">
-          <table className="min-w-full text-sm text-slate-200">
+          <table className="table-v1">
             <thead>
               <tr className="text-left text-slate-400 border-b border-white/10">
                 <th className="py-2 pr-3">Name</th>
@@ -1200,8 +1928,9 @@ export default function AdminPage() {
           </table>
         </div>
       </div>
+      )}
 
-      {editingId && (
+      {activeAdminSection === "products" && editingId && (
         <div className="glass-panel rounded-2xl p-6 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold text-white">Edit product</h3>
@@ -1450,7 +2179,7 @@ export default function AdminPage() {
         </div>
       )}
 
-      {editingCurriculumId && (
+      {activeAdminSection === "drone" && editingCurriculumId && (
         <div className="glass-panel rounded-2xl p-6 space-y-4" ref={curriculumEditRef}>
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold text-white">Edit curriculum</h3>
@@ -1693,7 +2422,7 @@ export default function AdminPage() {
         </div>
       )}
 
-      {editingUser && (
+      {activeAdminSection === "users" && editingUser && (
         <div className="fixed inset-0 z-50">
           <div
             className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]"
@@ -1836,6 +2565,7 @@ export default function AdminPage() {
         </div>
       )}
 
+      {activeAdminSection === "orders" && (
       <div className="glass-panel rounded-2xl p-6 space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-white">Orders</h2>
@@ -1852,6 +2582,7 @@ export default function AdminPage() {
           Live status: 0 pending, 0 processing, 0 delivered.
         </div>
       </div>
+      )}
     </main>
   );
 }

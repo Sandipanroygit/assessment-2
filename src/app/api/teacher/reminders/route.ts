@@ -7,12 +7,12 @@ const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabaseAdmin =
   SUPABASE_URL && SERVICE_ROLE_KEY ? createClient(SUPABASE_URL, SERVICE_ROLE_KEY) : null;
 
-const ensureProfile = async (user: { id: string; email?: string | null; user_metadata?: Record<string, unknown> }, role: string) => {
+const ensureProfile = async (user: { id: string; email?: string | null; user_metadata?: Record<string, unknown> }) => {
   if (!supabaseAdmin) return;
-  const fullName = (user.user_metadata?.full_name as string | undefined) ?? user.email ?? role;
+  const fullName = (user.user_metadata?.full_name as string | undefined) ?? user.email ?? "User";
   const { error } = await supabaseAdmin
     .from("profiles")
-    .upsert({ id: user.id, full_name: fullName, role })
+    .upsert({ id: user.id, full_name: fullName })
     .select("id")
     .single();
   if (error) {
@@ -61,8 +61,8 @@ export async function POST(req: Request) {
     if (studentRole !== "student") {
       return NextResponse.json({ error: "Target user is not a student" }, { status: 400 });
     }
-    await ensureProfile(teacher, "teacher");
-    await ensureProfile(studentData.user, "student");
+    await ensureProfile(teacher);
+    await ensureProfile(studentData.user);
 
     let moduleTitle = moduleTitleFromClient;
     let moduleSubject = subjectFromClient ?? (teacher.user_metadata?.subject as string | undefined) ?? null;

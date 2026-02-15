@@ -190,7 +190,7 @@ export default function AdminTeacherRequestsPage() {
           )}
 
           <div className="overflow-auto">
-            <table className="min-w-full text-sm text-slate-200">
+            <table className="table-v1">
               <thead>
                 <tr className="text-left text-slate-400 border-b border-white/10">
                   <th className="py-2 pr-3">Teacher</th>

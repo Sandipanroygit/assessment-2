@@ -3,6 +3,7 @@
 import { supabase } from "@/lib/supabaseClient";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { logActivity } from "@/lib/activityLogger";
 
 const DEFAULT_MINUTES = Number(process.env.NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES ?? "20");
 const LAST_ACTIVE_KEY = "aerohawx:last-active";
@@ -26,6 +27,10 @@ export default function SessionAutoLogout({ minutes = DEFAULT_MINUTES }: Props) 
 
   const redirectToLogin = useCallback(async () => {
     clearTimer();
+    await logActivity("auth_logout", {
+      category: "auth",
+      metadata: { reason: "timeout" },
+    });
     await supabase.auth.signOut();
     if (pathname !== "/login") {
       router.replace("/login?reason=timeout");

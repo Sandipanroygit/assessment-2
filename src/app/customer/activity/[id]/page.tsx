@@ -7,6 +7,7 @@ import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
 import { fetchCurriculumModuleById, uploadFileToBucket } from "@/lib/supabaseData";
 import type { CurriculumModule } from "@/types";
+import { logActivity } from "@/lib/activityLogger";
 import logo from "../../../../../image/logo.jpg";
 import {
   AmbientLight,
@@ -393,6 +394,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
   const [selections, setSelections] = useState<Record<number, string>>({});
   const [quizComplete, setQuizComplete] = useState(false);
   const [timeLeft, setTimeLeft] = useState(300); // 5 minutes in seconds
+  const quizAttemptLoggedRef = useRef(false);
   const [logFile, setLogFile] = useState<File | null>(null);
   const [plotFile, setPlotFile] = useState<File | null>(null);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
@@ -798,6 +800,30 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
       // ignore storage errors
     }
   }, [module, quizComplete, score, quizQuestions.length]);
+
+  useEffect(() => {
+    if (!quizComplete) {
+      quizAttemptLoggedRef.current = false;
+      return;
+    }
+    if (quizAttemptLoggedRef.current) return;
+    if (!module || score === null || quizQuestions.length === 0) return;
+
+    const normalizedRole = (role ?? "").toLowerCase();
+    if (normalizedRole !== "student" && normalizedRole !== "customer") return;
+
+    quizAttemptLoggedRef.current = true;
+    void logActivity("student_quiz_attempt", {
+      category: "assessment",
+      metadata: {
+        module_id: module.id,
+        module_title: module.title,
+        score,
+        total: quizQuestions.length,
+        percentage: Math.round((score / quizQuestions.length) * 100),
+      },
+    });
+  }, [module, quizComplete, quizQuestions.length, role, score]);
 
   const decodeDataUrl = useCallback((url?: string) => {
     if (!url || !url.startsWith("data:")) return null;
@@ -1257,6 +1283,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
             subject: module.subject,
             grade: module.grade,
             description: module.description,
+            judgingLogic: module.judgingLogic,
             codeText: codeDisplay,
             sopUrl: sopAsset?.url,
             logText,
@@ -1476,6 +1503,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
             subject: module.subject,
             grade: module.grade,
             description: module.description,
+            judgingLogic: module.judgingLogic,
             sopUrl: sopAsset?.url,
             logText: textContent,
             parsedPoints: [],

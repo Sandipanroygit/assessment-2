@@ -108,7 +108,10 @@ export default function Home() {
     message: "",
   });
   const [contactSubmitted, setContactSubmitted] = useState(false);
+  const [contactSubmitting, setContactSubmitting] = useState(false);
+  const [contactError, setContactError] = useState<string | null>(null);
   const [faqOpen, setFaqOpen] = useState(false);
+  const [footerExpanded, setFooterExpanded] = useState<"about" | "contact" | "privacy" | "terms" | null>(null);
   const [footfall, setFootfall] = useState<number | null>(null);
   const [footfallSpin, setFootfallSpin] = useState(0);
   const [footfallLoaded, setFootfallLoaded] = useState(false);
@@ -212,6 +215,17 @@ export default function Home() {
     setTimeout(() => setPanelVisible(false), 350);
   };
 
+  const openContactDrawer = () => {
+    setContactOpen(true);
+    setFaqOpen(false);
+    setContactSubmitted(false);
+    setContactError(null);
+  };
+
+  const toggleFooterItem = (item: "about" | "contact" | "privacy" | "terms") => {
+    setFooterExpanded((prev) => (prev === item ? null : item));
+  };
+
   const sendMessage = async () => {
     if (!chatInput.trim()) return;
     const userMsg = chatInput.trim();
@@ -234,12 +248,38 @@ export default function Home() {
     }
   };
 
-  const submitContact = () => {
+  const submitContact = async () => {
     if (!contactForm.name.trim() || !contactForm.email.trim() || !contactForm.message.trim()) {
+      setContactError("Please fill in name, email, and message.");
       return;
     }
-    setContactSubmitted(true);
-    setContactForm({ name: "", email: "", school: "", message: "" });
+    setContactSubmitting(true);
+    setContactError(null);
+    try {
+      const response = await fetch("/api/sales-inquiries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: contactForm.name.trim(),
+          email: contactForm.email.trim(),
+          school: contactForm.school.trim() || null,
+          message: contactForm.message.trim(),
+          sourcePage: "home",
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setContactError(body?.error ?? `Unable to submit inquiry (status ${response.status}).`);
+        return;
+      }
+      setContactSubmitted(true);
+      setContactForm({ name: "", email: "", school: "", message: "" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to submit inquiry.";
+      setContactError(message);
+    } finally {
+      setContactSubmitting(false);
+    }
   };
 
   useEffect(() => {
@@ -308,10 +348,7 @@ export default function Home() {
             Features
           </Link>
           <button
-            onClick={() => {
-              setContactOpen(true);
-              setFaqOpen(false);
-            }}
+            onClick={openContactDrawer}
             className="hover:text-white transition-colors text-sm font-semibold"
           >
             Talk to sales
@@ -370,9 +407,8 @@ export default function Home() {
             </Link>
             <button
               onClick={() => {
-                setContactOpen(true);
+                openContactDrawer();
                 setMenuOpen(false);
-                setFaqOpen(false);
               }}
               className="hover:text-accent-strong text-left transition-colors"
             >
@@ -570,37 +606,84 @@ export default function Home() {
       </section>
 
       <footer id="contact" className="section-padding border-t border-accent/15 mt-12 text-sm text-slate-400">
-        <div className="grid md:grid-cols-4 gap-6">
+        <div className="grid md:grid-cols-3 gap-6">
           <div className="space-y-2">
             <p className="text-white font-semibold">Curriculum Dashboard</p>
-            <p>Made for STEM programs focused on drones and hands-on learning.</p>
+            <p>Made for STEM programs focused on drones, innovation, and hands-on learning.</p>
           </div>
           <div className="space-y-2">
             <p className="text-white font-semibold">Company</p>
-            <Link href="#" className="block hover:text-white">
+            <button
+              type="button"
+              onClick={() => toggleFooterItem("about")}
+              className="block text-left text-black hover:text-black"
+              aria-expanded={footerExpanded === "about"}
+            >
               About Us
-            </Link>
-            <Link href="#" className="block hover:text-white">
+            </button>
+            {footerExpanded === "about" && (
+              <p className="text-xs leading-relaxed rounded-xl border border-white/10 bg-white/5 p-3">
+                AerohawX helps students learn STEM through practical drone activities, guided
+                projects, and real-world problem solving. Our goal is to make learning active,
+                creative, and future-ready.
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => toggleFooterItem("contact")}
+              className="block text-left text-black hover:text-black"
+              aria-expanded={footerExpanded === "contact"}
+            >
               Contact
-            </Link>
+            </button>
+            {footerExpanded === "contact" && (
+              <div className="text-xs leading-relaxed rounded-xl border border-white/10 bg-white/5 p-3 space-y-1">
+                <p>
+                  Email:{" "}
+                  <a href="mailto:connectaerohawx@gmail.com" className="text-black hover:text-black">
+                    connectaerohawx@gmail.com
+                  </a>
+                </p>
+                <p>
+                  Contact Number:{" "}
+                  <a href="tel:+918573079779" className="text-black hover:text-black">
+                    +91 8573079779
+                  </a>
+                </p>
+              </div>
+            )}
           </div>
           <div className="space-y-2">
             <p className="text-white font-semibold">Legal</p>
-            <Link href="#" className="block hover:text-white">
+            <button
+              type="button"
+              onClick={() => toggleFooterItem("privacy")}
+              className="block text-left text-black hover:text-black"
+              aria-expanded={footerExpanded === "privacy"}
+            >
               Privacy Policy
-            </Link>
-            <Link href="#" className="block hover:text-white">
+            </button>
+            {footerExpanded === "privacy" && (
+              <p className="text-xs leading-relaxed rounded-xl border border-white/10 bg-white/5 p-3">
+                We collect only the information needed to run and improve the platform, including
+                account details, learning progress, and support messages. We do not sell personal
+                data.
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => toggleFooterItem("terms")}
+              className="block text-left text-black hover:text-black"
+              aria-expanded={footerExpanded === "terms"}
+            >
               Terms of Service
-            </Link>
-          </div>
-          <div className="space-y-2">
-            <p className="text-white font-semibold">Social</p>
-            <Link href="#" className="block hover:text-white">
-              LinkedIn
-            </Link>
-            <Link href="#" className="block hover:text-white">
-              YouTube
-            </Link>
+            </button>
+            {footerExpanded === "terms" && (
+              <p className="text-xs leading-relaxed rounded-xl border border-white/10 bg-white/5 p-3">
+                Users agree to use AerohawX responsibly for educational purposes and follow
+                school/program policies. Platform features may be updated over time.
+              </p>
+            )}
           </div>
         </div>
         <div className="mt-8 border-t border-white/10 pt-4 flex items-center justify-center gap-3 text-xs uppercase tracking-[0.2em] text-slate-400">
@@ -742,29 +825,50 @@ export default function Home() {
             <div className="space-y-3">
               <input
                 value={contactForm.name}
-                onChange={(e) => setContactForm((prev) => ({ ...prev, name: e.target.value }))}
+                onChange={(e) => {
+                  setContactSubmitted(false);
+                  setContactError(null);
+                  setContactForm((prev) => ({ ...prev, name: e.target.value }));
+                }}
                 className="w-full rounded-xl border border-accent/20 bg-white/80 px-3 py-2 text-sm text-foreground placeholder:text-slate-400 focus:border-accent-strong outline-none"
                 placeholder="Your name"
               />
               <input
                 value={contactForm.email}
-                onChange={(e) => setContactForm((prev) => ({ ...prev, email: e.target.value }))}
+                onChange={(e) => {
+                  setContactSubmitted(false);
+                  setContactError(null);
+                  setContactForm((prev) => ({ ...prev, email: e.target.value }));
+                }}
                 className="w-full rounded-xl border border-accent/20 bg-white/80 px-3 py-2 text-sm text-foreground placeholder:text-slate-400 focus:border-accent-strong outline-none"
                 placeholder="Work email"
               />
               <input
                 value={contactForm.school}
-                onChange={(e) => setContactForm((prev) => ({ ...prev, school: e.target.value }))}
+                onChange={(e) => {
+                  setContactSubmitted(false);
+                  setContactError(null);
+                  setContactForm((prev) => ({ ...prev, school: e.target.value }));
+                }}
                 className="w-full rounded-xl border border-accent/20 bg-white/80 px-3 py-2 text-sm text-foreground placeholder:text-slate-400 focus:border-accent-strong outline-none"
                 placeholder="School / organization (optional)"
               />
               <textarea
                 value={contactForm.message}
-                onChange={(e) => setContactForm((prev) => ({ ...prev, message: e.target.value }))}
+                onChange={(e) => {
+                  setContactSubmitted(false);
+                  setContactError(null);
+                  setContactForm((prev) => ({ ...prev, message: e.target.value }));
+                }}
                 className="w-full rounded-xl border border-accent/20 bg-white/80 px-3 py-2 text-sm text-foreground placeholder:text-slate-400 focus:border-accent-strong outline-none h-28 resize-none"
                 placeholder="What do you need? e.g., curriculum demo, pricing, onboarding..."
               />
             </div>
+            {contactError && (
+              <div className="rounded-xl bg-red-100 border border-red-200 px-3 py-2 text-sm text-red-700">
+                {contactError}
+              </div>
+            )}
             {contactSubmitted && (
               <div className="rounded-xl bg-accent/10 border border-accent/20 px-3 py-2 text-sm text-accent-strong">
                 Got it! We&apos;ll email you with next steps.
@@ -775,9 +879,9 @@ export default function Home() {
               <button
                 className="px-4 py-2 rounded-full bg-accent text-slate-50 font-semibold shadow-glow disabled:opacity-60"
                 onClick={submitContact}
-                disabled={contactSubmitted}
+                disabled={contactSubmitted || contactSubmitting}
               >
-                Submit
+                {contactSubmitting ? "Submitting..." : "Submit"}
               </button>
             </div>
           </div>

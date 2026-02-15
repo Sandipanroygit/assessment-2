@@ -7,6 +7,9 @@ const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabaseAdmin =
   SUPABASE_URL && SERVICE_ROLE_KEY ? createClient(SUPABASE_URL, SERVICE_ROLE_KEY) : null;
 
+const isMissingJudgingLogicColumn = (message?: string) =>
+  /judging_logic/i.test(message || "") && /(column|schema cache)/i.test(message || "");
+
 export async function GET(req: Request) {
   if (!supabaseAdmin) {
     return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
@@ -31,15 +34,24 @@ export async function GET(req: Request) {
   const subject = (userData.user.user_metadata?.subject as string | undefined) ?? null;
   const grade = (userData.user.user_metadata?.grade as string | undefined) ?? null;
 
-  let query = supabaseAdmin
-    .from("curriculum_modules")
-    .select("id,title,grade,subject,module,description,asset_urls,price_yearly,published,created_at")
-    .order("created_at", { ascending: false });
+  const buildQuery = (includeJudgingLogic: boolean) => {
+    let query = supabaseAdmin
+      .from("curriculum_modules")
+      .select(
+        includeJudgingLogic
+          ? "id,title,grade,subject,module,description,judging_logic,asset_urls,price_yearly,published,created_at"
+          : "id,title,grade,subject,module,description,asset_urls,price_yearly,published,created_at",
+      )
+      .order("created_at", { ascending: false });
+    if (subject) query = query.eq("subject", subject);
+    if (grade) query = query.eq("grade", grade);
+    return query;
+  };
 
-  if (subject) query = query.eq("subject", subject);
-  if (grade) query = query.eq("grade", grade);
-
-  const { data, error } = await query;
+  let { data, error } = await buildQuery(true);
+  if (error && isMissingJudgingLogicColumn(error.message)) {
+    ({ data, error } = await buildQuery(false));
+  }
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

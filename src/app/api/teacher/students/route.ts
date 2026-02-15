@@ -47,6 +47,7 @@ export async function GET(req: Request) {
       full_name: (u.user_metadata?.full_name as string | undefined) ?? u.email ?? "Student",
       grade: (u.user_metadata?.grade as string | undefined) ?? null,
       subject: (u.user_metadata?.subject as string | undefined) ?? null,
+      joined_at: u.created_at ?? null,
     }))
     .filter((u) => {
       if (!teacherSubject) return true;

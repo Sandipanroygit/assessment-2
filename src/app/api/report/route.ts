@@ -39,6 +39,7 @@ type ReportPayload = {
   subject?: string;
   grade?: string;
   description?: string;
+  judgingLogic?: string;
   codeText?: string;
   sopUrl?: string;
   logText?: string;
@@ -93,7 +94,7 @@ const computeCorrelation = (points: Array<{ x: number; y: number }>) => {
 };
 
 const hasInversePressureTrend = (payload: ReportPayload) => {
-  const text = `${payload.title ?? ""} ${payload.description ?? ""} ${payload.logText ?? ""}`.toLowerCase();
+  const text = `${payload.title ?? ""} ${payload.description ?? ""} ${payload.judgingLogic ?? ""} ${payload.logText ?? ""}`.toLowerCase();
   return text.includes("pressure") && (text.includes("height") || text.includes("altitude"));
 };
 
@@ -211,7 +212,7 @@ const buildPrompt = (payload: ReportPayload) => {
   const accuracy = clampAccuracy(payload.accuracyHint);
   return [
     "You are an academic evaluator for a student lab activity.",
-    "Analyze the student's log + graph against the expected trend in the SOP and activity description.",
+    "Analyze the student's log + graph against the expected trend in the SOP, activity description, and judging logic.",
     "Return JSON only with these keys:",
     "summary, objectiveAlignment, trendAssessment, accuracyPercent, possibleErrors, improvementTips, logInsights, overlay",
     "overlay must include: note (string) and points (array of 12-20 points).",
@@ -230,6 +231,7 @@ const buildPrompt = (payload: ReportPayload) => {
     `Grade: ${payload.grade ?? ""}`,
     `Subject: ${payload.subject ?? ""}`,
     `Description: ${payload.description ?? ""}`,
+    `Judging logic: ${payload.judgingLogic ?? ""}`,
     payload.sopUrl ? `SOP URL: ${payload.sopUrl}` : "SOP URL: (not provided)",
     codeExcerpt ? `Code excerpt:\n${codeExcerpt}` : "Code excerpt: (not provided)",
     payload.plotType ? `Plot type: ${payload.plotType}` : "Plot type: (unknown)",

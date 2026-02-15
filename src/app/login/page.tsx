@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
+import { logActivity } from "@/lib/activityLogger";
 
 type AuthMode = "login" | "signup" | "reset";
 type UserRole = "admin" | "teacher" | "student";
@@ -132,6 +133,11 @@ export default function LoginPage() {
       return;
     }
     const profile = await ensureProfile(data.user);
+    const resolvedRole = (profile?.role ?? (data.user.user_metadata?.role as string | undefined) ?? "student").toLowerCase();
+    void logActivity("auth_login", {
+      category: "auth",
+      metadata: { role: resolvedRole, source: "login_page" },
+    });
     setStatus(`Hi ${profile?.full_name ?? data.user.email}! Redirecting...`);
     routeByRole(profile?.role ?? data.user.user_metadata.role, data.user.email);
   };
@@ -219,7 +225,7 @@ export default function LoginPage() {
             </div>
             <Link
               href="/"
-              className="text-xs px-3 py-1 rounded-full border border-white/10 text-slate-200 hover:border-accent-strong"
+              className="text-xs px-3 py-1 rounded-full border border-slate-700/50 outline outline-1 outline-slate-500/35 text-slate-900 hover:border-slate-700/70"
             >
               Back to home
             </Link>
@@ -394,12 +400,6 @@ export default function LoginPage() {
                 {loading ? "Please wait..." : mode === "login" ? "Log In" : "Create account"}
               </button>
 
-              <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-1">
-                <p className="text-xs text-slate-400 uppercase tracking-[0.14em]">What happens next</p>
-                <p className="text-sm text-slate-200">
-                  Admins land on the admin suite (curriculum uploads, products, analytics). Teachers land on review and publish. Students get read-only browsing.
-                </p>
-              </div>
             </>
           )}
         </div>

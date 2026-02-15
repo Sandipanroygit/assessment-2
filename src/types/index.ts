@@ -7,6 +7,7 @@ export interface CurriculumModule {
   subject: string;
   module: string;
   description: string;
+  judgingLogic?: string;
   assets: Array<{ type: "video" | "code" | "doc" | "stl"; url: string; label: string }>;
   codeSnippet?: string;
   priceYearly?: number;

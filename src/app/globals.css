@@ -129,6 +129,36 @@ body.dynamic-bg {
   }
 }
 
+@keyframes bellRing {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  12% {
+    transform: rotate(18deg);
+  }
+  24% {
+    transform: rotate(-16deg);
+  }
+  36% {
+    transform: rotate(12deg);
+  }
+  48% {
+    transform: rotate(-10deg);
+  }
+  60% {
+    transform: rotate(6deg);
+  }
+  72% {
+    transform: rotate(-4deg);
+  }
+}
+
+.customer-bell-ring {
+  transform-origin: 50% 8%;
+  animation: bellRing 0.95s ease-in-out infinite;
+}
+
 .glass-panel {
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.68));
   border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
@@ -167,3 +197,58 @@ body.dynamic-bg {
 
 .file-accent:hover::file-selector-button { filter: brightness(1.05); }
 .file-accent:active::file-selector-button { transform: translateY(1px); }
+
+/* Shared table style (Style 1) */
+.table-v1 {
+  width: 100%;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.875rem;
+}
+
+.table-v1 thead {
+  background: var(--accent);
+}
+
+.table-v1 thead th {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: #ffffff !important;
+  border-bottom: 1px solid color-mix(in srgb, #34d399 40%, transparent);
+}
+
+.table-v1 thead th:first-child {
+  border-top-left-radius: 0.75rem;
+}
+
+.table-v1 thead th:last-child {
+  border-top-right-radius: 0.75rem;
+}
+
+.table-v1 th:not(:last-child),
+.table-v1 td:not(:last-child) {
+  border-right: 1px solid color-mix(in srgb, #34d399 32%, transparent);
+}
+
+.table-v1 tbody tr:nth-child(odd) {
+  background: color-mix(in srgb, #ecfdf5 80%, transparent);
+}
+
+.table-v1 tbody tr:nth-child(even) {
+  background: color-mix(in srgb, #ffffff 55%, transparent);
+}
+
+.table-v1 tbody tr:hover {
+  background: color-mix(in srgb, #d1fae5 80%, transparent);
+  transition: background-color 0.18s ease;
+}
+
+.table-v1 tbody td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid color-mix(in srgb, #34d399 30%, transparent);
+}
