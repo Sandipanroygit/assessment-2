@@ -8,10 +8,9 @@ let cachedClient: SupabaseClient | null = null;
 export const getSupabaseClient = (): SupabaseClient | null => {
   if (!supabaseUrl || !supabaseAnonKey) return null;
   if (cachedClient) return cachedClient;
-  // Use a loose cast to avoid TypeScript DOM lib issues in server builds
   const storage =
     typeof window !== "undefined"
-      ? (window as any).localStorage ?? (window as any).sessionStorage
+      ? window.localStorage ?? window.sessionStorage ?? undefined
       : undefined;
   cachedClient = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
