@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import SessionAutoLogout from "@/components/SessionAutoLogout";
 import ActivityTracker from "@/components/ActivityTracker";
 import { Analytics } from "@vercel/analytics/next";
+import { Suspense } from "react";
 import "./globals.css";
 
 const geistSans = localFont({
@@ -32,8 +33,12 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-surface text-slate-900 dynamic-bg`}
       >
-        <ActivityTracker />
-        <SessionAutoLogout />
+        <Suspense fallback={null}>
+          <ActivityTracker />
+        </Suspense>
+        <Suspense fallback={null}>
+          <SessionAutoLogout />
+        </Suspense>
         <Analytics />
         {children}
       </body>
