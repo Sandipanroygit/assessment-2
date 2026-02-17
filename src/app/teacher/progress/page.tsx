@@ -141,11 +141,10 @@ export default function TeacherProgressPage() {
         <div>
           <p className="text-accent-strong uppercase text-xs tracking-[0.2em]">Teacher</p>
           <h1 className="text-3xl font-semibold text-white">Student progress</h1>
-          <p className="text-slate-300 text-sm">See who attempted your published activities.</p>
         </div>
         <Link
           href="/customer"
-          className="px-4 py-2 rounded-xl border border-white/10 outline outline-1 outline-black text-sm text-white hover:border-accent-strong"
+          className="px-4 py-2 rounded-xl bg-emerald-800 hover:bg-emerald-700 text-sm !text-white hover:!text-white visited:!text-white font-semibold shadow-md ring-1 ring-white/10 hover:-translate-y-0.5 transition-transform duration-150"
         >
           Back to dashboard
         </Link>
@@ -166,9 +165,6 @@ export default function TeacherProgressPage() {
             ))}
           </select>
         </label>
-        <div className="text-sm text-slate-300">
-          Students: {students.length} | Modules: {modules.length}
-        </div>
         {status && (
           <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-amber-200">{status}</div>
         )}

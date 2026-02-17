@@ -220,7 +220,7 @@ export default function AdminTeacherRequestsPage() {
                       <td className="py-2 pr-3 text-slate-300">
                         <div className="space-y-1">
                           {(req.items ?? []).slice(0, 3).map((item) => (
-                            <div key={item} className="text-xs text-slate-200">
+                            <div key={item} className="text-xs font-semibold text-slate-200">
                               {item}
                             </div>
                           ))}

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
@@ -25,6 +25,12 @@ import {
 import { UploadCurriculumView } from "@/components/admin/UploadCurriculumView";
 import { AdminQuestionsView } from "@/components/admin/AdminQuestionsView";
 import { logActivity } from "@/lib/activityLogger";
+import {
+  dedupeAndSortModuleNames,
+  isDesignTechnologySubject,
+  normalizeVrSubjectKey,
+  VR_SUBJECT_ORDER,
+} from "@/lib/vrModules";
 type AdminUser = {
   id: string;
   full_name: string;
@@ -104,7 +110,14 @@ type SalesInquiry = {
   created_at?: string | null;
 };
 
-type AdminRibbonSection = "drone" | "upload" | "questions" | "products" | "sentiment" | "users" | "orders";
+type VrModuleRow = {
+  id: string;
+  subject: string;
+  module_name: string;
+  created_at?: string | null;
+};
+
+type AdminRibbonSection = "drone" | "vrModules" | "upload" | "questions" | "products" | "sentiment" | "users" | "orders";
 
 export default function AdminPage() {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -143,6 +156,10 @@ export default function AdminPage() {
   const [salesInquiryStatus, setSalesInquiryStatus] = useState<string | null>(null);
   const [updatingSalesInquiryId, setUpdatingSalesInquiryId] = useState<string | null>(null);
   const [showSalesInquiries, setShowSalesInquiries] = useState(false);
+  const [vrModuleRows, setVrModuleRows] = useState<VrModuleRow[]>([]);
+  const [vrModuleStatus, setVrModuleStatus] = useState<string | null>(null);
+  const [vrModuleDraftBySubject, setVrModuleDraftBySubject] = useState<Record<string, string>>({});
+  const [savingVrSubject, setSavingVrSubject] = useState<string | null>(null);
   const [activeAdminSection, setActiveAdminSection] = useState<AdminRibbonSection>("drone");
   const [statsExpanded, setStatsExpanded] = useState(true);
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
@@ -206,11 +223,47 @@ export default function AdminPage() {
     });
   }, [unreadTeacherRequestItems, unreadSalesInquiryItems]);
   const unreadNotificationCount = unreadNotifications.length;
+  const vrSubjects = useMemo(() => {
+    const values = new Set<string>(VR_SUBJECT_ORDER);
+    vrModuleRows.forEach((row) => {
+      const rawSubject = row.subject?.trim() ?? "";
+      if (!rawSubject || isDesignTechnologySubject(rawSubject)) return;
+      const normalized = normalizeVrSubjectKey(rawSubject) ?? rawSubject;
+      if (normalized) values.add(normalized);
+    });
+    return Array.from(values).sort((a, b) => {
+      const aIndex = VR_SUBJECT_ORDER.indexOf(a as (typeof VR_SUBJECT_ORDER)[number]);
+      const bIndex = VR_SUBJECT_ORDER.indexOf(b as (typeof VR_SUBJECT_ORDER)[number]);
+      const aRank = aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex;
+      const bRank = bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex;
+      if (aRank !== bRank) return aRank - bRank;
+      return a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
+    });
+  }, [vrModuleRows]);
+  const vrModulesBySubject = useMemo(() => {
+    const grouped: Record<string, string[]> = {};
+    vrSubjects.forEach((subject) => {
+      grouped[subject] = [];
+    });
+    vrModuleRows.forEach((row) => {
+      const rawSubject = row.subject?.trim() ?? "";
+      if (!rawSubject || isDesignTechnologySubject(rawSubject)) return;
+      const subject = normalizeVrSubjectKey(rawSubject) ?? rawSubject;
+      if (!subject) return;
+      if (!grouped[subject]) grouped[subject] = [];
+      grouped[subject].push(row.module_name ?? "");
+    });
+    Object.keys(grouped).forEach((subject) => {
+      grouped[subject] = dedupeAndSortModuleNames(grouped[subject] ?? []);
+    });
+    return grouped;
+  }, [vrModuleRows, vrSubjects]);
   const isTeacher = role === "teacher";
   const canEditCurriculum = isAdmin || isTeacher;
   const dashboardRoleLabel = isAdmin ? "Admin" : isTeacher ? "Teacher" : "User";
   const ribbonSections: Array<{ id: AdminRibbonSection; label: string; adminOnly?: boolean }> = [
     { id: "drone", label: "Drone Activity" },
+    { id: "vrModules", label: "VR Modules", adminOnly: true },
     { id: "upload", label: "Upload Content", adminOnly: true },
     { id: "questions", label: "Manage Questions" },
     { id: "sentiment", label: "Sentiment Summaries" },
@@ -233,6 +286,16 @@ export default function AdminPage() {
             <circle cx="19" cy="5" r="2.5" />
             <circle cx="5" cy="19" r="2.5" />
             <circle cx="19" cy="19" r="2.5" />
+          </svg>
+        );
+      case "vrModules":
+        return (
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-4 w-4">
+            <rect x="2.5" y="8" width="19" height="8" rx="3" />
+            <circle cx="8" cy="12" r="1.8" />
+            <circle cx="16" cy="12" r="1.8" />
+            <path d="M12 8v-2" />
+            <path d="M8 6h8" />
           </svg>
         );
       case "upload":
@@ -409,6 +472,83 @@ export default function AdminPage() {
     }
   }, [isAdmin]);
 
+  const loadVrModules = useCallback(async () => {
+    if (!isAdmin) return;
+    setVrModuleStatus("Loading VR modules...");
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        setVrModuleStatus("No active session; please sign in again.");
+        setVrModuleRows([]);
+        return;
+      }
+
+      const response = await fetch("/api/admin/vr-modules", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const body = (await response.json().catch(() => ({}))) as { modules?: VrModuleRow[]; error?: string };
+      if (!response.ok) {
+        setVrModuleStatus(body?.error ?? `Unable to load VR modules (status ${response.status}).`);
+        setVrModuleRows([]);
+        return;
+      }
+
+      setVrModuleRows(body.modules ?? []);
+      setVrModuleStatus(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to load VR modules";
+      setVrModuleStatus(message);
+      setVrModuleRows([]);
+    }
+  }, [isAdmin]);
+
+  const addVrModuleForSubject = useCallback(
+    async (subject: string) => {
+      if (!isAdmin) return;
+      const moduleName = (vrModuleDraftBySubject[subject] ?? "").trim();
+      if (!moduleName) {
+        setVrModuleStatus(`Enter a module name for ${subject}.`);
+        return;
+      }
+
+      setSavingVrSubject(subject);
+      setVrModuleStatus(`Uploading "${moduleName}"...`);
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+        if (!token) {
+          setVrModuleStatus("No active session; please sign in again.");
+          return;
+        }
+
+        const response = await fetch("/api/admin/vr-modules", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ subject, moduleName }),
+        });
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        if (!response.ok) {
+          setVrModuleStatus(body?.error ?? `Unable to upload module (status ${response.status}).`);
+          return;
+        }
+
+        setVrModuleDraftBySubject((prev) => ({ ...prev, [subject]: "" }));
+        await loadVrModules();
+        setVrModuleStatus(`Uploaded "${moduleName}" under ${subject}.`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unable to upload module";
+        setVrModuleStatus(message);
+      } finally {
+        setSavingVrSubject(null);
+      }
+    },
+    [isAdmin, loadVrModules, vrModuleDraftBySubject],
+  );
+
   const updateTeacherRequestStatus = useCallback(
     async (id: string, nextStatus: string) => {
       if (!isAdmin) return;
@@ -562,6 +702,7 @@ export default function AdminPage() {
           await reloadUsers();
           await loadTeacherRequests();
           await loadSalesInquiries();
+          await loadVrModules();
         } else {
           setUserRows([]);
           setUserCount(null);
@@ -569,6 +710,8 @@ export default function AdminPage() {
           setTeacherRequestStatus(null);
           setSalesInquiries([]);
           setSalesInquiryStatus(null);
+          setVrModuleRows([]);
+          setVrModuleStatus(null);
         }
         setDataStatus(null);
       } catch (err) {
@@ -586,13 +729,15 @@ export default function AdminPage() {
         setTeacherRequestStatus(message);
         setSalesInquiries([]);
         setSalesInquiryStatus(message);
+        setVrModuleRows([]);
+        setVrModuleStatus(message);
         const setupHint = isMissingTableSchemaCacheError(message)
           ? " Apply `supabase/schema.sql` in your Supabase SQL editor, then retry."
           : "";
         setDataStatus(`Unable to load shared data (${message}).${setupHint}`);
       }
     },
-    [canEditCurriculum, isAdmin, loadSalesInquiries, loadTeacherRequests, reloadUsers],
+    [canEditCurriculum, isAdmin, loadSalesInquiries, loadTeacherRequests, loadVrModules, reloadUsers],
   );
 
   const openUserEditor = (user: AdminUser, event?: MouseEvent<HTMLButtonElement>) => {
@@ -1380,7 +1525,7 @@ export default function AdminPage() {
                         <td className="py-2 pr-3 text-slate-300">
                           <div className="space-y-1">
                             {(req.items ?? []).slice(0, 3).map((item) => (
-                              <div key={item} className="text-xs text-slate-200">
+                              <div key={item} className="text-xs font-semibold text-slate-200">
                                 {item}
                               </div>
                             ))}
@@ -1654,6 +1799,82 @@ export default function AdminPage() {
       </div>
       )}
 
+      {activeAdminSection === "vrModules" && (
+      <div className="glass-panel rounded-2xl p-6 space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-white">VR Modules</h2>
+          <button
+            className="text-sm px-3 py-2 rounded-lg bg-accent text-true-white font-semibold border border-emerald-300/70 hover:bg-accent-strong transition disabled:opacity-60"
+            onClick={() => void loadVrModules()}
+            disabled={!isAdmin}
+          >
+            Refresh
+          </button>
+        </div>
+        {vrModuleStatus && (
+          <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
+            {vrModuleStatus}
+          </div>
+        )}
+        <div className="space-y-4">
+          {vrSubjects.map((subject) => {
+            const modules = vrModulesBySubject[subject] ?? [];
+            const draftValue = vrModuleDraftBySubject[subject] ?? "";
+            const isSaving = savingVrSubject === subject;
+
+            return (
+              <div key={subject} className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <h3 className="text-base font-semibold text-white">{subject}</h3>
+                  <div className="flex w-full sm:w-auto items-center gap-2">
+                    <input
+                      value={draftValue}
+                      onChange={(event) =>
+                        setVrModuleDraftBySubject((prev) => ({ ...prev, [subject]: event.target.value }))
+                      }
+                      className="w-full sm:w-64 rounded-lg border border-slate-400/60 bg-white/5 px-3 py-2 text-white text-sm focus:border-accent focus:outline-none disabled:opacity-60"
+                      placeholder="Add VR module"
+                      disabled={!isAdmin || isSaving}
+                    />
+                    <button
+                      className="px-3 py-2 rounded-lg bg-accent text-true-white font-semibold border border-emerald-300/70 hover:bg-accent-strong transition disabled:opacity-60"
+                      onClick={() => void addVrModuleForSubject(subject)}
+                      disabled={!isAdmin || isSaving || !draftValue.trim()}
+                    >
+                      {isSaving ? "Adding..." : "Add"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="overflow-auto rounded-xl border border-white/10 bg-white/5">
+                  <table className="table-v1">
+                    <thead>
+                      <tr className="text-left text-slate-400 border-b border-white/10">
+                        <th className="py-2 pr-3">Available VR modules</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {modules.length === 0 ? (
+                        <tr className="border-b border-white/5">
+                          <td className="py-3 pr-3 text-slate-400">No modules available yet.</td>
+                        </tr>
+                      ) : (
+                        modules.map((moduleName) => (
+                          <tr key={`${subject}-${moduleName}`} className="border-b border-white/5">
+                            <td className="py-3 pr-3 text-slate-200">{moduleName}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      )}
+
       {activeAdminSection === "upload" && (
         <UploadCurriculumView
           embedded
@@ -1875,7 +2096,7 @@ export default function AdminPage() {
                 setUserSort((prev) => ({ ...prev, dir: prev.dir === "asc" ? "desc" : "asc" }))
               }
             >
-              <span>{userSort.dir === "asc" ? "↑" : "↓"}</span>
+              <span>{userSort.dir === "asc" ? "?" : "?"}</span>
               <span className="sr-only">Toggle sort</span>
             </button>
           </div>

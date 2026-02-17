@@ -198,6 +198,39 @@ body.dynamic-bg {
 .file-accent:hover::file-selector-button { filter: brightness(1.05); }
 .file-accent:active::file-selector-button { transform: translateY(1px); }
 
+/* White date picker with orange calendar accent */
+.calendar-input {
+  color-scheme: light;
+  background: #ffffff;
+  color: #1f2937;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, #ffffff);
+  accent-color: #f97316;
+}
+
+.calendar-input:focus {
+  outline: none;
+  border-color: #f97316;
+  box-shadow: 0 0 0 2px color-mix(in srgb, #f97316 20%, transparent);
+}
+
+.calendar-input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  filter: saturate(1.25) hue-rotate(-10deg);
+}
+
+.calendar-input::-webkit-datetime-edit-day-field:focus,
+.calendar-input::-webkit-datetime-edit-month-field:focus,
+.calendar-input::-webkit-datetime-edit-year-field:focus {
+  background: #f97316;
+  color: #ffffff;
+  border-radius: 0.35rem;
+}
+
+.calendar-input::selection {
+  background: #f97316;
+  color: #ffffff;
+}
+
 /* Shared table style (Style 1) */
 .table-v1 {
   width: 100%;
