@@ -830,7 +830,9 @@ export function GuidedTour({
     const onViewportChange = () => scheduleEnsurePanelVisible(false);
     window.addEventListener("resize", onViewportChange, { passive: true });
     document.addEventListener("transitionend", onViewportChange, true);
-    resizeObserver?.observe(panelNode);
+    if (resizeObserver && panelNode) {
+      resizeObserver.observe(panelNode);
+    }
     return () => {
       if (timerIdA) window.clearTimeout(timerIdA);
       if (timerIdB) window.clearTimeout(timerIdB);
