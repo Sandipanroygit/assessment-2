@@ -9,6 +9,10 @@ const supabaseAdmin =
 
 const isMissingJudgingLogicColumn = (message?: string) =>
   /judging_logic/i.test(message || "") && /(column|schema cache)/i.test(message || "");
+const cleanString = (value: unknown) =>
+  typeof value === "string" && value.trim() ? value.trim() : null;
+const normalizeRole = (value: unknown) =>
+  typeof value === "string" ? value.trim().toLowerCase() : "";
 
 export async function GET(req: Request) {
   if (!supabaseAdmin) {
@@ -26,13 +30,32 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Invalid token" }, { status: 401 });
   }
 
-  const role = (userData.user.user_metadata?.role as string | undefined)?.toLowerCase() ?? "";
+  const metadataRole = normalizeRole(userData.user.user_metadata?.role);
+  const metadataSubject = cleanString(userData.user.user_metadata?.subject);
+  const metadataGrade = cleanString(userData.user.user_metadata?.grade);
+
+  let profileRole: string | null = null;
+  let profileSubject: string | null = null;
+  let profileGrade: string | null = null;
+
+  if (metadataRole !== "teacher" || !metadataSubject || !metadataGrade) {
+    const { data: profileData } = await supabaseAdmin
+      .from("profiles")
+      .select("role,subject,grade")
+      .eq("id", userData.user.id)
+      .maybeSingle();
+    profileRole = normalizeRole(profileData?.role) || null;
+    profileSubject = cleanString(profileData?.subject);
+    profileGrade = cleanString(profileData?.grade);
+  }
+
+  const role = metadataRole === "teacher" ? "teacher" : profileRole ?? "";
   if (role !== "teacher") {
     return NextResponse.json({ error: "Only teachers can view" }, { status: 403 });
   }
 
-  const subject = (userData.user.user_metadata?.subject as string | undefined) ?? null;
-  const grade = (userData.user.user_metadata?.grade as string | undefined) ?? null;
+  const subject = metadataSubject ?? profileSubject;
+  const grade = metadataGrade ?? profileGrade;
 
   const buildQuery = (includeJudgingLogic: boolean) => {
     let query = supabaseAdmin

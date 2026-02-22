@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AerohawX Teacher Enablement Presentation</title>
+    <style>
+      :root {
+        --ink: #0f172a;
+        --muted: #475569;
+        --bg: #f2f6f5;
+        --card: #ffffff;
+        --accent: #065f46;
+        --accent-soft: #d1fae5;
+        --line: #dbe6e3;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: linear-gradient(140deg, #eef4f1, #f8fafc);
+        color: var(--ink);
+        font-family: "Segoe UI", "Trebuchet MS", "Gill Sans", sans-serif;
+      }
+      .deck {
+        width: 100%;
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 20px 14px 30px;
+      }
+      .slide {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        box-shadow: 0 20px 40px rgba(15, 23, 42, 0.08);
+        padding: 24px 26px;
+        margin: 0 0 20px;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      .slide + .slide {
+        page-break-before: always;
+      }
+      .kicker {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        color: #0f766e;
+        font-weight: 700;
+      }
+      h1 {
+        margin: 8px 0 10px;
+        font-size: 44px;
+        line-height: 1.08;
+      }
+      h2 {
+        margin: 8px 0 10px;
+        font-size: 30px;
+        line-height: 1.18;
+      }
+      h3 {
+        margin: 0 0 8px;
+        font-size: 20px;
+      }
+      p {
+        margin: 8px 0;
+        color: var(--muted);
+        line-height: 1.55;
+        font-size: 15px;
+      }
+      ul {
+        margin: 10px 0 0 20px;
+        color: var(--ink);
+        padding: 0;
+      }
+      li {
+        margin: 7px 0;
+        line-height: 1.45;
+        font-size: 15px;
+      }
+      .meta {
+        display: inline-flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-top: 10px;
+      }
+      .chip {
+        border: 1px solid #a7f3d0;
+        background: var(--accent-soft);
+        color: #065f46;
+        font-weight: 700;
+        border-radius: 999px;
+        padding: 6px 12px;
+        font-size: 12px;
+      }
+      .grid-2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        align-items: start;
+      }
+      .image-wrap {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        overflow: hidden;
+        background: #f8fafc;
+      }
+      .image-wrap img {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+      .note {
+        margin-top: 8px;
+        border-left: 4px solid #0ea5a5;
+        background: #ecfeff;
+        color: #164e63;
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-size: 14px;
+      }
+      .checklist {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+      .card {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 12px;
+        background: #fbfefd;
+      }
+      .card strong {
+        color: #0f172a;
+      }
+      @media (max-width: 980px) {
+        .grid-2 {
+          grid-template-columns: 1fr;
+        }
+        .checklist {
+          grid-template-columns: 1fr;
+        }
+        h1 {
+          font-size: 36px;
+        }
+        h2 {
+          font-size: 26px;
+        }
+      }
+      @page {
+        size: A4 landscape;
+        margin: 10mm;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="deck">
+      <section class="slide">
+        <div class="kicker">AerohawX Teacher Enablement</div>
+        <h1>Teacher Operations Guide</h1>
+        <p>
+          Professional walkthrough of the complete teacher workflow: dashboard navigation, publishing,
+          content requests, student query handling, progress tracking, and roster management.
+        </p>
+        <div class="meta">
+          <span class="chip">Audience: Teachers</span>
+          <span class="chip">Format: Step-by-step with annotated snips</span>
+          <span class="chip">Prepared for classroom rollout</span>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="kicker">Slide 1</div>
+        <h2>Teacher Dashboard Orientation</h2>
+        <div class="grid-2">
+          <div>
+            <ul>
+              <li>Use the notification bell to monitor student alerts and query activity.</li>
+              <li>Use the menu button for quick access to all teacher actions.</li>
+              <li>Apply grade and subject filters before assigning or reviewing activities.</li>
+              <li>Each activity card gives status visibility plus one-click launch.</li>
+            </ul>
+            <div class="note">Recommended daily start: open bell -> open menu -> review active modules.</div>
+          </div>
+          <div class="image-wrap">
+            <img src="./snips/01_teacher_dashboard_annotated.png" alt="Teacher dashboard annotated" />
+          </div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="kicker">Slide 2</div>
+        <h2>Teacher Quick Menu</h2>
+        <div class="grid-2">
+          <div>
+            <ul>
+              <li><strong>Raise a Request:</strong> Ask admin for VR simulations or drone activities.</li>
+              <li><strong>Student Progress:</strong> Check completion status and attempts by module.</li>
+              <li><strong>Student Queries:</strong> Open and respond to learner doubts.</li>
+              <li><strong>Registered Students:</strong> View the teacher-matched roster.</li>
+            </ul>
+            <div class="note">Keep this as the primary command center for teacher operations.</div>
+          </div>
+          <div class="image-wrap">
+            <img src="./snips/02_teacher_menu_annotated.png" alt="Teacher menu annotated" />
+          </div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="kicker">Slide 3</div>
+        <h2>Activity Cards: Publish + Launch</h2>
+        <div class="grid-2">
+          <div>
+            <ul>
+              <li>Use <strong>Publish</strong> to make a module visible to students.</li>
+              <li>Use <strong>Unpublish</strong> when a module needs revision before class.</li>
+              <li>Use <strong>Show activity/code</strong> to open execution assets and instructions.</li>
+              <li>Use status chips to verify visibility state before assigning work.</li>
+            </ul>
+            <div class="note">
+              Best practice: publish only validated modules one day before class to avoid confusion.
+            </div>
+          </div>
+          <div class="image-wrap">
+            <img src="./snips/08_publish_controls_annotated.png" alt="Publish controls annotated" />
+          </div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="kicker">Slide 4</div>
+        <h2>Raise Content Requests to Admin</h2>
+        <div class="grid-2">
+          <div>
+            <ul>
+              <li>Select request type: <strong>VR simulation</strong> or <strong>Drone activity</strong>.</li>
+              <li>For VR, select required modules or choose <strong>Any other</strong>.</li>
+              <li>Add required date and context notes for curriculum alignment.</li>
+              <li>Submit using <strong>Send to Admin</strong>.</li>
+            </ul>
+            <div class="note">
+              Scheduling rule: custom/Any-other VR requests require longer lead time than standard module requests.
+            </div>
+          </div>
+          <div class="image-wrap">
+            <img src="./snips/03_request_modal_annotated.png" alt="Request modal annotated" />
+          </div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="kicker">Slide 5</div>
+        <h2>Notifications and Query Alerts</h2>
+        <div class="grid-2">
+          <div>
+            <ul>
+              <li>Open bell icon to access notification center.</li>
+              <li>Use <strong>Student Queries</strong> shortcut for direct jump to inbox.</li>
+              <li>Review unread badges and clear items as needed.</li>
+            </ul>
+            <div class="note">Check this panel before each class and at day-end for quick SLA response.</div>
+          </div>
+          <div class="image-wrap">
+            <img src="./snips/04_notifications_annotated.png" alt="Notifications annotated" />
+          </div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="kicker">Slide 6</div>
+        <h2>Student Query Inbox and Replies</h2>
+        <div class="grid-2">
+          <div>
+            <ul>
+              <li>Left pane: student query queue with refresh support.</li>
+              <li>Center pane: full conversation context per selected query.</li>
+              <li>Reply from the bottom composer to continue guidance thread.</li>
+              <li>Close inbox after action completion.</li>
+            </ul>
+            <div class="note">Response quality tip: reply with next action, expected output, and checkpoint deadline.</div>
+          </div>
+          <div class="image-wrap">
+            <img src="./snips/05_teacher_inbox_annotated.png" alt="Teacher inbox annotated" />
+          </div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="kicker">Slide 7</div>
+        <h2>Student Progress Monitoring</h2>
+        <div class="grid-2">
+          <div>
+            <ul>
+              <li>Select a module from the dropdown to load module-wise progress.</li>
+              <li>Track submission status, attempts, and latest update for each learner.</li>
+              <li>Use reminder controls to nudge non-submitters.</li>
+            </ul>
+            <div class="note">Weekly reporting tip: capture this view after each assessment cycle.</div>
+          </div>
+          <div class="image-wrap">
+            <img src="./snips/06_progress_annotated.png" alt="Progress view annotated" />
+          </div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="kicker">Slide 8</div>
+        <h2>Registered Students View</h2>
+        <div class="grid-2">
+          <div>
+            <ul>
+              <li>Use sort controls to organize by name, grade, or join date.</li>
+              <li>Verify subject-matched enrollment before assigning activities.</li>
+              <li>Use this page for attendance and communication readiness checks.</li>
+            </ul>
+            <div class="note">Pre-class checklist: validate roster on Monday and after each new registration.</div>
+          </div>
+          <div class="image-wrap">
+            <img src="./snips/07_students_annotated.png" alt="Student registry annotated" />
+          </div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="kicker">Slide 9</div>
+        <h2>Daily Operating Checklist</h2>
+        <div class="checklist">
+          <div class="card">
+            <h3>Before Class</h3>
+            <ul>
+              <li>Review unread notifications and student queries.</li>
+              <li>Verify required modules are in Published state.</li>
+              <li>Open activity/code for the first session run-through.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>During Class</h3>
+            <ul>
+              <li>Use module cards to launch activities quickly.</li>
+              <li>Mark issues and collect missing-content needs.</li>
+              <li>Use query inbox for immediate support follow-ups.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>After Class</h3>
+            <ul>
+              <li>Open Student Progress and review submissions.</li>
+              <li>Send reminders to pending students.</li>
+              <li>Raise admin requests for next class improvements.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Weekly Governance</h3>
+            <ul>
+              <li>Audit roster on Registered Students page.</li>
+              <li>Re-check publish state for upcoming modules.</li>
+              <li>Archive unresolved queries for escalation.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

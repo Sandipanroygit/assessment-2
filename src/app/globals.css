@@ -172,6 +172,18 @@ body.dynamic-bg {
   padding: clamp(2rem, 4vw, 3.5rem) clamp(1.25rem, 4vw, 4rem);
 }
 
+/* WhatsApp-like chat wallpaper */
+.whatsapp-chat-wallpaper {
+  background-color: #e5ddd5;
+  background-image:
+    url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'220'%20height%3D'220'%20viewBox%3D'0%200%20220%20220'%3E%3Cg%20fill%3D'none'%20stroke%3D'%23d3c8be'%20stroke-width%3D'1.4'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%20opacity%3D'0.55'%3E%3Cpath%20d%3D'M24%2032h18a4%204%200%200%201%204%204v10a4%204%200%200%201-4%204H33l-7%207V36a4%204%200%200%201%204-4Z'%2F%3E%3Cpath%20d%3D'M92%2028l4%2010%2010%204-10%204-4%2010-4-10-10-4%2010-4%204-10Z'%2F%3E%3Cpath%20d%3D'M156%2030c4%200%207%203%207%207%200%208-10%2013-16%2019-6-6-16-11-16-19%200-4%203-7%207-7%204%200%207%202%209%205%202-3%205-5%209-5Z'%2F%3E%3Ccircle%20cx%3D'54'%20cy%3D'98'%20r%3D'9'%2F%3E%3Cpath%20d%3D'M45%20114c2%205%206%207%209%207%203%200%207-2%209-7'%2F%3E%3Cpath%20d%3D'M116%2092h22'%2F%3E%3Cpath%20d%3D'M116%20102h18'%2F%3E%3Cpath%20d%3D'M170%2086l8%208-8%208'%2F%3E%3Cpath%20d%3D'M178%2094h-22'%2F%3E%3Crect%20x%3D'22'%20y%3D'152'%20width%3D'22'%20height%3D'14'%20rx%3D'3'%2F%3E%3Cpath%20d%3D'M32%20166v10'%2F%3E%3Cpath%20d%3D'M86%20150h20M96%20140v20'%2F%3E%3Cpath%20d%3D'M132%20148l18%2018M150%20148l-18%2018'%2F%3E%3Cpath%20d%3D'M176%20150h16a4%204%200%200%201%204%204v10a4%204%200%200%201-4%204h-8l-5%205v-19a4%204%200%200%201%204-4Z'%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E"),
+    url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'220'%20height%3D'220'%20viewBox%3D'0%200%20220%20220'%3E%3Cg%20fill%3D'none'%20stroke%3D'%23d3c8be'%20stroke-width%3D'1.4'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%20opacity%3D'0.55'%3E%3Cpath%20d%3D'M24%2032h18a4%204%200%200%201%204%204v10a4%204%200%200%201-4%204H33l-7%207V36a4%204%200%200%201%204-4Z'%2F%3E%3Cpath%20d%3D'M92%2028l4%2010%2010%204-10%204-4%2010-4-10-10-4%2010-4%204-10Z'%2F%3E%3Cpath%20d%3D'M156%2030c4%200%207%203%207%207%200%208-10%2013-16%2019-6-6-16-11-16-19%200-4%203-7%207-7%204%200%207%202%209%205%202-3%205-5%209-5Z'%2F%3E%3Ccircle%20cx%3D'54'%20cy%3D'98'%20r%3D'9'%2F%3E%3Cpath%20d%3D'M45%20114c2%205%206%207%209%207%203%200%207-2%209-7'%2F%3E%3Cpath%20d%3D'M116%2092h22'%2F%3E%3Cpath%20d%3D'M116%20102h18'%2F%3E%3Cpath%20d%3D'M170%2086l8%208-8%208'%2F%3E%3Cpath%20d%3D'M178%2094h-22'%2F%3E%3Crect%20x%3D'22'%20y%3D'152'%20width%3D'22'%20height%3D'14'%20rx%3D'3'%2F%3E%3Cpath%20d%3D'M32%20166v10'%2F%3E%3Cpath%20d%3D'M86%20150h20M96%20140v20'%2F%3E%3Cpath%20d%3D'M132%20148l18%2018M150%20148l-18%2018'%2F%3E%3Cpath%20d%3D'M176%20150h16a4%204%200%200%201%204%204v10a4%204%200%200%201-4%204h-8l-5%205v-19a4%204%200%200%201%204-4Z'%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E"),
+    linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.08));
+  background-repeat: repeat;
+  background-size: 180px 180px, 120px 120px, auto;
+  background-position: 0 0, 56px 36px, 0 0;
+}
+
 
 /* Light text normalization */
 .text-white { color: #0f172a !important; }

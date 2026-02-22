@@ -5,11 +5,13 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import heroSlide1 from "../../image/image1.jpg";
 import heroSlide2 from "../../image/image2.jpg";
 import heroSlide3 from "../../image/image3.jpg";
 import logo from "../../image/logo.jpg";
 import { supabase } from "@/lib/supabaseClient";
+import { playUiClickTone } from "@/lib/uiTone";
 
 const features = [
   {
@@ -83,7 +85,17 @@ const boardLogos = [
   { label: "Cambridge", src: "/boards/cambridge.png", imageClassName: "h-8 w-8 object-contain" },
 ];
 
+const TEACHER_HOME_TOUR_ENTRY_KEY = "teacher_home_tour_entry_pending_v1";
+const TEACHER_TOUR_STORAGE_KEY = "teacher_feature_tour_v2";
+const TEACHER_PROGRESS_TOUR_FORCE_KEY = "teacher_progress_tour_force_once_v2";
+const TEACHER_PROGRESS_TOUR_CHAIN_KEY = "teacher_progress_tour_chain_meta_v2";
+const TEACHER_STUDENTS_TOUR_FORCE_KEY = "teacher_students_tour_force_once_v2";
+const TEACHER_STUDENTS_TOUR_CHAIN_KEY = "teacher_students_tour_chain_meta_v2";
+const TEACHER_DASHBOARD_TOUR_RESUME_KEY = "teacher_dashboard_tour_resume_v2";
+const TEACHER_TOUR_AUTOSTART_KEY = "teacher_dashboard_tour_autostart_v1";
+
 export default function Home() {
+  const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelVisible, setPanelVisible] = useState(false);
@@ -115,6 +127,7 @@ export default function Home() {
   const [footfall, setFootfall] = useState<number | null>(null);
   const [footfallSpin, setFootfallSpin] = useState(0);
   const [footfallLoaded, setFootfallLoaded] = useState(false);
+  const [showTeacherTourEntry, setShowTeacherTourEntry] = useState(false);
   const footfallOffset = 822;
   const footfallDisplay =
     footfallLoaded && footfall !== null
@@ -151,6 +164,37 @@ export default function Home() {
     };
     checkUser();
   }, [defaultAdminEmail]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const shouldShow =
+      isAuthed &&
+      userRole === "teacher" &&
+      window.sessionStorage.getItem(TEACHER_HOME_TOUR_ENTRY_KEY) === "1";
+    setShowTeacherTourEntry(shouldShow);
+  }, [isAuthed, userRole]);
+
+  const launchTeacherTourFromHome = () => {
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem(TEACHER_HOME_TOUR_ENTRY_KEY);
+      window.sessionStorage.setItem(TEACHER_TOUR_AUTOSTART_KEY, "1");
+      window.localStorage.removeItem(TEACHER_TOUR_STORAGE_KEY);
+      window.localStorage.removeItem(TEACHER_DASHBOARD_TOUR_RESUME_KEY);
+      window.localStorage.removeItem(TEACHER_PROGRESS_TOUR_FORCE_KEY);
+      window.localStorage.removeItem(TEACHER_PROGRESS_TOUR_CHAIN_KEY);
+      window.localStorage.removeItem(TEACHER_STUDENTS_TOUR_FORCE_KEY);
+      window.localStorage.removeItem(TEACHER_STUDENTS_TOUR_CHAIN_KEY);
+    }
+    setShowTeacherTourEntry(false);
+    router.push("/customer");
+  };
+
+  const dismissTeacherTourEntry = () => {
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem(TEACHER_HOME_TOUR_ENTRY_KEY);
+    }
+    setShowTeacherTourEntry(false);
+  };
 
   useEffect(() => {
     let active = true;
@@ -292,6 +336,101 @@ export default function Home() {
 
   return (
     <main className="min-h-screen text-foreground">
+      {showTeacherTourEntry && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center px-4" style={{ background: "rgba(15, 23, 42, 0.14)" }}>
+          <div
+            className="w-full max-w-xl rounded-2xl p-5"
+            style={{
+              border: "1px solid color-mix(in srgb, var(--accent) 28%, transparent)",
+              background: "var(--surface)",
+              color: "var(--foreground)",
+              boxShadow:
+                "0 18px 42px rgba(15, 23, 42, 0.18), 0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent)",
+            }}
+          >
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                borderRadius: 999,
+                border: "1px solid color-mix(in srgb, var(--accent) 40%, transparent)",
+                background: "color-mix(in srgb, var(--accent) 10%, #ffffff)",
+                padding: "2px 10px",
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                color: "var(--accent-strong)",
+              }}
+            >
+              Teacher Walkthrough
+            </span>
+            <h2 className="mt-3 text-3xl font-semibold" style={{ color: "var(--accent-strong)" }}>
+              Take Tour
+            </h2>
+            <p className="mt-3 text-sm" style={{ color: "color-mix(in srgb, var(--foreground) 82%, #64748b)" }}>
+              You are signed in as teacher. Start from dashboard and continue the guided feature walkthrough.
+            </p>
+            <div className="mt-6 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  void playUiClickTone();
+                  launchTeacherTourFromHome();
+                }}
+                style={{
+                  borderRadius: 8,
+                  border: "1px solid color-mix(in srgb, var(--accent-strong) 42%, transparent)",
+                  background: "var(--accent)",
+                  color: "#ffffff",
+                  padding: "8px 14px",
+                  fontSize: 14,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Take tour
+              </button>
+              <button
+                type="button"
+                onClick={dismissTeacherTourEntry}
+                style={{
+                  borderRadius: 8,
+                  border: "1px solid color-mix(in srgb, var(--accent) 32%, transparent)",
+                  background: "color-mix(in srgb, var(--background-2) 70%, #ffffff)",
+                  color: "var(--accent-strong)",
+                  padding: "8px 12px",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Not now
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  dismissTeacherTourEntry();
+                  router.push("/customer");
+                }}
+                style={{
+                  borderRadius: 8,
+                  border: "1px solid color-mix(in srgb, var(--accent) 35%, transparent)",
+                  background: "color-mix(in srgb, var(--card) 75%, #ffffff)",
+                  color: "var(--accent-strong)",
+                  padding: "8px 12px",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Go to dashboard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <header className="relative px-6 md:px-9 py-6 flex items-center justify-between sticky top-0 z-40 bg-gradient-to-r from-white/40 via-white/20 to-white/40 supports-[backdrop-filter]:bg-white/10 border border-white/20 shadow-[0_12px_36px_rgba(0,0,0,0.12)] backdrop-blur-3xl backdrop-saturate-200">
         <div className="hidden md:flex items-center gap-2 text-sm font-semibold text-slate-200 uppercase tracking-[0.2em] absolute right-6 top-4">
           <span className="inline-flex h-4 w-6 overflow-hidden rounded-sm border border-white/20">

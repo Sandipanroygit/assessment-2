@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { fetchCurriculumModuleById, uploadFileToBucket } from "@/lib/supabaseData";
 import type { CurriculumModule } from "@/types";
 import { logActivity } from "@/lib/activityLogger";
+import { GuidedTour, type GuidedTourStep } from "@/components/GuidedTour";
 import logo from "../../../../../image/logo.jpg";
 import {
   AmbientLight,
@@ -30,6 +31,17 @@ const submissionsBucket = "curriculum-assets";
 const submissionPathPrefix = "activity-submissions";
 const submissionHistoryKey = "activitySubmissionHistory";
 const submissionHideKey = "activitySubmissionHide";
+const STUDENT_ACTIVITY_TOUR_AUTOSTART_KEY = "student_activity_tour_autostart_v1";
+const STUDENT_ACTIVITY_TOUR_CHAIN_KEY = "student_activity_tour_chain_meta_v1";
+const STUDENT_DASHBOARD_TOUR_RESUME_KEY = "student_dashboard_tour_resume_v1";
+const TEACHER_TOUR_PALETTE = {
+  accent: "#2563eb",
+  accentStrong: "#1e3a8a",
+} as const;
+const STUDENT_TOUR_PALETTE = {
+  accent: "#f97316",
+  accentStrong: "#9a3412",
+} as const;
 
 type UploadMeta = { name: string; size: number; type: string };
 type ActivityProgressEntry = {
@@ -139,6 +151,13 @@ const getErrorMessage = (err: unknown) => {
   } catch {
     return String(err ?? "Unknown error");
   }
+};
+const normalizeRoleValue = (value: unknown) => {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (normalized === "admin" || normalized === "teacher" || normalized === "student" || normalized === "customer") {
+    return normalized;
+  }
+  return null;
 };
 
 const sanitizeSegment = (value: string) =>
@@ -414,8 +433,314 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
   const [pdfLogoSrc, setPdfLogoSrc] = useState<string | null>(null);
   const [pdfStatus, setPdfStatus] = useState<string | null>(null);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [activityTourRun, setActivityTourRun] = useState(false);
+  const [activityTourInitialized, setActivityTourInitialized] = useState(false);
+  const [activityTourDisplayOffset, setActivityTourDisplayOffset] = useState(0);
+  const [activityTourDisplayTotalOverride, setActivityTourDisplayTotalOverride] = useState<number | null>(null);
+  const [returnToDashboardAfterTour, setReturnToDashboardAfterTour] = useState(false);
+  const [dashboardResumeStepId, setDashboardResumeStepId] = useState("student-menu-signout");
+  const [activityTourActiveStepId, setActivityTourActiveStepId] = useState<string | null>(null);
+  const activityTourPalette = useMemo(
+    () => (role === "teacher" ? TEACHER_TOUR_PALETTE : STUDENT_TOUR_PALETTE),
+    [role],
+  );
   const isDesignTech = useMemo(() => (module?.subject ?? "").toLowerCase().includes("design"), [module?.subject]);
   const stlAssets = useMemo(() => (module?.assets ?? []).filter((a) => a.type === "stl"), [module]);
+  const activityTourSteps = useMemo<GuidedTourStep[]>(() => {
+    if (!module) return [];
+
+    const steps: GuidedTourStep[] = [
+      {
+        id: "activity-nav",
+        target: '[data-tour="activity-nav"]',
+        title: "Activity Navigation",
+        description: "Use this strip to return to dashboard or jump to the self-assessment section.",
+        placement: "bottom",
+      },
+      {
+        id: "activity-back-link",
+        target: '[data-tour="activity-back-link"]',
+        title: "Back to Activities",
+        description: "Return to your activity list from here at any time.",
+        placement: "left",
+      },
+      {
+        id: "activity-self-assessment-link",
+        target: '[data-tour="activity-self-assessment-link"]',
+        title: "Self Assessment Shortcut",
+        description: "This takes you directly to the quiz section below.",
+        placement: "left",
+      },
+      {
+        id: "activity-overview",
+        target: '[data-tour="activity-overview"]',
+        title: "Activity Overview",
+        description: "This area shows the class, topic, title, and objective of the module.",
+        placement: "bottom",
+      },
+    ];
+
+    steps.push(
+      isDesignTech
+        ? {
+            id: "activity-stl-panel",
+            target: '[data-tour="activity-stl-panel"]',
+            title: "3D Model Workspace",
+            description: "Download and preview STL models uploaded for this activity.",
+            placement: "right",
+          }
+        : {
+            id: "activity-code-panel",
+            target: '[data-tour="activity-code-panel"]',
+            title: "Code Workspace",
+            description: "Run, expand, and review the activity code from this panel.",
+            placement: "right",
+          },
+    );
+
+    steps.push(
+      {
+        id: "activity-sop-panel",
+        target: '[data-tour="activity-sop-panel"]',
+        title: "SOP Viewer",
+        description: "Access instructions, read the SOP, and download it from here.",
+        placement: "left",
+      },
+      {
+        id: "activity-moodai-panel",
+        target: '[data-tour="activity-moodai-button"]',
+        title: "MoodAI Support",
+        description: "Open MoodAI to discuss this specific module and ask follow-up questions.",
+        placement: "left",
+        forcePageTop: false,
+        scrollBlock: "center",
+      },
+      {
+        id: "activity-submission-panel",
+        target: '[data-tour="activity-submission-heading"]',
+        title: "Submission Area",
+        description: "This section is where you upload files and save your submission.",
+        placement: "bottom",
+        forcePageTop: false,
+        scrollBlock: "center",
+        adjacentOnly: true,
+      },
+      ...(isDesignTech
+        ? [
+            {
+              id: "activity-upload-design-doc",
+              target: '[data-tour="activity-upload-design-doc"]',
+              title: "Upload Design Document",
+              description: "Select your PDF/DOC/TXT report file here.",
+              placement: "bottom" as GuidedTourPlacement,
+              forcePageTop: false,
+              scrollBlock: "center" as const,
+              adjacentOnly: true,
+            },
+          ]
+        : [
+            {
+              id: "activity-upload-log-file",
+              target: '[data-tour="activity-upload-log-file"]',
+              title: "Upload Log File",
+              description: "Choose your activity log file first (.log or .txt).",
+              placement: "bottom" as GuidedTourPlacement,
+              padding: 160,
+              forcePageTop: false,
+              scrollBlock: "center" as const,
+              adjacentOnly: true,
+            },
+            {
+              id: "activity-upload-plot-file",
+              target: '[data-tour="activity-upload-plot-file"]',
+              title: "Upload Plot File",
+              description: "Then upload your plot image/PDF file.",
+              placement: "bottom" as GuidedTourPlacement,
+              padding: 160,
+              forcePageTop: false,
+              scrollBlock: "center" as const,
+              adjacentOnly: true,
+            },
+          ]),
+      {
+        id: "activity-save-button",
+        target: '[data-tour="activity-save-button"]',
+        title: "Save Submission",
+        description: "After selecting required files, click here to save and start report processing.",
+        placement: "bottom",
+        padding: 300,
+        forcePageTop: false,
+        scrollBlock: "center",
+        adjacentOnly: true,
+      },
+      {
+        id: "activity-submissions-list",
+        target: '[data-tour="activity-submissions-list-heading"]',
+        title: "Saved Submissions",
+        description: "Review, switch, or delete previous submissions in this list.",
+        placement: "bottom",
+        padding: 360,
+        forcePageTop: false,
+        scrollBlock: "center",
+        adjacentOnly: true,
+      },
+      {
+        id: "activity-report-panel",
+        target: '[data-tour="activity-report-heading"]',
+        title: "Pressure vs Altitude Analysis",
+        description: "Review the Pressure vs Altitude overlay and AI metrics, then download the report from here.",
+        placement: "bottom",
+        forcePageTop: false,
+        scrollBlock: "center",
+        adjacentOnly: true,
+      },
+      {
+        id: "activity-assessment-panel",
+        target: '[data-tour="activity-assessment-heading"]',
+        title: "Quiz Assessment",
+        description: "Generate practice MCQs and test your understanding here.",
+        placement: "bottom",
+        padding: 220,
+        forcePageTop: false,
+        scrollBlock: "center",
+        adjacentOnly: true,
+      },
+    );
+
+    return steps;
+  }, [isDesignTech, module]);
+
+  const activityTourCurrentStepIndex = useMemo(() => {
+    if (!activityTourActiveStepId) return 0;
+    const resolvedIndex = activityTourSteps.findIndex((tourStep) => tourStep.id === activityTourActiveStepId);
+    return resolvedIndex >= 0 ? resolvedIndex : 0;
+  }, [activityTourActiveStepId, activityTourSteps]);
+
+  const activityTourDisplayTotal = useMemo(
+    () =>
+      activityTourDisplayTotalOverride ??
+      (activityTourDisplayOffset > 0
+        ? activityTourDisplayOffset + activityTourSteps.length + (returnToDashboardAfterTour ? 1 : 0)
+        : undefined),
+    [activityTourDisplayOffset, activityTourDisplayTotalOverride, activityTourSteps.length, returnToDashboardAfterTour],
+  );
+
+  const closeActivityTour = useCallback((completed: boolean) => {
+    setActivityTourRun(false);
+    setActivityTourActiveStepId(null);
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem(STUDENT_ACTIVITY_TOUR_AUTOSTART_KEY);
+    }
+    if (returnToDashboardAfterTour && completed) {
+      if (typeof window !== "undefined") {
+        const displayTotal =
+          activityTourDisplayTotalOverride ??
+          (activityTourDisplayOffset > 0
+            ? activityTourDisplayOffset + activityTourSteps.length + 1
+            : undefined);
+        window.localStorage.setItem(
+          STUDENT_DASHBOARD_TOUR_RESUME_KEY,
+          JSON.stringify({
+            stepId: dashboardResumeStepId,
+            displayOffset: activityTourDisplayOffset + activityTourSteps.length,
+            displayTotal,
+          }),
+        );
+        window.localStorage.removeItem(STUDENT_ACTIVITY_TOUR_CHAIN_KEY);
+      }
+      setReturnToDashboardAfterTour(false);
+      setDashboardResumeStepId("student-menu-signout");
+      setActivityTourDisplayOffset(0);
+      setActivityTourDisplayTotalOverride(null);
+      router.push("/customer");
+      return;
+    }
+    setReturnToDashboardAfterTour(false);
+    setDashboardResumeStepId("student-menu-signout");
+    setActivityTourDisplayOffset(0);
+    setActivityTourDisplayTotalOverride(null);
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(STUDENT_ACTIVITY_TOUR_CHAIN_KEY);
+    }
+  }, [
+    activityTourDisplayOffset,
+    activityTourDisplayTotalOverride,
+    activityTourSteps.length,
+    dashboardResumeStepId,
+    returnToDashboardAfterTour,
+    router,
+  ]);
+
+  const handleActivityTourStepChange = useCallback(
+    (nextStepIndex: number) => {
+      if (nextStepIndex < 0) return;
+      if (nextStepIndex >= activityTourSteps.length) {
+        closeActivityTour(true);
+        return;
+      }
+      const nextStepId = activityTourSteps[nextStepIndex]?.id;
+      if (!nextStepId) {
+        closeActivityTour(true);
+        return;
+      }
+      setActivityTourActiveStepId(nextStepId);
+    },
+    [activityTourSteps, closeActivityTour],
+  );
+
+  useEffect(() => {
+    if (!activityTourRun) return;
+    if (activityTourSteps.length === 0) {
+      closeActivityTour(false);
+      return;
+    }
+    const activeStepExists =
+      !!activityTourActiveStepId && activityTourSteps.some((tourStep) => tourStep.id === activityTourActiveStepId);
+    if (!activeStepExists) {
+      setActivityTourActiveStepId(activityTourSteps[0]?.id ?? null);
+    }
+  }, [activityTourActiveStepId, activityTourRun, activityTourSteps, closeActivityTour]);
+
+  useEffect(() => {
+    if (activityTourInitialized || !authChecked || !isAuthenticated || !module) return;
+    if (typeof window === "undefined") return;
+
+    const autoStart = window.sessionStorage.getItem(STUDENT_ACTIVITY_TOUR_AUTOSTART_KEY) === "1";
+    if (autoStart) {
+      window.sessionStorage.removeItem(STUDENT_ACTIVITY_TOUR_AUTOSTART_KEY);
+      const rawMeta = window.localStorage.getItem(STUDENT_ACTIVITY_TOUR_CHAIN_KEY);
+      if (rawMeta) {
+        try {
+          const meta = JSON.parse(rawMeta) as {
+            offset?: unknown;
+            returnToDashboard?: unknown;
+            resumeStepId?: unknown;
+            total?: unknown;
+          };
+          if (typeof meta.offset === "number" && Number.isFinite(meta.offset) && meta.offset > 0) {
+            setActivityTourDisplayOffset(meta.offset);
+          }
+          setReturnToDashboardAfterTour(meta.returnToDashboard === true);
+          if (typeof meta.resumeStepId === "string" && meta.resumeStepId.trim().length > 0) {
+            setDashboardResumeStepId(meta.resumeStepId);
+          }
+          if (typeof meta.total === "number" && Number.isFinite(meta.total) && meta.total > 0) {
+            setActivityTourDisplayTotalOverride(meta.total);
+          } else {
+            setActivityTourDisplayTotalOverride(null);
+          }
+        } catch {
+          setActivityTourDisplayOffset(0);
+          setActivityTourDisplayTotalOverride(null);
+          setReturnToDashboardAfterTour(false);
+          setDashboardResumeStepId("student-menu-signout");
+        }
+      }
+      setActivityTourActiveStepId(activityTourSteps[0]?.id ?? null);
+      setActivityTourRun(true);
+    }
+    setActivityTourInitialized(true);
+  }, [activityTourInitialized, activityTourSteps, authChecked, isAuthenticated, module]);
 
   const StlPreview = ({ url, name }: { url: string; name: string }) => {
     const containerRef = useRef<HTMLDivElement | null>(null);
@@ -942,21 +1267,30 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
           return;
         }
 
-        if (role === "teacher" && sessionToken) {
-          const res = await fetch("/api/teacher/modules", {
-            headers: { Authorization: `Bearer ${sessionToken}` },
-          });
-          const body = await res.json().catch(() => ({}));
-          if (res.ok && Array.isArray(body.modules)) {
-            const found = (body.modules as CurriculumModule[]).find((m) => m.id === id);
-            if (found) {
-              const normalized = {
-                ...found,
-                assets: ensureAssets(found),
-              };
-              setModule(normalized);
-              setStatus(null);
-              return;
+        if (role === "teacher") {
+          const liveToken =
+            sessionToken ??
+            (await supabase.auth.getSession()).data.session?.access_token ??
+            null;
+          if (liveToken && liveToken !== sessionToken) {
+            setSessionToken(liveToken);
+          }
+          if (liveToken) {
+            const res = await fetch("/api/teacher/modules", {
+              headers: { Authorization: `Bearer ${liveToken}` },
+            });
+            const body = await res.json().catch(() => ({}));
+            if (res.ok && Array.isArray(body.modules)) {
+              const found = (body.modules as CurriculumModule[]).find((m) => m.id === id);
+              if (found) {
+                const normalized = {
+                  ...found,
+                  assets: ensureAssets(found),
+                };
+                setModule(normalized);
+                setStatus(null);
+                return;
+              }
             }
           }
         }
@@ -1006,8 +1340,18 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
         setUserId(user.id);
         const profile = await ensureProfile(user);
         setStudentName(profile?.full_name ?? user.user_metadata.full_name ?? user.email ?? "Student");
-        const derivedRole = profile?.role ?? (user.user_metadata?.role as string | undefined) ?? null;
+        const roleFromMeta = normalizeRoleValue(user.user_metadata?.role);
+        const roleFromProfile = normalizeRoleValue(profile?.role);
+        const derivedRole = roleFromMeta ?? roleFromProfile ?? "customer";
         setRole(derivedRole);
+        if (!profile || roleFromProfile !== derivedRole) {
+          await supabase.from("profiles").upsert({
+            id: user.id,
+            full_name: user.user_metadata?.full_name || user.email || "User",
+            role: derivedRole,
+            grade: profile?.grade ?? undefined,
+          });
+        }
         setSessionToken(sessionData.session?.access_token ?? null);
       } catch {
         setIsAuthenticated(false);
@@ -1661,7 +2005,21 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
 
   return (
     <main className="section-padding space-y-8">
-      <div className="glass-panel rounded-2xl border border-white/10 p-4 flex flex-wrap items-center justify-between gap-3">
+      <GuidedTour
+        run={activityTourRun}
+        stepIndex={activityTourCurrentStepIndex}
+        steps={activityTourSteps}
+        onStepIndexChange={handleActivityTourStepChange}
+        onClose={closeActivityTour}
+        displayStepOffset={activityTourDisplayOffset > 0 ? activityTourDisplayOffset : undefined}
+        displayStepTotal={activityTourDisplayTotal}
+        palette={activityTourPalette}
+      />
+
+      <div
+        className="glass-panel rounded-2xl border border-white/10 p-4 flex flex-wrap items-center justify-between gap-3"
+        data-tour="activity-nav"
+      >
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-accent-strong">Navigation</p>
           <h2 className="text-lg font-semibold text-white">Activity workspace</h2>
@@ -1670,11 +2028,17 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
         <div className="flex gap-2">
           <Link
             href="/customer"
+            data-tour="activity-back-link"
             className="px-3 py-2 rounded-xl border border-white/10 text-sm text-slate-200 hover:border-accent-strong"
+            style={{ outline: "2px solid var(--accent-strong)", outlineOffset: "2px" }}
           >
             Back to activities
           </Link>
-          <a href="#assessment" className="px-3 py-2 rounded-xl bg-accent text-true-white text-sm font-semibold shadow-glow">
+          <a
+            href="#assessment"
+            data-tour="activity-self-assessment-link"
+            className="px-3 py-2 rounded-xl bg-accent text-true-white text-sm font-semibold shadow-glow"
+          >
             Self Assessment
           </a>
         </div>
@@ -1684,7 +2048,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
 
       {module && (
         <section className="space-y-4">
-          <div className="space-y-2">
+          <div className="space-y-2" data-tour="activity-overview">
             <p className="text-xs uppercase tracking-[0.2em] font-semibold text-accent-strong">
               Grade {module.grade} • <span className="text-emerald-800">{formatSubject(module.subject)}</span>
             </p>
@@ -1694,7 +2058,10 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
 
           <div className="grid gap-4 md:grid-cols-2">
             {isDesignTech ? (
-              <div className="glass-panel rounded-2xl p-4 border border-white/10 h-full flex flex-col space-y-3">
+              <div
+                className="glass-panel rounded-2xl p-4 border border-white/10 h-full flex flex-col space-y-3"
+                data-tour="activity-stl-panel"
+              >
                 <div className="flex items-start justify-between mb-1">
                   <div>
                     <h3 className="text-lg font-semibold text-white">3D Models</h3>
@@ -1734,7 +2101,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
                 )}
               </div>
             ) : (
-              <div className="glass-panel rounded-2xl p-4 border border-white/10 h-full flex flex-col">
+              <div className="glass-panel rounded-2xl p-4 border border-white/10 h-full flex flex-col" data-tour="activity-code-panel">
                 <div className="flex items-start justify-between mb-2">
                   <div>
                     <h3 className="text-lg font-semibold text-white">Code</h3>
@@ -1776,7 +2143,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
               </div>
             )}
 
-            <div className="glass-panel rounded-2xl p-4 border border-white/10 h-full flex flex-col">
+            <div className="glass-panel rounded-2xl p-4 border border-white/10 h-full flex flex-col" data-tour="activity-sop-panel">
               <div className="flex items-start justify-between mb-2">
                 <div>
                   <h3 className="text-lg font-semibold text-white">SOP</h3>
@@ -1821,7 +2188,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
             </div>
           </div>
 
-        <div className="glass-panel rounded-2xl p-4 border border-white/10 space-y-3">
+        <div className="glass-panel rounded-2xl p-4 border border-white/10 space-y-3" data-tour="activity-moodai-panel">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.2em] text-accent-strong">MoodAI</p>
@@ -1832,6 +2199,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
             </div>
             <Link
               href={module ? `/moodai?module=${module.id}` : "/moodai"}
+              data-tour="activity-moodai-button"
               className="px-4 py-2 rounded-xl bg-accent text-true-white text-sm font-semibold shadow-glow inline-flex items-center justify-center"
             >
               Go to MoodAI
@@ -1839,11 +2207,11 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
           </div>
         </div>
 
-        <div className="glass-panel rounded-2xl p-4 border border-white/10 space-y-3">
+        <div className="glass-panel rounded-2xl p-4 border border-white/10 space-y-3" data-tour="activity-submission-panel">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-[0.2em] text-accent-strong">Submission</p>
-              <h3 className="text-lg font-semibold text-white">
+              <h3 className="text-lg font-semibold text-white" data-tour="activity-submission-heading">
                 {isDesignTech ? "Upload design report" : "Upload log + plots"}
               </h3>
               <p className="text-sm text-slate-400">
@@ -1856,7 +2224,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
 
           {isDesignTech ? (
             <div className="grid md:grid-cols-2 gap-4">
-              <label className="block text-sm text-slate-300 space-y-2">
+              <label className="block text-sm text-slate-300 space-y-2" data-tour="activity-upload-design-doc">
                 Upload design document
                 <input
                   type="file"
@@ -1875,7 +2243,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
             </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2">
-              <label className="block text-sm text-slate-300 space-y-2">
+              <label className="block text-sm text-slate-300 space-y-2" data-tour="activity-upload-log-file">
                 Upload log file
                 <input
                   type="file"
@@ -1895,7 +2263,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
                   <p className="text-xs text-slate-400">Previously uploaded: {storedUploads.logFile.name}</p>
                 )}
               </label>
-              <label className="block text-sm text-slate-300 space-y-2">
+              <label className="block text-sm text-slate-300 space-y-2" data-tour="activity-upload-plot-file">
                 Upload plots
                 <input
                   type="file"
@@ -1922,6 +2290,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
+              data-tour="activity-save-button"
               className="px-4 py-2 rounded-xl bg-accent text-true-white text-sm font-semibold shadow-glow disabled:opacity-50"
               onClick={handleMarkDone}
               disabled={
@@ -1941,10 +2310,10 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
               {submissionsLoading ? "Refreshing..." : "Refresh saved files"}
             </button>
           </div>
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-3 space-y-3">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-3 space-y-3" data-tour="activity-submissions-list">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-accent-strong">Saved submissions</p>
+                  <p className="text-xs uppercase tracking-[0.2em] text-accent-strong" data-tour="activity-submissions-list-heading">Saved submissions</p>
                 </div>
               </div>
               {submissionsLoading ? (
@@ -1966,16 +2335,20 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
                       >
                         <div>
                           <p className="text-sm font-semibold text-white">Submission #{submission.submissionNumber}</p>
-                          <p className="text-xs text-slate-400">
+                          <p className="text-xs text-black">
                             {submission.logName || "Log"} • {submission.plotName || "Plot"} •{" "}
                             {new Date(submission.createdAt).toLocaleString()}
                           </p>
-                          {submission.reportStatus && <p className="text-xs text-slate-400">{submission.reportStatus}</p>}
+                          {submission.reportStatus && <p className="text-xs text-black">{submission.reportStatus}</p>}
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                           <button
                             type="button"
-                            className="px-3 py-1.5 rounded-lg border border-white/15 text-xs text-white disabled:opacity-50"
+                            className={`px-3 py-1.5 rounded-lg border text-xs font-semibold text-true-white disabled:opacity-50 disabled:cursor-not-allowed ${
+                              isSelected
+                                ? "border-emerald-300 bg-emerald-600 hover:bg-emerald-500"
+                                : "border-blue-300 bg-blue-700 hover:bg-blue-600"
+                            }`}
                             onClick={() => setSelectedSubmissionId(submission.id)}
                             disabled={savingUploads}
                           >
@@ -1983,7 +2356,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
                           </button>
                           <button
                             type="button"
-                            className="px-3 py-1.5 rounded-lg border border-red-500/50 text-xs text-red-200 hover:border-red-500 disabled:opacity-50"
+                            className="px-3 py-1.5 rounded-lg border border-rose-300 bg-rose-600 text-xs font-semibold text-true-white hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed"
                             onClick={() => deleteSubmission(submission.id)}
                             disabled={savingUploads}
                           >
@@ -1998,23 +2371,23 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
             </div>
           </div>
 
-          <div className="glass-panel rounded-2xl p-4 border border-white/10 space-y-4">
+          <div className="glass-panel rounded-2xl p-4 border border-white/10 space-y-4" data-tour="activity-report-panel">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.2em] text-accent-strong">AI Report</p>
-                <h3 className="text-lg font-semibold text-white">Student submission analysis</h3>
-                <p className="text-sm text-slate-400">Generated automatically after marking the submission as done.</p>
+                <h3 className="text-lg font-semibold text-white" data-tour="activity-report-heading">Student submission analysis</h3>
               </div>
             </div>
-            {reportStatus && <div className="text-sm text-slate-300">{reportStatus}</div>}
+            {reportStatus && !reportStatus.startsWith("Showing report from submission") && (
+              <div className="text-sm text-slate-300">{reportStatus}</div>
+            )}
             {pdfStatus && <div className="text-sm text-slate-300">{pdfStatus}</div>}
             {report && (
               <div className="space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="text-sm text-slate-300">Student: {studentName}</div>
+                <div className="flex flex-wrap items-center justify-end gap-3">
                   <button
                     type="button"
-                    className="px-3 py-1.5 rounded-lg bg-accent text-true-white text-sm font-semibold shadow-glow disabled:opacity-50"
+                    className="px-5 py-2.5 rounded-xl bg-accent text-true-white text-base font-semibold shadow-glow disabled:opacity-50"
                     onClick={downloadReportPdf}
                     disabled={downloadingPdf || !report}
                   >
@@ -2215,11 +2588,11 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
             )}
           </div>
 
-          <div id="assessment" className="glass-panel rounded-2xl p-4 border border-white/10 space-y-3">
+          <div id="assessment" className="glass-panel rounded-2xl p-4 border border-white/10 space-y-3" data-tour="activity-assessment-panel">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-xs uppercase tracking-[0.2em] text-accent-strong">AI Assessment</p>
-                <h3 className="text-lg font-semibold text-white">Generate practice MCQs</h3>
+                <h3 className="text-lg font-semibold text-white" data-tour="activity-assessment-heading">Generate practice MCQs</h3>
               </div>
               <button
                 type="button"

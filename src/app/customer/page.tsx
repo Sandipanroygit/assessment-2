@@ -12,6 +12,8 @@ import {
   dedupeAndSortModuleNames,
   normalizeVrSubjectKey,
 } from "@/lib/vrModules";
+import { GuidedTour, type GuidedTourStep } from "@/components/GuidedTour";
+import { playUiClickTone } from "@/lib/uiTone";
 
 const normalizeSubject = (subject: string) =>
   subject?.toLowerCase() === "maths" ? "Mathematics" : subject;
@@ -59,6 +61,29 @@ type QueryMessageRow = {
 };
 
 const ANY_OTHER_OPTION = "Any other";
+const TEACHER_TOUR_STORAGE_KEY = "teacher_feature_tour_v2";
+const TEACHER_PROGRESS_TOUR_FORCE_KEY = "teacher_progress_tour_force_once_v2";
+const TEACHER_PROGRESS_TOUR_CHAIN_KEY = "teacher_progress_tour_chain_meta_v2";
+const TEACHER_STUDENTS_TOUR_FORCE_KEY = "teacher_students_tour_force_once_v2";
+const TEACHER_STUDENTS_TOUR_CHAIN_KEY = "teacher_students_tour_chain_meta_v2";
+const TEACHER_DASHBOARD_TOUR_RESUME_KEY = "teacher_dashboard_tour_resume_v2";
+const TEACHER_TOUR_AUTOSTART_KEY = "teacher_dashboard_tour_autostart_v1";
+const TEACHER_PROGRESS_TOUR_STEP_COUNT = 7;
+const TEACHER_STUDENTS_TOUR_STEP_COUNT = 5;
+const STUDENT_TOUR_STORAGE_KEY = "student_feature_tour_v1";
+const STUDENT_ACTIVITY_TOUR_AUTOSTART_KEY = "student_activity_tour_autostart_v1";
+const STUDENT_ACTIVITY_TOUR_CHAIN_KEY = "student_activity_tour_chain_meta_v1";
+const STUDENT_DASHBOARD_TOUR_RESUME_KEY = "student_dashboard_tour_resume_v1";
+const STUDENT_ACTIVITY_TOUR_STEP_COUNT_STANDARD = 14;
+const STUDENT_ACTIVITY_TOUR_STEP_COUNT_DESIGN = 13;
+const TEACHER_TOUR_PALETTE = {
+  accent: "#2563eb",
+  accentStrong: "#1e3a8a",
+} as const;
+const STUDENT_TOUR_PALETTE = {
+  accent: "#f97316",
+  accentStrong: "#9a3412",
+} as const;
 
 export default function CustomerPage() {
   const router = useRouter();
@@ -101,6 +126,7 @@ export default function CustomerPage() {
   const [availableTeachers, setAvailableTeachers] = useState<TeacherOption[]>([]);
   const [availableTeachersStatus, setAvailableTeachersStatus] = useState<string | null>(null);
   const [selectedTeacherId, setSelectedTeacherId] = useState("");
+  const [teacherPickerOpen, setTeacherPickerOpen] = useState(false);
   const [studentDoubtText, setStudentDoubtText] = useState("");
   const [studentDoubtStatus, setStudentDoubtStatus] = useState<string | null>(null);
   const [sendingStudentDoubt, setSendingStudentDoubt] = useState(false);
@@ -116,6 +142,30 @@ export default function CustomerPage() {
   const [queryMessagesStatus, setQueryMessagesStatus] = useState<string | null>(null);
   const [sendingMessage, setSendingMessage] = useState(false);
   const [teacherReplyDrafts, setTeacherReplyDrafts] = useState<Record<string, string>>({});
+  const [teacherTourRun, setTeacherTourRun] = useState(false);
+  const [teacherTourInitialized, setTeacherTourInitialized] = useState(false);
+  const [teacherTourDisplayOffset, setTeacherTourDisplayOffset] = useState(0);
+  const [teacherTourDisplayTotalOverride, setTeacherTourDisplayTotalOverride] = useState<number | null>(null);
+  const [teacherTourActiveStepId, setTeacherTourActiveStepId] = useState<string | null>(null);
+  const [teacherTourLockedSteps, setTeacherTourLockedSteps] = useState<GuidedTourStep[] | null>(null);
+  const [teacherTourPromptOpen, setTeacherTourPromptOpen] = useState(false);
+  const [teacherTourResumeMeta, setTeacherTourResumeMeta] = useState<{
+    stepId: string;
+    completedCount: number;
+    displayTotal: number | null;
+  } | null>(null);
+  const [studentTourRun, setStudentTourRun] = useState(false);
+  const [studentTourInitialized, setStudentTourInitialized] = useState(false);
+  const [studentTourDisplayOffset, setStudentTourDisplayOffset] = useState(0);
+  const [studentTourDisplayTotalOverride, setStudentTourDisplayTotalOverride] = useState<number | null>(null);
+  const [studentTourActiveStepId, setStudentTourActiveStepId] = useState<string | null>(null);
+  const [studentTourLockedSteps, setStudentTourLockedSteps] = useState<GuidedTourStep[] | null>(null);
+  const [studentTourPromptOpen, setStudentTourPromptOpen] = useState(false);
+  const [studentTourResumeMeta, setStudentTourResumeMeta] = useState<{
+    stepId: string;
+    completedCount: number;
+    displayTotal: number | null;
+  } | null>(null);
   const unreadTeacherQueries = useMemo(
     () => teacherQueries.filter((query) => query.status === "new").length,
     [teacherQueries],
@@ -125,15 +175,29 @@ export default function CustomerPage() {
     [unreadCount, unreadTeacherQueries],
   );
   const chatStatusMessage = queryMessagesStatus ?? studentDoubtStatus;
-  const filteredStudentQueries = useMemo(() => studentQueries, [studentQueries]);
+  const filteredStudentQueries = useMemo(
+    () =>
+      selectedTeacherId
+        ? studentQueries.filter((query) => query.teacher_id === selectedTeacherId)
+        : studentQueries,
+    [selectedTeacherId, studentQueries],
+  );
   const activeStudentQuery = useMemo(
-    () => studentQueries.find((query) => query.id === activeStudentQueryId) ?? null,
-    [activeStudentQueryId, studentQueries],
+    () => filteredStudentQueries.find((query) => query.id === activeStudentQueryId) ?? null,
+    [activeStudentQueryId, filteredStudentQueries],
   );
   const activeTeacherQuery = useMemo(
     () => teacherQueries.find((query) => query.id === activeTeacherQueryId) ?? null,
     [activeTeacherQueryId, teacherQueries],
   );
+  const selectedTeacher = useMemo(
+    () => availableTeachers.find((teacher) => teacher.id === selectedTeacherId) ?? null,
+    [availableTeachers, selectedTeacherId],
+  );
+  const selectedTeacherLabel = useMemo(() => {
+    if (!selectedTeacher) return "Select teacher";
+    return `${selectedTeacher.full_name}${selectedTeacher.subject ? ` (${selectedTeacher.subject})` : ""}`;
+  }, [selectedTeacher]);
   const roleDisplayLabel = useMemo(() => {
     const normalized = (role ?? "").trim().toLowerCase();
     if (normalized === "admin") return "Admin";
@@ -347,19 +411,34 @@ export default function CustomerPage() {
       try {
         setDataStatus("Loading activities...");
         let rows: CurriculumModule[] = [];
-        if (role === "teacher" && sessionToken) {
-          const res = await fetch("/api/teacher/modules", {
-            headers: { Authorization: `Bearer ${sessionToken}` },
-          });
-          const body = await res.json().catch(() => ({}));
-          if (!res.ok) {
-            throw new Error(body?.error || "Unable to load modules");
+        if (role === "teacher") {
+          const liveToken =
+            sessionToken ??
+            (await supabase.auth.getSession()).data.session?.access_token ??
+            null;
+          if (liveToken && liveToken !== sessionToken) {
+            setSessionToken(liveToken);
           }
-          rows = (body.modules ?? []) as CurriculumModule[];
+
+          if (liveToken) {
+            const res = await fetch("/api/teacher/modules", {
+              headers: { Authorization: `Bearer ${liveToken}` },
+            });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              throw new Error(body?.error || "Unable to load modules");
+            }
+            rows = (body.modules ?? []) as CurriculumModule[];
+          } else {
+            rows = await fetchCurriculumModules({
+              includeUnpublished: true,
+              subject: teacherSubject ?? undefined,
+            });
+          }
         } else {
           rows = await fetchCurriculumModules({
             includeUnpublished: false,
-            subject: role === "teacher" && teacherSubject ? teacherSubject : undefined,
+            subject: undefined,
           });
         }
         if (cancelled) return;
@@ -464,7 +543,7 @@ export default function CustomerPage() {
       setAvailableTeachersStatus(teachers.length ? null : "No teachers available right now.");
       setSelectedTeacherId((prev) => {
         if (prev && teachers.some((teacher) => teacher.id === prev)) return prev;
-        return teachers[0]?.id ?? "";
+        return "";
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to load teachers";
@@ -500,7 +579,7 @@ export default function CustomerPage() {
   }, [sessionToken]);
 
   const loadStudentQueries = useCallback(
-    async () => {
+    async (teacherIdOverride?: string) => {
       if (!sessionToken) return;
       try {
         setStudentQueriesStatus("Loading chats...");
@@ -519,9 +598,14 @@ export default function CustomerPage() {
         const queries = Array.isArray(body.queries) ? body.queries : [];
         setStudentQueries(queries);
         setStudentQueriesStatus(null);
+        const effectiveTeacherId = teacherIdOverride ?? selectedTeacherId;
         setActiveStudentQueryId((prev) => {
-          if (prev && queries.some((query) => query.id === prev)) return prev;
-          return queries[0]?.id ?? null;
+          if (!effectiveTeacherId) return null;
+          const scopedQueries = effectiveTeacherId
+            ? queries.filter((query) => query.teacher_id === effectiveTeacherId)
+            : queries;
+          if (prev && scopedQueries.some((query) => query.id === prev)) return prev;
+          return scopedQueries[0]?.id ?? null;
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unable to load chats";
@@ -529,7 +613,7 @@ export default function CustomerPage() {
         setStudentQueriesStatus(message);
       }
     },
-    [sessionToken],
+    [selectedTeacherId, sessionToken],
   );
 
   const loadQueryMessages = useCallback(
@@ -669,6 +753,17 @@ export default function CustomerPage() {
     [loadQueryMessages, loadStudentQueries, loadTeacherQueries, role, sessionToken],
   );
 
+  const handleStudentSendMessage = useCallback(async () => {
+    if (activeStudentQueryId) {
+      const sent = await sendQueryMessage(activeStudentQueryId, studentDoubtText);
+      if (sent) {
+        setStudentDoubtText("");
+      }
+      return;
+    }
+    await submitStudentQuery();
+  }, [activeStudentQueryId, sendQueryMessage, studentDoubtText, submitStudentQuery]);
+
   const markTeacherQueryRead = useCallback(
     async (id: string) => {
       if (!sessionToken) return;
@@ -756,6 +851,23 @@ export default function CustomerPage() {
     });
   }, [gradeFilter, subjectFilter, modules, role, userGrade]);
 
+  const studentTourTargetModuleId = useMemo(() => {
+    if (filteredModules.length === 0) return null;
+    const normalized = (module: CurriculumModule) =>
+      `${module.title} ${module.module} ${module.description}`.toLowerCase();
+
+    const pressureVsAltitudeMatch = filteredModules.find((module) => {
+      const text = normalized(module);
+      return (
+        text.includes("pressure vs altitude") ||
+        text.includes("pressure and altitude") ||
+        (text.includes("pressure") && text.includes("altitude"))
+      );
+    });
+
+    return (pressureVsAltitudeMatch ?? filteredModules[0])?.id ?? null;
+  }, [filteredModules]);
+
   const vrSubjectKey = useMemo(() => normalizeVrSubjectKey(teacherSubject ?? subjectFilter), [subjectFilter, teacherSubject]);
 
   useEffect(() => {
@@ -805,7 +917,7 @@ export default function CustomerPage() {
   const requestMinDate = useMemo(() => {
     const today = new Date();
     const hasAnyOther = requestItems.includes(ANY_OTHER_OPTION);
-    const offsetDays = requestMode === "vr" ? (hasAnyOther ? 25 : 3) : 8; // extend lead time when "Any other" is selected
+    const offsetDays = requestMode === "vr" ? (hasAnyOther ? 14 : 3) : 8; // extend lead time when "Any other" is selected
     const minDate = new Date(today);
     minDate.setDate(today.getDate() + offsetDays);
     return minDate.toISOString().split("T")[0];
@@ -815,7 +927,7 @@ export default function CustomerPage() {
   const dateHelpText =
     requestMode === "vr"
       ? anyOtherSelected
-        ? "Select a date at least 25 days from today (custom VR requests need more lead time)."
+        ? "Select a date at least 14 days from today (custom VR requests need more lead time)."
         : "Select a date at least 3 days from today (next 2 days are blocked)."
       : "Select a date at least 8 days from today; require 7 days for R&D to draft and test.";
 
@@ -940,7 +1052,7 @@ export default function CustomerPage() {
     if (selectedDate < minSelectableDate) {
       setRequestStatus(
         requestMode === "vr" && anyOtherSelected
-          ? "For 'Any other' requests, pick a date at least 25 days from today."
+          ? "For 'Any other' requests, pick a date at least 14 days from today."
           : "Date is earlier than the allowed window.",
       );
       return;
@@ -981,8 +1093,1029 @@ export default function CustomerPage() {
 
   const formatSubject = (subject: string) => normalizeSubject(subject);
 
+  const teacherTourLiveBadgeModuleId = useMemo(() => {
+    const firstModule = filteredModules[0];
+    if (!firstModule?.published) return null;
+    return firstModule.id;
+  }, [filteredModules]);
+
+  const teacherTourComputedSteps = useMemo<GuidedTourStep[]>(() => {
+    if (role !== "teacher") return [];
+
+    const steps: GuidedTourStep[] = [
+      {
+        id: "header",
+        target: '[data-tour="teacher-header"]',
+        title: "Teacher Dashboard Header",
+        description: "Use this header as your daily control surface for alerts, menu actions, and quick orientation.",
+        placement: "bottom",
+        forcePageTop: true,
+      },
+      {
+        id: "notification-bell",
+        target: '[data-tour="teacher-notification-bell"]',
+        title: "Notification Bell",
+        description: "Open this to check unread updates and student query alerts before and after class.",
+        placement: "left",
+        forcePageTop: true,
+      },
+      {
+        id: "notification-panel",
+        target: '[data-tour="teacher-notification-panel"]',
+        title: "Notification Drawer",
+        description: "This drawer aggregates notifications so no student-facing update is missed.",
+        placement: "left",
+        forcePageTop: true,
+      },
+      {
+        id: "notification-query-shortcut",
+        target: '[data-tour="teacher-notification-query-shortcut"]',
+        title: "Student Query Shortcut",
+        description: "Jump directly into the query inbox from here for fast learner support.",
+        placement: "left",
+        forcePageTop: true,
+      },
+      {
+        id: "menu-trigger",
+        target: '[data-tour="teacher-menu-trigger"]',
+        title: "Teacher Menu",
+        description: "Open the menu to access content requests, student progress, student queries, and student registry.",
+        placement: "left",
+        forcePageTop: true,
+        lockTooltipPositionToPrev: true,
+      },
+      {
+        id: "menu-panel",
+        target: '[data-tour="teacher-menu-panel"]',
+        title: "Teacher Action Panel",
+        description: "All teacher workflows are centralized in this panel.",
+        placement: "left",
+        forcePageTop: true,
+      },
+      {
+        id: "menu-raise-request",
+        target: '[data-tour="teacher-menu-raise-request"]',
+        title: "Raise a Content Request",
+        description: "Request new VR simulations or drone activities from admin.",
+        placement: "left",
+        forcePageTop: true,
+      },
+      {
+        id: "request-modal",
+        target: '[data-tour="teacher-request-modal"]',
+        title: "Request Content Modal",
+        description: "Configure what you need, by when you need it, and what context admin should consider.",
+        placement: "top",
+      },
+      {
+        id: "request-mode",
+        target: '[data-tour="teacher-request-mode"]',
+        title: "Request Mode Selection",
+        description: "Switch between VR simulation requests and drone activity requests based on your lesson plan.",
+        placement: "top",
+      },
+      {
+        id: "request-date",
+        target: '[data-tour="teacher-request-date"]',
+        title: "Needed-By Date",
+        description: "Date guardrails enforce enough lead time for content drafting and QA.",
+        placement: "top",
+      },
+      {
+        id: "request-send",
+        target: '[data-tour="teacher-request-send"]',
+        title: "Send to Admin",
+        description: "Submit finalized request details to the admin control room.",
+        placement: "top",
+      },
+      {
+        id: "request-any-other",
+        target: '[data-tour="teacher-request-any-other"]',
+        title: "Missing VR Simulation? Use Any other",
+        description: "If the simulation you need is not listed, select Any other in the VR simulations section.",
+        placement: "left",
+        forcePageTop: true,
+      },
+      {
+        id: "request-notes",
+        target: '[data-tour="teacher-request-notes"]',
+        title: "Describe Requirement in Extra Notes",
+        description: "Clearly describe the exact VR simulation you want, learning outcome, and any classroom constraints.",
+        placement: "top",
+      },
+      {
+        id: "request-date-any-other",
+        target: '[data-tour="teacher-request-date"]',
+        title: "Choose Date With 14-Day Lead Time",
+        description: "For Any other custom VR requests, pick a needed-by date at least 14 days from today.",
+        placement: "top",
+      },
+      {
+        id: "request-send-any-other",
+        target: '[data-tour="teacher-request-send"]',
+        title: "Send Custom Request to Admin",
+        description: "After selecting Any other, adding notes, and choosing a 14+ day date, click Send to Admin.",
+        placement: "left",
+        scrollBlock: "center",
+        lockTooltipPositionToPrev: true,
+      },
+      {
+        id: "filters",
+        target: '[data-tour="teacher-filters"]',
+        title: "Filter Activity List",
+        description: "Refine modules by grade and subject to focus on the right classroom scope.",
+        placement: "bottom",
+      },
+    ];
+
+    if (filteredModules.length > 0) {
+      steps.push(
+        {
+          id: "activity-card",
+          target: '[data-tour="teacher-activity-card"]',
+          title: "Activity Cards",
+          description: "Each card shows a module's classroom state and provides direct access to activity assets.",
+          placement: "top",
+        },
+        {
+          id: "publish-status",
+          target: '[data-tour="teacher-publish-status"]',
+          title: "Published vs Hidden State",
+          description: "Published modules are visible to students; hidden modules stay internal until teacher practice/try and publish.",
+          placement: "top",
+        },
+        {
+          id: "publish-toggle",
+          target: '[data-tour="teacher-publish-toggle"]',
+          title: "Publish/Unpublish Control",
+          description: "Use this toggle to go live with a module or withdraw it for updates.",
+          placement: "top",
+        },
+      );
+      if (teacherTourLiveBadgeModuleId) {
+        steps.push({
+          id: "live-badge",
+          target: '[data-tour="teacher-live-badge"]',
+          title: "Live Activity Indicator",
+          description: "The live badge confirms modules currently published to learners.",
+          placement: "top",
+        });
+      }
+      steps.push({
+        id: "activity-launch",
+        target: '[data-tour="teacher-activity-launch"]',
+        title: "Open Activity and Code",
+        description: "Launch the module detail page to run classroom activity instructions and code assets.",
+        placement: "top",
+      });
+    }
+
+    steps.push(
+      {
+        id: "menu-progress",
+        target: '[data-tour="teacher-menu-progress"]',
+        title: "Student Progress Page",
+        description: "Click Next from this step to open Student Progress and continue the walkthrough there.",
+        placement: "left",
+        forcePageTop: true,
+      },
+      {
+        id: "menu-queries",
+        target: '[data-tour="teacher-menu-student-queries"]',
+        title: "Student Query Inbox",
+        description: "Open direct student conversations and resolve doubts quickly.",
+        placement: "left",
+        forcePageTop: true,
+      },
+      {
+        id: "inbox-panel",
+        target: '[data-tour="teacher-inbox-modal"]',
+        title: "Teacher Inbox Workspace",
+        description: "Manage student conversations from a focused split-pane inbox.",
+        placement: "top",
+      },
+      {
+        id: "inbox-refresh",
+        target: '[data-tour="teacher-inbox-refresh"]',
+        title: "Refresh Conversations",
+        description: "Use refresh to pull the latest query states and incoming student messages.",
+        placement: "bottom",
+      },
+      {
+        id: "inbox-list",
+        target: '[data-tour="teacher-inbox-list"]',
+        title: "Student Query List",
+        description: "Each row is a student conversation. New queries appear here first for action.",
+        placement: "right",
+      },
+      {
+        id: "inbox-conversation",
+        target: '[data-tour="teacher-inbox-conversation"]',
+        title: "Conversation Workspace",
+        description: "Open a query to view thread history and teaching context before replying.",
+        placement: "left",
+      },
+      {
+        id: "inbox-reply",
+        target: '[data-tour="teacher-inbox-reply"]',
+        title: "Reply Box",
+        description: "Type and send your response here to resolve student doubts quickly.",
+        placement: "top",
+      },
+      {
+        id: "menu-students",
+        target: '[data-tour="teacher-menu-students"]',
+        title: "Registered Students Page",
+        description: "Click Next from this step to open Registered Students and continue the walkthrough there.",
+        placement: "left",
+        forcePageTop: true,
+      },
+      {
+        id: "menu-signout",
+        target: '[data-tour="teacher-menu-signout"]',
+        title: "Sign Out Safely",
+        description: "Use this to securely end your teacher session after completing your workflow.",
+        placement: "left",
+        forcePageTop: true,
+      },
+    );
+
+    return steps;
+  }, [filteredModules, role, teacherTourLiveBadgeModuleId]);
+
+  const teacherTourSteps = teacherTourLockedSteps ?? teacherTourComputedSteps;
+
+  const startTeacherTour = useCallback(() => {
+    setNotificationsOpen(false);
+    setTeacherMenuOpen(false);
+    setRequestOpen(false);
+    setTeacherQueriesOpen(false);
+    setTeacherTourPromptOpen(false);
+    setTeacherTourLockedSteps(teacherTourComputedSteps);
+    setTeacherTourActiveStepId(teacherTourComputedSteps[0]?.id ?? null);
+    setTeacherTourDisplayOffset(0);
+    setTeacherTourDisplayTotalOverride(null);
+    setTeacherTourResumeMeta(null);
+    setTeacherTourRun(true);
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(TEACHER_TOUR_STORAGE_KEY);
+      window.localStorage.removeItem(TEACHER_DASHBOARD_TOUR_RESUME_KEY);
+      window.localStorage.removeItem(TEACHER_PROGRESS_TOUR_FORCE_KEY);
+      window.localStorage.removeItem(TEACHER_PROGRESS_TOUR_CHAIN_KEY);
+      window.localStorage.removeItem(TEACHER_STUDENTS_TOUR_FORCE_KEY);
+      window.localStorage.removeItem(TEACHER_STUDENTS_TOUR_CHAIN_KEY);
+    }
+  }, [teacherTourComputedSteps]);
+
+  const closeTeacherTour = useCallback((completed: boolean) => {
+    setTeacherTourRun(false);
+    setTeacherTourActiveStepId(null);
+    setTeacherTourLockedSteps(null);
+    setTeacherTourPromptOpen(false);
+    setTeacherTourDisplayOffset(0);
+    setTeacherTourDisplayTotalOverride(null);
+    setTeacherTourResumeMeta(null);
+    setNotificationsOpen(false);
+    setTeacherMenuOpen(false);
+    setRequestOpen(false);
+    setTeacherQueriesOpen(false);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(TEACHER_TOUR_STORAGE_KEY, completed ? "done" : "skipped");
+      window.localStorage.removeItem(TEACHER_DASHBOARD_TOUR_RESUME_KEY);
+      window.localStorage.removeItem(TEACHER_PROGRESS_TOUR_FORCE_KEY);
+      window.localStorage.removeItem(TEACHER_PROGRESS_TOUR_CHAIN_KEY);
+      window.localStorage.removeItem(TEACHER_STUDENTS_TOUR_FORCE_KEY);
+      window.localStorage.removeItem(TEACHER_STUDENTS_TOUR_CHAIN_KEY);
+    }
+  }, []);
+
+  const teacherTourDisplayTotal = useMemo(
+    () =>
+      teacherTourDisplayTotalOverride ??
+      (teacherTourSteps.length + TEACHER_PROGRESS_TOUR_STEP_COUNT + TEACHER_STUDENTS_TOUR_STEP_COUNT),
+    [teacherTourDisplayTotalOverride, teacherTourSteps.length],
+  );
+
+  const teacherTourCurrentStepIndex = useMemo(() => {
+    if (!teacherTourActiveStepId) return 0;
+    const resolvedIndex = teacherTourSteps.findIndex((tourStep) => tourStep.id === teacherTourActiveStepId);
+    return resolvedIndex >= 0 ? resolvedIndex : 0;
+  }, [teacherTourActiveStepId, teacherTourSteps]);
+
+  const handleTeacherTourStepChange = useCallback(
+    (nextStepIndex: number) => {
+      if (nextStepIndex < 0) return;
+      const currentStepId = teacherTourSteps[teacherTourCurrentStepIndex]?.id ?? teacherTourActiveStepId;
+      const isAdvancing = nextStepIndex === teacherTourCurrentStepIndex + 1;
+      const shownCurrentStepNumber = teacherTourDisplayOffset + teacherTourCurrentStepIndex + 1;
+
+      if (currentStepId === "menu-progress" && isAdvancing) {
+        setTeacherTourResumeMeta(null);
+        setTeacherTourRun(false);
+        setTeacherTourActiveStepId(null);
+        setTeacherTourLockedSteps(null);
+        setTeacherTourDisplayOffset(0);
+        setTeacherTourDisplayTotalOverride(null);
+        setNotificationsOpen(false);
+        setTeacherMenuOpen(false);
+        setRequestOpen(false);
+        setTeacherQueriesOpen(false);
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(TEACHER_TOUR_STORAGE_KEY, "done");
+          window.localStorage.setItem(TEACHER_PROGRESS_TOUR_FORCE_KEY, "1");
+          window.localStorage.setItem(
+            TEACHER_PROGRESS_TOUR_CHAIN_KEY,
+            JSON.stringify({
+              offset: shownCurrentStepNumber,
+              returnToDashboard: true,
+              resumeStepId: "menu-queries",
+              total: teacherTourDisplayTotal,
+            }),
+          );
+        }
+        router.push("/teacher/progress");
+        return;
+      }
+
+      if (currentStepId === "menu-students" && isAdvancing) {
+        setTeacherTourResumeMeta(null);
+        setTeacherTourRun(false);
+        setTeacherTourActiveStepId(null);
+        setTeacherTourLockedSteps(null);
+        setTeacherTourDisplayOffset(0);
+        setTeacherTourDisplayTotalOverride(null);
+        setNotificationsOpen(false);
+        setTeacherMenuOpen(false);
+        setRequestOpen(false);
+        setTeacherQueriesOpen(false);
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(TEACHER_TOUR_STORAGE_KEY, "done");
+          window.localStorage.setItem(TEACHER_STUDENTS_TOUR_FORCE_KEY, "1");
+          window.localStorage.setItem(
+            TEACHER_STUDENTS_TOUR_CHAIN_KEY,
+            JSON.stringify({
+              offset: shownCurrentStepNumber,
+              returnToDashboard: true,
+              resumeStepId: "menu-signout",
+              total: teacherTourDisplayTotal,
+            }),
+          );
+        }
+        router.push("/teacher/students");
+        return;
+      }
+
+      if (nextStepIndex >= teacherTourSteps.length) {
+        closeTeacherTour(true);
+        return;
+      }
+      const nextStepId = teacherTourSteps[nextStepIndex]?.id;
+      if (!nextStepId) {
+        closeTeacherTour(true);
+        return;
+      }
+      setTeacherTourResumeMeta(null);
+      setTeacherTourActiveStepId(nextStepId);
+    },
+    [
+      closeTeacherTour,
+      router,
+      teacherTourActiveStepId,
+      teacherTourCurrentStepIndex,
+      teacherTourDisplayOffset,
+      teacherTourDisplayTotal,
+      teacherTourSteps,
+    ],
+  );
+
+  useEffect(() => {
+    if (!teacherTourRun) return;
+    const stepId = teacherTourActiveStepId ?? teacherTourSteps[teacherTourCurrentStepIndex]?.id;
+    if (!stepId) return;
+
+    const menuStepIds = new Set([
+      "menu-panel",
+      "menu-raise-request",
+      "menu-progress",
+      "menu-students",
+      "menu-queries",
+      "menu-signout",
+    ]);
+    const requestStepIds = new Set(["request-modal", "request-mode", "request-date", "request-send"]);
+    const requestAnyOtherFlowStepIds = new Set([
+      "request-any-other",
+      "request-notes",
+      "request-date-any-other",
+      "request-send-any-other",
+    ]);
+    const notificationStepIds = new Set(["notification-panel", "notification-query-shortcut"]);
+    const inboxStepIds = new Set([
+      "inbox-panel",
+      "inbox-refresh",
+      "inbox-list",
+      "inbox-conversation",
+      "inbox-reply",
+    ]);
+
+    setTeacherMenuOpen(menuStepIds.has(stepId));
+    setRequestOpen(requestStepIds.has(stepId) || requestAnyOtherFlowStepIds.has(stepId));
+    if (requestAnyOtherFlowStepIds.has(stepId)) {
+      setRequestMode("vr");
+      setRequestItems((prev) => (prev.includes(ANY_OTHER_OPTION) ? prev : [ANY_OTHER_OPTION]));
+    }
+    setNotificationsOpen(notificationStepIds.has(stepId));
+    setTeacherQueriesOpen(inboxStepIds.has(stepId));
+    if (inboxStepIds.has(stepId)) {
+      void loadTeacherQueries();
+    }
+  }, [loadTeacherQueries, teacherTourActiveStepId, teacherTourCurrentStepIndex, teacherTourRun, teacherTourSteps]);
+
+  useEffect(() => {
+    if (!teacherTourRun) return;
+    if (teacherTourSteps.length === 0) {
+      closeTeacherTour(false);
+      return;
+    }
+    const activeStepExists =
+      !!teacherTourActiveStepId && teacherTourSteps.some((tourStep) => tourStep.id === teacherTourActiveStepId);
+    if (!activeStepExists) {
+      setTeacherTourActiveStepId(teacherTourSteps[0]?.id ?? null);
+    }
+  }, [
+    closeTeacherTour,
+    teacherTourActiveStepId,
+    teacherTourRun,
+    teacherTourSteps,
+  ]);
+
+  useEffect(() => {
+    if (role !== "teacher" || !authChecked || !isAuthenticated || teacherTourInitialized) return;
+    if (dataStatus === "Loading activities...") return;
+    if (typeof window === "undefined") return;
+
+    const resumeRaw = window.localStorage.getItem(TEACHER_DASHBOARD_TOUR_RESUME_KEY);
+    if (resumeRaw) {
+      window.localStorage.removeItem(TEACHER_DASHBOARD_TOUR_RESUME_KEY);
+      try {
+        const parsed = JSON.parse(resumeRaw) as {
+          stepId?: unknown;
+          displayOffset?: unknown;
+          displayTotal?: unknown;
+        };
+        const stepId = typeof parsed.stepId === "string" ? parsed.stepId : "";
+        if (stepId) {
+          const completedCount =
+            typeof parsed.displayOffset === "number" && Number.isFinite(parsed.displayOffset)
+              ? parsed.displayOffset
+              : 0;
+          const displayTotal =
+            typeof parsed.displayTotal === "number" && Number.isFinite(parsed.displayTotal) && parsed.displayTotal > 0
+              ? parsed.displayTotal
+              : null;
+          setTeacherTourResumeMeta({ stepId, completedCount, displayTotal });
+          setTeacherTourInitialized(true);
+          return;
+        }
+      } catch {
+        // ignore invalid resume payload
+      }
+    }
+
+    const autoStart = window.sessionStorage.getItem(TEACHER_TOUR_AUTOSTART_KEY) === "1";
+    if (autoStart) {
+      window.sessionStorage.removeItem(TEACHER_TOUR_AUTOSTART_KEY);
+    }
+    if (autoStart) {
+      setTeacherTourLockedSteps(teacherTourComputedSteps);
+      setTeacherTourDisplayOffset(0);
+      setTeacherTourDisplayTotalOverride(null);
+      setTeacherTourActiveStepId(teacherTourComputedSteps[0]?.id ?? null);
+      setTeacherTourRun(true);
+      setTeacherTourPromptOpen(false);
+    } else {
+      setTeacherTourRun(false);
+      setTeacherTourPromptOpen(true);
+    }
+    setTeacherTourInitialized(true);
+  }, [authChecked, dataStatus, isAuthenticated, role, teacherTourComputedSteps, teacherTourInitialized]);
+
+  useEffect(() => {
+    if (!teacherTourResumeMeta) return;
+    const resumeIndex = teacherTourSteps.findIndex((tourStep) => tourStep.id === teacherTourResumeMeta.stepId);
+    if (resumeIndex < 0) return;
+
+    setTeacherTourPromptOpen(false);
+    setTeacherTourLockedSteps(teacherTourComputedSteps);
+    setTeacherTourDisplayTotalOverride(teacherTourResumeMeta.displayTotal);
+    setTeacherTourDisplayOffset(Math.max(0, teacherTourResumeMeta.completedCount - resumeIndex));
+    setTeacherTourActiveStepId(teacherTourResumeMeta.stepId);
+    setTeacherTourRun(true);
+    setTeacherTourResumeMeta(null);
+  }, [teacherTourComputedSteps, teacherTourResumeMeta, teacherTourSteps]);
+
+  const studentTourComputedSteps = useMemo<GuidedTourStep[]>(() => {
+    if (role === "teacher") return [];
+
+    const steps: GuidedTourStep[] = [
+      {
+        id: "student-header",
+        target: '[data-tour="student-header"]',
+        title: "Student Dashboard Header",
+        description: "This is your everyday control point for alerts, menu shortcuts, and quick orientation.",
+        placement: "bottom",
+      },
+      {
+        id: "student-notification-bell",
+        target: '[data-tour="student-notification-bell"]',
+        title: "Notification Bell",
+        description: "Open this to review unread updates for your activities.",
+        placement: "left",
+      },
+      {
+        id: "student-notification-panel",
+        target: '[data-tour="student-notification-panel"]',
+        title: "Notification Drawer",
+        description: "All your activity and status updates appear in this drawer.",
+        placement: "left",
+        forcePageTop: true,
+      },
+      {
+        id: "student-menu-trigger",
+        target: '[data-tour="student-menu-trigger"]',
+        title: "Student Menu",
+        description: "Open the menu to ask doubts, go home, or sign out.",
+        placement: "left",
+      },
+      {
+        id: "student-menu-panel",
+        target: '[data-tour="student-menu-panel"]',
+        title: "Student Actions Panel",
+        description: "This panel groups your key student workflows in one place.",
+        placement: "left",
+      },
+      {
+        id: "student-menu-doubt",
+        target: '[data-tour="student-menu-doubt"]',
+        title: "Doubt Section Shortcut",
+        description: "Use this to open your teacher chat and ask questions.",
+        placement: "left",
+      },
+      {
+        id: "student-filters",
+        target: '[data-tour="student-filters"]',
+        title: "Browse Filters",
+        description: "Filter by grade and subject to focus on relevant activities.",
+        placement: "bottom",
+      },
+    ];
+
+    if (filteredModules.length > 0) {
+      steps.push(
+        {
+          id: "student-activity-card",
+          target: '[data-tour="student-activity-card"]',
+          title: "Activity Cards",
+          description: "Each card shows module details and completion state.",
+          placement: "top",
+          forcePageTop: false,
+          scrollBlock: "center",
+        },
+        {
+          id: "student-activity-launch",
+          target: '[data-tour="student-activity-launch"]',
+          title: "Open Activity",
+          description: "Launch the activity workspace from this button. Click Next here to continue the tour inside it.",
+          placement: "bottom",
+          forcePageTop: false,
+          scrollBlock: "center",
+        },
+      );
+    }
+
+    steps.push({
+      id: "student-menu-signout",
+      target: '[data-tour="student-menu-signout"]',
+      title: "Sign Out Safely",
+      description: "Use this option to end your student session securely.",
+      placement: "left",
+    });
+
+    return steps;
+  }, [filteredModules.length, role]);
+
+  const studentTourSteps = studentTourLockedSteps ?? studentTourComputedSteps;
+  const studentTourTargetModule = useMemo(
+    () => filteredModules.find((module) => module.id === studentTourTargetModuleId) ?? null,
+    [filteredModules, studentTourTargetModuleId],
+  );
+  const studentActivityTourStepCount = useMemo(() => {
+    const normalizedSubject = (studentTourTargetModule?.subject ?? "").toLowerCase();
+    return normalizedSubject.includes("design")
+      ? STUDENT_ACTIVITY_TOUR_STEP_COUNT_DESIGN
+      : STUDENT_ACTIVITY_TOUR_STEP_COUNT_STANDARD;
+  }, [studentTourTargetModule]);
+  const studentTourExpectedTotal = useMemo(() => {
+    const includesActivityLaunch = studentTourSteps.some((tourStep) => tourStep.id === "student-activity-launch");
+    if (includesActivityLaunch && studentTourTargetModuleId) {
+      return studentTourSteps.length + studentActivityTourStepCount;
+    }
+    return studentTourSteps.length;
+  }, [studentActivityTourStepCount, studentTourSteps, studentTourTargetModuleId]);
+
+  useEffect(() => {
+    if (!studentTourResumeMeta) return;
+    const resumeIndex = studentTourSteps.findIndex((tourStep) => tourStep.id === studentTourResumeMeta.stepId);
+    if (resumeIndex < 0) return;
+
+    setStudentTourPromptOpen(false);
+    setStudentTourLockedSteps(studentTourComputedSteps);
+    setStudentTourDisplayTotalOverride(studentTourResumeMeta.displayTotal);
+    setStudentTourDisplayOffset(Math.max(0, studentTourResumeMeta.completedCount - resumeIndex));
+    setStudentTourActiveStepId(studentTourResumeMeta.stepId);
+    setStudentTourRun(true);
+    setStudentTourResumeMeta(null);
+  }, [studentTourComputedSteps, studentTourResumeMeta, studentTourSteps]);
+
+  const startStudentTour = useCallback(() => {
+    setNotificationsOpen(false);
+    setTeacherMenuOpen(false);
+    setStudentDoubtOpen(false);
+    setStudentTourPromptOpen(false);
+    setStudentTourLockedSteps(studentTourComputedSteps);
+    setStudentTourActiveStepId(studentTourComputedSteps[0]?.id ?? null);
+    setStudentTourDisplayOffset(0);
+    setStudentTourDisplayTotalOverride(null);
+    setStudentTourResumeMeta(null);
+    setStudentTourRun(true);
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(STUDENT_TOUR_STORAGE_KEY);
+      window.localStorage.removeItem(STUDENT_DASHBOARD_TOUR_RESUME_KEY);
+      window.localStorage.removeItem(STUDENT_ACTIVITY_TOUR_CHAIN_KEY);
+    }
+  }, [studentTourComputedSteps]);
+
+  const closeStudentTour = useCallback((completed: boolean) => {
+    setStudentTourRun(false);
+    setStudentTourActiveStepId(null);
+    setStudentTourLockedSteps(null);
+    setStudentTourPromptOpen(false);
+    setStudentTourDisplayOffset(0);
+    setStudentTourDisplayTotalOverride(null);
+    setStudentTourResumeMeta(null);
+    setNotificationsOpen(false);
+    setTeacherMenuOpen(false);
+    setStudentDoubtOpen(false);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(STUDENT_TOUR_STORAGE_KEY, completed ? "done" : "skipped");
+      window.localStorage.removeItem(STUDENT_DASHBOARD_TOUR_RESUME_KEY);
+      window.localStorage.removeItem(STUDENT_ACTIVITY_TOUR_CHAIN_KEY);
+    }
+  }, []);
+
+  const studentTourCurrentStepIndex = useMemo(() => {
+    if (!studentTourActiveStepId) return 0;
+    const resolvedIndex = studentTourSteps.findIndex((tourStep) => tourStep.id === studentTourActiveStepId);
+    return resolvedIndex >= 0 ? resolvedIndex : 0;
+  }, [studentTourActiveStepId, studentTourSteps]);
+
+  const studentTourDisplayTotal = useMemo(
+    () =>
+      studentTourDisplayTotalOverride ??
+      (studentTourDisplayOffset > 0
+        ? studentTourDisplayOffset + studentTourSteps.length
+        : studentTourExpectedTotal),
+    [studentTourDisplayOffset, studentTourDisplayTotalOverride, studentTourExpectedTotal, studentTourSteps.length],
+  );
+
+  const handleStudentTourStepChange = useCallback(
+    (nextStepIndex: number) => {
+      if (nextStepIndex < 0) return;
+      const currentStepId = studentTourSteps[studentTourCurrentStepIndex]?.id ?? studentTourActiveStepId;
+      const isAdvancing = nextStepIndex === studentTourCurrentStepIndex + 1;
+      const shownCurrentStepNumber = studentTourDisplayOffset + studentTourCurrentStepIndex + 1;
+
+      if (currentStepId === "student-activity-launch" && isAdvancing) {
+        const targetModuleId = studentTourTargetModuleId;
+        if (targetModuleId) {
+          setStudentTourRun(false);
+          setStudentTourActiveStepId(null);
+          setStudentTourLockedSteps(null);
+          setStudentTourPromptOpen(false);
+          setNotificationsOpen(false);
+          setTeacherMenuOpen(false);
+          setStudentDoubtOpen(false);
+          setStudentTourResumeMeta(null);
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem(STUDENT_TOUR_STORAGE_KEY, "done");
+            window.sessionStorage.setItem(STUDENT_ACTIVITY_TOUR_AUTOSTART_KEY, "1");
+            window.localStorage.setItem(
+              STUDENT_ACTIVITY_TOUR_CHAIN_KEY,
+              JSON.stringify({
+                offset: shownCurrentStepNumber,
+                returnToDashboard: true,
+                resumeStepId: "student-menu-signout",
+                total: studentTourDisplayTotal,
+              }),
+            );
+            window.localStorage.removeItem(STUDENT_DASHBOARD_TOUR_RESUME_KEY);
+          }
+          router.push(`/customer/activity/${targetModuleId}`);
+          return;
+        }
+      }
+
+      if (nextStepIndex >= studentTourSteps.length) {
+        closeStudentTour(true);
+        return;
+      }
+      const nextStepId = studentTourSteps[nextStepIndex]?.id;
+      if (!nextStepId) {
+        closeStudentTour(true);
+        return;
+      }
+      setStudentTourActiveStepId(nextStepId);
+    },
+    [
+      closeStudentTour,
+      router,
+      studentTourDisplayOffset,
+      studentTourDisplayTotal,
+      studentTourTargetModuleId,
+      studentTourActiveStepId,
+      studentTourCurrentStepIndex,
+      studentTourSteps,
+    ],
+  );
+
+  useEffect(() => {
+    if (!studentTourRun) return;
+    const stepId = studentTourActiveStepId ?? studentTourSteps[studentTourCurrentStepIndex]?.id;
+    if (!stepId) return;
+
+    const menuStepIds = new Set(["student-menu-panel", "student-menu-doubt", "student-menu-signout"]);
+    const doubtStepIds = new Set([
+      "student-doubt-teacher-select",
+      "student-doubt-list",
+      "student-doubt-reply",
+    ]);
+    const notificationStepIds = new Set(["student-notification-panel"]);
+
+    setTeacherMenuOpen(menuStepIds.has(stepId));
+    setStudentDoubtOpen(doubtStepIds.has(stepId));
+    setNotificationsOpen(notificationStepIds.has(stepId));
+    if (doubtStepIds.has(stepId) && availableTeachers.length === 0) {
+      void loadAvailableTeachers();
+    }
+  }, [
+    availableTeachers.length,
+    loadAvailableTeachers,
+    studentTourActiveStepId,
+    studentTourCurrentStepIndex,
+    studentTourRun,
+    studentTourSteps,
+  ]);
+
+  useEffect(() => {
+    if (!studentTourRun) return;
+    if (studentTourSteps.length === 0) {
+      closeStudentTour(false);
+      return;
+    }
+    const activeStepExists =
+      !!studentTourActiveStepId && studentTourSteps.some((tourStep) => tourStep.id === studentTourActiveStepId);
+    if (!activeStepExists) {
+      setStudentTourActiveStepId(studentTourSteps[0]?.id ?? null);
+    }
+  }, [closeStudentTour, studentTourActiveStepId, studentTourRun, studentTourSteps]);
+
+  useEffect(() => {
+    if (role === "teacher" || !authChecked || !isAuthenticated || studentTourInitialized) return;
+    if (dataStatus === "Loading activities...") return;
+    if (typeof window === "undefined") return;
+
+    const resumeRaw = window.localStorage.getItem(STUDENT_DASHBOARD_TOUR_RESUME_KEY);
+    if (resumeRaw) {
+      window.localStorage.removeItem(STUDENT_DASHBOARD_TOUR_RESUME_KEY);
+      try {
+        const parsed = JSON.parse(resumeRaw) as {
+          stepId?: unknown;
+          displayOffset?: unknown;
+          displayTotal?: unknown;
+        };
+        const stepId = typeof parsed.stepId === "string" ? parsed.stepId : "";
+        if (stepId) {
+          const completedCount =
+            typeof parsed.displayOffset === "number" && Number.isFinite(parsed.displayOffset)
+              ? parsed.displayOffset
+              : 0;
+          const displayTotal =
+            typeof parsed.displayTotal === "number" && Number.isFinite(parsed.displayTotal) && parsed.displayTotal > 0
+              ? parsed.displayTotal
+              : null;
+          setStudentTourResumeMeta({ stepId, completedCount, displayTotal });
+          setStudentTourPromptOpen(false);
+          setStudentTourRun(false);
+          setStudentTourInitialized(true);
+          return;
+        }
+      } catch {
+        setStudentTourDisplayOffset(0);
+        setStudentTourDisplayTotalOverride(null);
+        setStudentTourResumeMeta(null);
+      }
+    }
+
+    setStudentTourRun(false);
+    setStudentTourPromptOpen(true);
+    setStudentTourInitialized(true);
+  }, [authChecked, dataStatus, isAuthenticated, role, studentTourInitialized]);
+
   return (
     <main className="section-padding space-y-8">
+      {role === "teacher" && (
+        <GuidedTour
+          run={teacherTourRun}
+          stepIndex={teacherTourCurrentStepIndex}
+          steps={teacherTourSteps}
+          onStepIndexChange={handleTeacherTourStepChange}
+          onClose={closeTeacherTour}
+          displayStepOffset={teacherTourDisplayOffset}
+          displayStepTotal={teacherTourDisplayTotal}
+          palette={TEACHER_TOUR_PALETTE}
+        />
+      )}
+
+      {role !== "teacher" && (
+        <GuidedTour
+          run={studentTourRun}
+          stepIndex={studentTourCurrentStepIndex}
+          steps={studentTourSteps}
+          onStepIndexChange={handleStudentTourStepChange}
+          onClose={closeStudentTour}
+          displayStepOffset={studentTourDisplayOffset > 0 ? studentTourDisplayOffset : undefined}
+          displayStepTotal={studentTourDisplayTotal}
+          palette={STUDENT_TOUR_PALETTE}
+        />
+      )}
+
+      {role === "teacher" && teacherTourPromptOpen && !teacherTourRun && (
+        <div className="fixed inset-0 z-[60] flex items-start justify-center px-4 pt-14" style={{ background: "rgba(15, 23, 42, 0.14)" }}>
+          <div
+            className="w-full max-w-lg rounded-2xl p-5"
+            style={{
+              border: `1px solid color-mix(in srgb, ${TEACHER_TOUR_PALETTE.accent} 28%, transparent)`,
+              background: "var(--surface)",
+              color: "var(--foreground)",
+              boxShadow:
+                `0 18px 42px rgba(15, 23, 42, 0.18), 0 0 0 1px color-mix(in srgb, ${TEACHER_TOUR_PALETTE.accent} 12%, transparent)`,
+            }}
+          >
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                borderRadius: 999,
+                border: `1px solid color-mix(in srgb, ${TEACHER_TOUR_PALETTE.accent} 40%, transparent)`,
+                background: `color-mix(in srgb, ${TEACHER_TOUR_PALETTE.accent} 10%, #ffffff)`,
+                padding: "2px 10px",
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                color: TEACHER_TOUR_PALETTE.accentStrong,
+              }}
+            >
+              Teacher Walkthrough
+            </span>
+            <h3 className="mt-3 text-2xl font-semibold" style={{ color: TEACHER_TOUR_PALETTE.accentStrong }}>
+              Take Tour
+            </h3>
+            <p className="mt-2 text-sm" style={{ color: "color-mix(in srgb, var(--foreground) 82%, #64748b)" }}>
+              Start a guided walkthrough of all teacher features from this dashboard.
+            </p>
+            <div className="mt-5 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  void playUiClickTone();
+                  startTeacherTour();
+                }}
+                style={{
+                  borderRadius: 8,
+                  border: `1px solid color-mix(in srgb, ${TEACHER_TOUR_PALETTE.accentStrong} 42%, transparent)`,
+                  background: TEACHER_TOUR_PALETTE.accent,
+                  color: "#ffffff",
+                  padding: "8px 14px",
+                  fontSize: 14,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Take tour
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void playUiClickTone();
+                  setTeacherTourPromptOpen(false);
+                }}
+                style={{
+                  borderRadius: 8,
+                  border: `1px solid color-mix(in srgb, ${TEACHER_TOUR_PALETTE.accent} 32%, transparent)`,
+                  background: "color-mix(in srgb, var(--background-2) 70%, #ffffff)",
+                  color: TEACHER_TOUR_PALETTE.accentStrong,
+                  padding: "8px 12px",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Skip
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {role !== "teacher" && studentTourPromptOpen && !studentTourRun && (
+        <div className="fixed inset-0 z-[60] flex items-start justify-center px-4 pt-14" style={{ background: "rgba(15, 23, 42, 0.14)" }}>
+          <div
+            className="w-full max-w-lg rounded-2xl p-5"
+            style={{
+              border: `1px solid color-mix(in srgb, ${STUDENT_TOUR_PALETTE.accent} 28%, transparent)`,
+              background: "var(--surface)",
+              color: "var(--foreground)",
+              boxShadow:
+                `0 18px 42px rgba(15, 23, 42, 0.18), 0 0 0 1px color-mix(in srgb, ${STUDENT_TOUR_PALETTE.accent} 12%, transparent)`,
+            }}
+          >
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                borderRadius: 999,
+                border: `1px solid color-mix(in srgb, ${STUDENT_TOUR_PALETTE.accent} 40%, transparent)`,
+                background: `color-mix(in srgb, ${STUDENT_TOUR_PALETTE.accent} 10%, #ffffff)`,
+                padding: "2px 10px",
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                color: STUDENT_TOUR_PALETTE.accentStrong,
+              }}
+            >
+              Student Walkthrough
+            </span>
+            <h3 className="mt-3 text-2xl font-semibold" style={{ color: STUDENT_TOUR_PALETTE.accentStrong }}>
+              Take Tour
+            </h3>
+            <p className="mt-2 text-sm" style={{ color: "color-mix(in srgb, var(--foreground) 82%, #64748b)" }}>
+              Start a guided walkthrough of all student features from this dashboard.
+            </p>
+            <div className="mt-5 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  void playUiClickTone();
+                  startStudentTour();
+                }}
+                style={{
+                  borderRadius: 8,
+                  border: `1px solid color-mix(in srgb, ${STUDENT_TOUR_PALETTE.accentStrong} 42%, transparent)`,
+                  background: STUDENT_TOUR_PALETTE.accent,
+                  color: "#ffffff",
+                  padding: "8px 14px",
+                  fontSize: 14,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Take tour
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void playUiClickTone();
+                  setStudentTourPromptOpen(false);
+                }}
+                style={{
+                  borderRadius: 8,
+                  border: `1px solid color-mix(in srgb, ${STUDENT_TOUR_PALETTE.accent} 32%, transparent)`,
+                  background: "color-mix(in srgb, var(--background-2) 70%, #ffffff)",
+                  color: STUDENT_TOUR_PALETTE.accentStrong,
+                  padding: "8px 12px",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Skip
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {dataStatus && (
         <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
           {dataStatus}
@@ -991,7 +2124,10 @@ export default function CustomerPage() {
 
       {requestOpen && role === "teacher" && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto px-4 pb-10 pt-12 md:pt-16 bg-slate-900/70 backdrop-blur-sm">
-          <div className="w-full max-w-3xl rounded-2xl bg-white border border-stone-300 shadow-2xl p-6 space-y-4">
+          <div
+            className="w-full max-w-3xl rounded-2xl bg-white border border-stone-300 shadow-2xl p-6 space-y-4"
+            data-tour="teacher-request-modal"
+          >
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-1">
                 <p className="text-xs uppercase tracking-[0.2em] text-accent-strong">Teacher Request</p>
@@ -1013,9 +2149,10 @@ export default function CustomerPage() {
               </button>
             </div>
 
-            <div className="grid sm:grid-cols-2 gap-3">
+            <div className="grid sm:grid-cols-2 gap-3" data-tour="teacher-request-mode">
               <button
                 type="button"
+                data-tour="teacher-request-mode-vr"
                 className={`w-full text-left rounded-xl border px-4 py-3 transition ${
                   requestMode === "vr"
                     ? "border-accent bg-accent text-true-white font-semibold shadow-glow"
@@ -1092,7 +2229,10 @@ export default function CustomerPage() {
                       <span className="font-semibold text-slate-900">{item}</span>
                     </label>
                   ))}
-                  <label className="flex items-start gap-2 rounded-xl border border-accent/40 ring-1 ring-inset ring-blue-500/40 bg-accent/10 px-3 py-2 text-sm text-slate-800 hover:border-accent-strong">
+                  <label
+                    data-tour="teacher-request-any-other"
+                    className="flex items-start gap-2 rounded-xl border border-accent/40 ring-1 ring-inset ring-blue-500/40 bg-accent/10 px-3 py-2 text-sm text-slate-800 hover:border-accent-strong"
+                  >
                     <input
                       type="checkbox"
                       className="mt-0.5 h-4 w-4 rounded border-slate-400/70 bg-white outline outline-1 outline-slate-300/60"
@@ -1121,13 +2261,20 @@ export default function CustomerPage() {
                 <span className="font-semibold text-slate-900">Needed by</span>
                 <input
                   type="date"
+                  data-tour="teacher-request-date"
                   value={requestDate}
                   onChange={(e) => setRequestDate(e.target.value)}
                   min={requestMinDate}
                   title={dateHelpText}
                   className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-slate-900 focus:border-accent focus:outline-none"
                 />
-                <p className={`text-xs text-slate-500 ${requestMode === "drone" ? "font-semibold" : ""}`}>
+                <p
+                  className={`text-xs ${
+                    requestMode === "drone" || (requestMode === "vr" && anyOtherSelected)
+                      ? "font-semibold text-black"
+                      : "text-slate-500"
+                  }`}
+                >
                   {dateHelpText}
                 </p>
               </label>
@@ -1140,6 +2287,7 @@ export default function CustomerPage() {
                   </span>
                 </span>
                 <textarea
+                  data-tour="teacher-request-notes"
                   value={requestNotes}
                   onChange={(e) => setRequestNotes(e.target.value)}
                   rows={3}
@@ -1182,6 +2330,7 @@ export default function CustomerPage() {
                 Cancel
               </button>
               <button
+                data-tour="teacher-request-send"
                 className="px-4 py-2 rounded-xl bg-accent text-true-white font-semibold shadow-glow disabled:opacity-60"
                 onClick={() => void submitVrRequest()}
                 disabled={sendingRequest}
@@ -1195,62 +2344,76 @@ export default function CustomerPage() {
 
       {studentDoubtOpen && role !== "teacher" && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto px-4 pb-8 pt-8 bg-slate-900/70 backdrop-blur-sm">
-          <div className="w-full max-w-5xl h-[88vh] rounded-3xl bg-surface border border-white/15 shadow-2xl overflow-hidden">
-            <div className="flex h-full flex-col md:flex-row">
+          <div
+            className="relative w-full max-w-5xl h-[88vh] rounded-3xl bg-surface border border-white/15 shadow-2xl overflow-hidden"
+            data-tour="student-doubt-modal"
+          >
+            <div className="flex h-full flex-col md:flex-row" data-tour="student-doubt-workspace">
               <aside className="w-full md:w-[320px] md:max-w-[320px] border-b md:border-b-0 md:border-r border-slate-200 bg-surface flex flex-col">
                 <div className="p-4 border-b border-slate-200 space-y-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="space-y-1">
-                      <p className="text-[11px] uppercase tracking-[0.2em] text-accent-strong">Doubt Section</p>
-                      <h3 className="text-xl font-semibold text-slate-900">Ask your teacher</h3>
+                      <p className="text-[11px] uppercase tracking-[0.2em] text-accent-strong">Student Inbox</p>
+                      <h3 className="text-xl font-semibold text-slate-900">Ask your Doubts</h3>
                     </div>
                     <button
                       className="text-sm px-3 py-1 rounded-lg border border-rose-400 bg-rose-700 text-true-white hover:bg-rose-600 hover:border-rose-300 cursor-pointer"
                       onClick={() => {
                         setStudentDoubtOpen(false);
                         setStudentDoubtStatus(null);
+                        setTeacherPickerOpen(false);
                       }}
                     >
                       Close
                     </button>
                   </div>
 
-                  <label className="block text-xs text-slate-600 space-y-1">
+                  <div className="block text-xs text-slate-600 space-y-1">
                     <span className="font-semibold text-slate-900">Available teachers</span>
-                    <select
-                      value={selectedTeacherId}
-                      onChange={(e) => {
-                        const nextTeacherId = e.target.value;
-                        setSelectedTeacherId(nextTeacherId);
-                        setActiveStudentQueryId(null);
-                        void loadStudentQueries();
-                      }}
-                      className="w-full rounded-xl bg-white border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-accent focus:outline-none [color-scheme:light]"
-                    >
-                      <option value="" className="bg-white text-slate-900">
-                        Select teacher
-                      </option>
-                      {availableTeachers.map((teacher) => (
-                        <option key={teacher.id} value={teacher.id} className="bg-white text-slate-900">
-                          {teacher.full_name}
-                          {teacher.subject ? ` (${teacher.subject})` : ""}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      className="w-full px-3 py-2 rounded-xl border border-accent bg-accent text-true-white text-sm font-semibold shadow-glow hover:brightness-105"
-                      onClick={() => {
-                        setActiveStudentQueryId(null);
-                        setQueryMessagesStatus(null);
-                        setStudentDoubtStatus(null);
-                      }}
+                      data-tour="student-doubt-teacher-select"
+                      onClick={() => setTeacherPickerOpen((open) => !open)}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm text-slate-900 hover:bg-slate-50"
                     >
-                      New chat
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="truncate">{selectedTeacherLabel}</span>
+                        <span className="text-xs text-slate-500">{teacherPickerOpen ? "Hide" : "Choose"}</span>
+                      </span>
                     </button>
+                    {teacherPickerOpen && (
+                      <div className="max-h-28 overflow-y-auto space-y-1 rounded-xl border border-slate-300 bg-white p-1.5">
+                        {availableTeachers.length === 0 ? (
+                          <p className="px-2 py-1 text-xs text-slate-500">No teachers available</p>
+                        ) : (
+                          availableTeachers.map((teacher) => {
+                            const isSelected = selectedTeacherId === teacher.id;
+                            return (
+                              <button
+                                key={teacher.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedTeacherId(teacher.id);
+                                  setTeacherPickerOpen(false);
+                                  setActiveStudentQueryId(null);
+                                  setQueryMessagesStatus(null);
+                                  setStudentDoubtStatus(null);
+                                  void loadStudentQueries(teacher.id);
+                                }}
+                                className={`w-full rounded-lg px-2 py-1.5 text-left text-sm transition ${
+                                  isSelected
+                                    ? "bg-accent text-true-white font-semibold"
+                                    : "text-slate-800 hover:bg-slate-100"
+                                }`}
+                              >
+                                {teacher.full_name}
+                                {teacher.subject ? ` (${teacher.subject})` : ""}
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {availableTeachersStatus && (
@@ -1261,7 +2424,7 @@ export default function CustomerPage() {
                   )}
                 </div>
 
-                <div className="max-h-56 md:max-h-none md:flex-1 overflow-y-auto p-3 space-y-2 bg-card/40">
+                <div className="max-h-56 md:max-h-none md:flex-1 overflow-y-auto p-3 space-y-2 bg-card/40" data-tour="student-doubt-list">
                   {filteredStudentQueries.length === 0 ? (
                     <div className="rounded-2xl border border-slate-200 bg-surface px-3 py-2 text-xs text-slate-600">
                       No chats yet.
@@ -1276,10 +2439,10 @@ export default function CustomerPage() {
                           void loadQueryMessages(query.id);
                         }}
                         className={`w-full text-left rounded-2xl border p-3 transition ${
-                          activeStudentQueryId === query.id
-                            ? "border-accent bg-accent/10"
-                            : "border-slate-200 bg-surface hover:bg-card/60"
-                        }`}
+                          query.status === "new"
+                            ? "border-orange-400 bg-orange-100 hover:bg-orange-100"
+                            : "border-emerald-300 bg-emerald-50 hover:bg-emerald-50"
+                        } ${activeStudentQueryId === query.id ? "ring-2 ring-accent/45" : ""}`}
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-center gap-2 min-w-0">
@@ -1288,41 +2451,52 @@ export default function CustomerPage() {
                             </span>
                             <p className="text-sm font-semibold text-slate-900 truncate">{query.teacher_name}</p>
                           </div>
-                          <p className="text-[11px] text-slate-500 whitespace-nowrap">
-                            {new Date(query.created_at).toLocaleDateString()}
-                          </p>
+                          <span
+                            className={`text-[10px] font-bold tracking-wide shrink-0 ${
+                              query.status === "new"
+                                ? "px-2 py-0.5 rounded-full bg-orange-600 text-true-white"
+                                : "text-emerald-700 italic"
+                            }`}
+                          >
+                            {query.status === "new" ? "UNREAD" : "Opened"}
+                          </span>
                         </div>
-                        <p className="mt-1 text-xs text-slate-600 truncate">{query.query_text}</p>
+                        <p className="mt-1 text-[11px] text-slate-700">{new Date(query.created_at).toLocaleDateString()}</p>
+                        <p className="mt-1 text-xs text-slate-700 truncate">{query.query_text}</p>
                       </button>
                     ))
                   )}
                 </div>
               </aside>
 
-              <section className="min-h-0 flex-1 flex flex-col bg-surface">
-                <div className="border-b border-slate-200 px-5 py-3 flex items-center justify-between gap-3">
+              <section className="min-h-0 flex-1 flex flex-col whatsapp-chat-wallpaper" data-tour="student-doubt-conversation">
+                <div className="border-b border-slate-200 bg-white/80 backdrop-blur-sm px-5 py-3 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
                     <span className="h-10 w-10 rounded-full bg-accent text-true-white text-sm font-bold flex items-center justify-center">
-                      {(activeStudentQuery?.teacher_name ?? "T").charAt(0).toUpperCase()}
+                      {(activeStudentQuery?.teacher_name ?? selectedTeacher?.full_name ?? "T").charAt(0).toUpperCase()}
                     </span>
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-slate-900 truncate">
-                        {activeStudentQuery?.teacher_name ?? "Select a conversation"}
+                        {activeStudentQuery?.teacher_name ?? selectedTeacher?.full_name ?? "Select a teacher"}
                       </p>
                       <p className="text-xs text-slate-500">
-                        {activeStudentQuery ? "Direct chat" : "Choose a teacher to start"}
+                        {activeStudentQuery || selectedTeacher ? "Direct chat" : "Choose a teacher to start"}
                       </p>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-5 py-4 bg-card/30 space-y-3">
+                <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
                   {!activeStudentQuery ? (
                     <div className="h-full flex items-center justify-center">
                       <div className="max-w-sm text-center space-y-2">
-                        <p className="text-base font-semibold text-slate-900">Your messages</p>
+                        <p className="text-base font-semibold text-slate-900">
+                          {selectedTeacher ? `Chat with ${selectedTeacher.full_name}` : "Your messages"}
+                        </p>
                         <p className="text-sm text-slate-600">
-                          Select a conversation from the left or start a new chat.
+                          {selectedTeacher
+                            ? "Type your message below and press Start chat."
+                            : "Choose a teacher from the left panel to begin."}
                         </p>
                       </div>
                     </div>
@@ -1358,7 +2532,7 @@ export default function CustomerPage() {
                   )}
                 </div>
 
-                <div className="border-t border-slate-200 bg-surface p-3 space-y-2">
+                <div className="border-t border-slate-200 bg-white/80 backdrop-blur-sm p-3 space-y-2">
                   {chatStatusMessage && (
                     <div
                       className={`rounded-xl border px-3 py-2 text-xs ${
@@ -1373,25 +2547,27 @@ export default function CustomerPage() {
                     </div>
                   )}
 
-                  <div className="rounded-2xl border border-slate-300 bg-surface p-2 flex items-end gap-2">
+                  <div
+                    className="rounded-2xl border border-slate-300 bg-surface p-2 flex items-end gap-2"
+                    data-tour="student-doubt-reply"
+                  >
                     <textarea
                       value={studentDoubtText}
                       onChange={(e) => setStudentDoubtText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          void handleStudentSendMessage();
+                        }
+                      }}
                       rows={2}
                       className="flex-1 resize-none rounded-xl border-0 bg-transparent px-2 py-1 text-sm text-slate-900 focus:outline-none"
                       placeholder="Type your message..."
                     />
                     <button
                       className="px-4 py-2 rounded-xl bg-accent text-true-white text-sm font-semibold shadow-glow disabled:opacity-60"
-                      onClick={async () => {
-                        if (activeStudentQueryId) {
-                          const sent = await sendQueryMessage(activeStudentQueryId, studentDoubtText);
-                          if (sent) {
-                            setStudentDoubtText("");
-                          }
-                          return;
-                        }
-                        await submitStudentQuery();
+                      onClick={() => {
+                        void handleStudentSendMessage();
                       }}
                       disabled={sendingStudentDoubt || sendingMessage}
                     >
@@ -1411,7 +2587,10 @@ export default function CustomerPage() {
 
       {teacherQueriesOpen && role === "teacher" && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto px-4 pb-8 pt-8 bg-slate-900/70 backdrop-blur-sm">
-          <div className="w-full max-w-5xl h-[88vh] rounded-3xl bg-surface border border-white/15 shadow-2xl overflow-hidden">
+          <div
+            className="w-full max-w-5xl h-[88vh] rounded-3xl bg-surface border border-white/15 shadow-2xl overflow-hidden"
+            data-tour="teacher-inbox-modal"
+          >
             <div className="flex h-full flex-col md:flex-row">
               <aside className="w-full md:w-[320px] md:max-w-[320px] border-b md:border-b-0 md:border-r border-slate-200 bg-surface flex flex-col">
                 <div className="p-4 border-b border-slate-200 space-y-3">
@@ -1430,6 +2609,7 @@ export default function CustomerPage() {
 
                   <button
                     type="button"
+                    data-tour="teacher-inbox-refresh"
                     className="w-full px-3 py-2 rounded-xl border border-accent text-accent-strong text-sm font-semibold hover:bg-accent/10"
                     onClick={() => void loadTeacherQueries()}
                   >
@@ -1488,8 +2668,8 @@ export default function CustomerPage() {
                 </div>
               </aside>
 
-              <section className="min-h-0 flex-1 flex flex-col bg-surface">
-                <div className="border-b border-slate-200 px-5 py-3 flex items-center justify-between gap-3">
+              <section className="min-h-0 flex-1 flex flex-col whatsapp-chat-wallpaper" data-tour="teacher-inbox-conversation">
+                <div className="border-b border-slate-200 bg-white/80 backdrop-blur-sm px-5 py-3 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
                     <span className="h-10 w-10 rounded-full bg-accent text-true-white text-sm font-bold flex items-center justify-center">
                       {(activeTeacherQuery?.student_name ?? "S").charAt(0).toUpperCase()}
@@ -1512,7 +2692,7 @@ export default function CustomerPage() {
                   )}
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-5 py-4 bg-card/30 space-y-3">
+                <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
                   {!activeTeacherQuery ? (
                     <div className="h-full flex items-center justify-center">
                       <div className="max-w-sm text-center space-y-2">
@@ -1554,7 +2734,7 @@ export default function CustomerPage() {
                   )}
                 </div>
 
-                <div className="border-t border-slate-200 bg-surface p-3 space-y-2">
+                <div className="border-t border-slate-200 bg-white/80 backdrop-blur-sm p-3 space-y-2">
                   {queryMessagesStatus && (
                     <div
                       className={`rounded-xl border px-3 py-2 text-xs ${
@@ -1602,7 +2782,10 @@ export default function CustomerPage() {
         </div>
       )}
 
-      <div className="sticky top-0 z-30 rounded-2xl border border-white/10 bg-surface/65 p-3 shadow-[0_10px_30px_rgba(0,0,0,0.2)] backdrop-blur-xl">
+      <div
+        className="sticky top-0 z-30 rounded-2xl border border-white/10 bg-surface/65 p-3 shadow-[0_10px_30px_rgba(0,0,0,0.2)] backdrop-blur-xl"
+        data-tour={role === "teacher" ? "teacher-header" : "student-header"}
+      >
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-1">
             <p className="text-xs uppercase tracking-[0.2em] text-accent-strong">{roleDisplayLabel}</p>
@@ -1618,6 +2801,7 @@ export default function CustomerPage() {
                     setTeacherMenuOpen(false);
                     setNotificationsOpen((open) => !open);
                   }}
+                  data-tour="teacher-notification-bell"
                   className="relative inline-flex items-center justify-center h-11 w-11 rounded-full border border-white/10 outline outline-2 outline-black/50 bg-white/5 hover:border-accent-strong"
                   aria-label="Notifications"
                 >
@@ -1640,13 +2824,17 @@ export default function CustomerPage() {
                 </button>
 
                 {notificationsOpen && (
-                  <div className="absolute right-0 mt-2 w-80 max-h-96 overflow-auto rounded-2xl border border-slate-200 bg-white shadow-2xl p-3 space-y-2 z-50 text-slate-900">
+                  <div
+                    className="absolute right-0 mt-2 w-80 max-h-96 overflow-auto rounded-2xl border border-slate-200 bg-white shadow-2xl p-3 space-y-2 z-50 text-slate-900"
+                    data-tour="teacher-notification-panel"
+                  >
                     <div className="flex items-center justify-between text-sm">
                       <span className="font-semibold">Notifications</span>
                       <span className="text-xs text-slate-500">{teacherBellUnreadCount} unread</span>
                     </div>
                     <button
                       type="button"
+                      data-tour="teacher-notification-query-shortcut"
                       onClick={() => {
                         setNotificationsOpen(false);
                         setTeacherQueriesOpen(true);
@@ -1714,6 +2902,7 @@ export default function CustomerPage() {
                 aria-expanded={teacherMenuOpen}
                 aria-haspopup="menu"
                 aria-label="Open teacher menu"
+                data-tour="teacher-menu-trigger"
                 onClick={() => {
                   setNotificationsOpen(false);
                   setTeacherMenuOpen((open) => !open);
@@ -1730,7 +2919,10 @@ export default function CustomerPage() {
               </button>
 
               {teacherMenuOpen && (
-                <div className="absolute right-0 mt-3 w-80 rounded-2xl bg-white border border-stone-300 outline outline-1 outline-black/5 shadow-2xl shadow-slate-900/15 ring-1 ring-black/5 p-4 space-y-3 z-40 transition">
+                <div
+                  className="absolute right-0 mt-3 w-80 rounded-2xl bg-white border border-stone-300 outline outline-1 outline-black/5 shadow-2xl shadow-slate-900/15 ring-1 ring-black/5 p-4 space-y-3 z-40 transition"
+                  data-tour="teacher-menu-panel"
+                >
                   <div className="flex items-center justify-between">
                     <p className="text-xs uppercase tracking-[0.16em] text-accent-strong">Teacher actions</p>
                     <span className="text-[11px] text-slate-400">Quick access</span>
@@ -1763,6 +2955,7 @@ export default function CustomerPage() {
                       </div>
                     </Link>
                     <button
+                      data-tour="teacher-menu-raise-request"
                       className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300/60 text-sm text-slate-800 transition"
                       onClick={() => {
                         setTeacherMenuOpen(false);
@@ -1790,6 +2983,7 @@ export default function CustomerPage() {
                     </button>
                     <Link
                       href="/teacher/progress"
+                      data-tour="teacher-menu-progress"
                       onClick={() => setTeacherMenuOpen(false)}
                       className="flex items-center gap-3 rounded-xl px-3 py-2.5 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300/60 text-sm text-slate-800 transition"
                     >
@@ -1815,6 +3009,7 @@ export default function CustomerPage() {
                     </Link>
                     <button
                       type="button"
+                      data-tour="teacher-menu-student-queries"
                       onClick={() => {
                         setTeacherMenuOpen(false);
                         setTeacherQueriesOpen(true);
@@ -1852,6 +3047,7 @@ export default function CustomerPage() {
                     </button>
                     <Link
                       href="/teacher/students"
+                      data-tour="teacher-menu-students"
                       onClick={() => setTeacherMenuOpen(false)}
                       className="flex items-center gap-3 rounded-xl px-3 py-2.5 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300/60 text-sm text-slate-800 transition"
                     >
@@ -1874,6 +3070,7 @@ export default function CustomerPage() {
                       </div>
                     </Link>
                     <button
+                      data-tour="teacher-menu-signout"
                       className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-sm text-rose-700 transition disabled:opacity-60"
                       onClick={() =>
                         startSignOut(async () => {
@@ -1921,6 +3118,7 @@ export default function CustomerPage() {
                     setTeacherMenuOpen(false);
                     setNotificationsOpen((open) => !open);
                   }}
+                  data-tour="student-notification-bell"
                   className="relative inline-flex items-center justify-center h-11 w-11 rounded-full border border-white/10 outline outline-2 outline-black/50 bg-white/5 hover:border-accent-strong"
                   aria-label="Notifications"
                 >
@@ -1943,7 +3141,10 @@ export default function CustomerPage() {
                 </button>
 
                 {notificationsOpen && (
-                  <div className="absolute right-0 mt-2 w-80 max-h-96 overflow-auto rounded-2xl border border-slate-200 bg-white shadow-2xl p-3 space-y-2 z-50 text-slate-900">
+                  <div
+                    className="absolute right-0 mt-2 w-80 max-h-96 overflow-auto rounded-2xl border border-slate-200 bg-white shadow-2xl p-3 space-y-2 z-50 text-slate-900"
+                    data-tour="student-notification-panel"
+                  >
                     <div className="flex items-center justify-between text-sm">
                       <span className="font-semibold">Notifications</span>
                       <span className="text-xs text-slate-500">{unreadCount} unread</span>
@@ -1994,6 +3195,7 @@ export default function CustomerPage() {
                   aria-expanded={teacherMenuOpen}
                   aria-haspopup="menu"
                   aria-label="Open student menu"
+                  data-tour="student-menu-trigger"
                   onClick={() => {
                     setNotificationsOpen(false);
                     setTeacherMenuOpen((open) => !open);
@@ -2010,7 +3212,10 @@ export default function CustomerPage() {
                 </button>
 
                 {teacherMenuOpen && (
-                  <div className="absolute right-0 mt-3 w-80 rounded-2xl bg-white border border-stone-300 outline outline-1 outline-black/5 shadow-2xl shadow-slate-900/15 ring-1 ring-black/5 p-4 space-y-3 z-40 transition">
+                  <div
+                    className="absolute right-0 mt-3 w-80 rounded-2xl bg-white border border-stone-300 outline outline-1 outline-black/5 shadow-2xl shadow-slate-900/15 ring-1 ring-black/5 p-4 space-y-3 z-40 transition"
+                    data-tour="student-menu-panel"
+                  >
                     <div className="flex items-center justify-between">
                       <p className="text-xs uppercase tracking-[0.16em] text-accent-strong">Student actions</p>
                       <span className="text-[11px] text-slate-400">Quick access</span>
@@ -2044,6 +3249,7 @@ export default function CustomerPage() {
                       </Link>
                       <button
                         type="button"
+                        data-tour="student-menu-doubt"
                         onClick={() => {
                           setTeacherMenuOpen(false);
                           setStudentDoubtOpen(true);
@@ -2078,6 +3284,7 @@ export default function CustomerPage() {
 
                       <button
                         type="button"
+                        data-tour="student-menu-signout"
                         onClick={() =>
                           startSignOut(async () => {
                             setTeacherMenuOpen(false);
@@ -2122,8 +3329,13 @@ export default function CustomerPage() {
         </div>
       </div>
 
-      <section className="space-y-3">
-        <h2 className="text-xl font-semibold text-white">System requirements</h2>
+      <section className="space-y-3" data-tour={role === "teacher" ? undefined : "student-system-requirements"}>
+        <h2
+          className="text-xl font-semibold text-white"
+          data-tour={role === "teacher" ? undefined : "student-system-requirements-heading"}
+        >
+          System requirements
+        </h2>
         <div className="glass-panel rounded-2xl p-5">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <p className="text-base font-semibold text-slate-100">
@@ -2131,6 +3343,7 @@ export default function CustomerPage() {
             </p>
             <a
               href="https://1drv.ms/u/c/d5c868b4d9600368/IQCspO91wHTLQINVFln61jdhAaeVZC9a_i_Tl8Xd-bU4AW4?e=gqzZN6"
+              data-tour={role === "teacher" ? undefined : "student-installer-download"}
               className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-true-white underline shadow-glow hover:opacity-90"
               download
             >
@@ -2142,7 +3355,10 @@ export default function CustomerPage() {
 
       <div className="space-y-3">
         <h2 className="text-xl font-semibold text-white">Browse activities</h2>
-        <div className="glass-panel rounded-2xl p-4 grid sm:grid-cols-3 gap-3">
+        <div
+          className="glass-panel rounded-2xl p-4 grid sm:grid-cols-3 gap-3"
+          data-tour={role === "teacher" ? "teacher-filters" : "student-filters"}
+        >
           <label className="text-sm text-slate-200 space-y-1">
             Grade
             <select
@@ -2195,8 +3411,16 @@ export default function CustomerPage() {
           <p className="text-sm text-slate-400">Showing {filteredModules.length} modules</p>
         </div>
         <div className="grid md:grid-cols-3 gap-6">
-          {filteredModules.map((module) => (
-            <div key={module.id} className="glass-panel rounded-2xl p-5 space-y-3 hover:border-accent-strong">
+          {filteredModules.map((module, index) => (
+            <div
+              key={module.id}
+              className="glass-panel rounded-2xl p-5 space-y-3 hover:border-accent-strong"
+              data-tour={
+                role === "teacher"
+                  ? (index === 0 ? "teacher-activity-card" : undefined)
+                  : (module.id === studentTourTargetModuleId ? "student-activity-card" : undefined)
+              }
+            >
               <div className="flex items-center justify-between text-xs uppercase tracking-[0.2em] font-semibold text-accent-strong">
                 <span>Grade {module.grade}</span>
                 <span className="text-emerald-800">{formatSubject(module.subject)}</span>
@@ -2209,7 +3433,10 @@ export default function CustomerPage() {
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-lg font-semibold text-white">{module.title}</h3>
                 {role === "teacher" && module.published && (
-                  <div className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold text-red-500">
+                  <div
+                    className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold text-red-500"
+                    data-tour={module.id === teacherTourLiveBadgeModuleId ? "teacher-live-badge" : undefined}
+                  >
                     <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" aria-hidden="true" />
                     Live
                   </div>
@@ -2218,6 +3445,7 @@ export default function CustomerPage() {
               {role === "teacher" && (
                 <div className="flex items-center gap-2 text-xs">
                   <span
+                    data-tour={index === 0 ? "teacher-publish-status" : undefined}
                     className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full font-semibold border ${
                       module.published
                         ? "bg-blue-600 text-true-white border-blue-300"
@@ -2227,6 +3455,7 @@ export default function CustomerPage() {
                     {module.published ? "Published" : "Hidden from students"}
                   </span>
                   <button
+                    data-tour={index === 0 ? "teacher-publish-toggle" : undefined}
                     className="px-3 py-1 rounded-lg bg-emerald-500 text-white font-semibold border border-emerald-300 shadow-glow hover:bg-emerald-400 disabled:opacity-50"
                     onClick={() => void togglePublish(module.id, !module.published)}
                     disabled={publishingId === module.id}
@@ -2253,6 +3482,11 @@ export default function CustomerPage() {
               )}
               <Link
                 href={`/customer/activity/${module.id}`}
+                data-tour={
+                  role === "teacher"
+                    ? (index === 0 ? "teacher-activity-launch" : undefined)
+                    : (module.id === studentTourTargetModuleId ? "student-activity-launch" : undefined)
+                }
                 className="block w-full text-center mt-2 py-2 rounded-lg bg-accent text-true-white font-semibold"
                 onClick={() => markModuleSeen(module.id)}
               >

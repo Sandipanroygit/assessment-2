@@ -11,6 +11,7 @@ import { logActivity } from "@/lib/activityLogger";
 type AuthMode = "login" | "signup" | "reset";
 type UserRole = "admin" | "teacher" | "student";
 type Profile = { full_name?: string; role?: string; grade?: string };
+const TEACHER_HOME_TOUR_ENTRY_KEY = "teacher_home_tour_entry_pending_v1";
 
 const gradeOptions = ["Grade 5", "Grade 6", "Grade 7", "Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12"];
 const subjectOptions = [
@@ -79,11 +80,16 @@ export default function LoginPage() {
   );
 
   const routeByRole = useCallback(
-    (roleValue?: string, emailOverride?: string | null) => {
+    (roleValue?: string, emailOverride?: string | null, fromLogin = false) => {
       const isDefaultAdmin = (emailOverride ?? email).toLowerCase() === defaultAdminEmail.toLowerCase();
       const computedRole = roleValue ?? (isDefaultAdmin ? "admin" : undefined);
       if (computedRole === "admin" || isDefaultAdmin) {
         router.push("/admin");
+      } else if (computedRole === "teacher") {
+        if (fromLogin && typeof window !== "undefined") {
+          window.sessionStorage.setItem(TEACHER_HOME_TOUR_ENTRY_KEY, "1");
+        }
+        router.push("/");
       } else {
         router.push("/customer");
       }
@@ -139,7 +145,7 @@ export default function LoginPage() {
       metadata: { role: resolvedRole, source: "login_page" },
     });
     setStatus(`Hi ${profile?.full_name ?? data.user.email}! Redirecting...`);
-    routeByRole(profile?.role ?? data.user.user_metadata.role, data.user.email);
+    routeByRole(profile?.role ?? data.user.user_metadata.role, data.user.email, true);
   };
 
   const handleSignup = async () => {

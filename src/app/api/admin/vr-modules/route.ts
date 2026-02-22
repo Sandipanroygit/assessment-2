@@ -133,3 +133,82 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export async function PATCH(req: Request) {
+  try {
+    const auth = await requireAdmin(req);
+    if ("error" in auth) return auth.error;
+
+    const body = (await req.json().catch(() => ({}))) as {
+      id?: string;
+      moduleName?: string;
+    };
+
+    const id = typeof body.id === "string" ? body.id.trim() : "";
+    const moduleName = typeof body.moduleName === "string" ? body.moduleName.trim() : "";
+
+    if (!id) {
+      return NextResponse.json({ error: "Module id is required" }, { status: 400 });
+    }
+    if (!moduleName) {
+      return NextResponse.json({ error: "Module name is required" }, { status: 400 });
+    }
+
+    const { data, error } = await auth.supabase
+      .from("vr_modules")
+      .update({ module_name: moduleName })
+      .eq("id", id)
+      .select("id,subject,module_name,created_at")
+      .maybeSingle();
+
+    if (error) {
+      if ((error as { code?: string }).code === "23505") {
+        return NextResponse.json({ error: "Module already exists for this subject." }, { status: 409 });
+      }
+      const hint = isMissingVrModulesTableError(error.message) ? applyPatchHint : "";
+      return NextResponse.json({ error: `${error.message}${hint}` }, { status: 500 });
+    }
+
+    if (!data) {
+      return NextResponse.json({ error: "Module not found." }, { status: 404 });
+    }
+
+    return NextResponse.json({ module: data as VrModuleRow });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unable to update VR module.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    const auth = await requireAdmin(req);
+    if ("error" in auth) return auth.error;
+
+    const body = (await req.json().catch(() => ({}))) as { id?: string };
+    const id = typeof body.id === "string" ? body.id.trim() : "";
+
+    if (!id) {
+      return NextResponse.json({ error: "Module id is required" }, { status: 400 });
+    }
+
+    const { error, count } = await auth.supabase
+      .from("vr_modules")
+      .delete({ count: "exact" })
+      .eq("id", id);
+
+    if (error) {
+      const hint = isMissingVrModulesTableError(error.message) ? applyPatchHint : "";
+      return NextResponse.json({ error: `${error.message}${hint}` }, { status: 500 });
+    }
+
+    if (!count) {
+      return NextResponse.json({ error: "Module not found." }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unable to delete VR module.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}

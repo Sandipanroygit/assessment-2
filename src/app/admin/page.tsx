@@ -25,8 +25,9 @@ import {
 import { UploadCurriculumView } from "@/components/admin/UploadCurriculumView";
 import { AdminQuestionsView } from "@/components/admin/AdminQuestionsView";
 import { logActivity } from "@/lib/activityLogger";
+import { GuidedTour, type GuidedTourStep } from "@/components/GuidedTour";
+import { playUiClickTone } from "@/lib/uiTone";
 import {
-  dedupeAndSortModuleNames,
   isDesignTechnologySubject,
   normalizeVrSubjectKey,
   VR_SUBJECT_ORDER,
@@ -43,6 +44,20 @@ type AdminUser = {
 };
 
 const orderActions = ["Track status", "View receipts", "Export reports"];
+const ADMIN_TOUR_STORAGE_KEY = "admin_feature_tour_v1";
+const ADMIN_TOUR_INITIAL_STEP_ID = "admin-header";
+const ADMIN_TOUR_PALETTE = {
+  accent: "#f97316",
+  accentStrong: "#9a3412",
+} as const;
+const ADMIN_TOUR_BOOT_SELECTORS = [
+  '[data-tour="admin-header"]',
+  '[data-tour="admin-notification-bell"]',
+  '[data-tour="admin-menu-trigger"]',
+  '[data-tour="admin-stats"]',
+  '[data-tour="admin-ribbon"]',
+  '[data-tour="admin-drone-section"]',
+] as const;
 
 const gradeOptions = ["Grade 5", "Grade 6", "Grade 7", "Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12"];
 const subjectOptions = ["Physics", "Mathematics", "Computer Science", "Environment System & Society (ESS)", "Design Technology"];
@@ -117,6 +132,40 @@ type VrModuleRow = {
   created_at?: string | null;
 };
 
+type TeacherModuleApiRow = {
+  id: string;
+  title: string;
+  grade: string;
+  subject: string;
+  module: string;
+  description: string | null;
+  judging_logic?: string | null;
+  asset_urls?: unknown;
+  assets?: unknown;
+  price_yearly?: number | null;
+  published?: boolean | null;
+};
+
+const mapTeacherModuleRow = (row: TeacherModuleApiRow): CurriculumModule => {
+  const assets = Array.isArray(row.asset_urls)
+    ? (row.asset_urls as CurriculumModule["assets"])
+    : Array.isArray(row.assets)
+      ? (row.assets as CurriculumModule["assets"])
+      : [];
+  return {
+    id: row.id,
+    title: row.title,
+    grade: row.grade,
+    subject: row.subject,
+    module: row.module,
+    description: row.description ?? "",
+    judgingLogic: row.judging_logic ?? "",
+    assets,
+    priceYearly: row.price_yearly ?? undefined,
+    published: row.published ?? undefined,
+  };
+};
+
 type AdminRibbonSection = "drone" | "vrModules" | "upload" | "questions" | "products" | "sentiment" | "users" | "orders";
 
 export default function AdminPage() {
@@ -160,8 +209,21 @@ export default function AdminPage() {
   const [vrModuleStatus, setVrModuleStatus] = useState<string | null>(null);
   const [vrModuleDraftBySubject, setVrModuleDraftBySubject] = useState<Record<string, string>>({});
   const [savingVrSubject, setSavingVrSubject] = useState<string | null>(null);
+  const [savingVrModuleId, setSavingVrModuleId] = useState<string | null>(null);
+  const [deletingVrModuleId, setDeletingVrModuleId] = useState<string | null>(null);
   const [activeAdminSection, setActiveAdminSection] = useState<AdminRibbonSection>("drone");
+  const [adminTourRun, setAdminTourRun] = useState(false);
+  const [adminTourInitialized, setAdminTourInitialized] = useState(false);
+  const [adminTourActiveStepId, setAdminTourActiveStepId] = useState<string | null>(null);
+  const [adminTourLockedSteps, setAdminTourLockedSteps] = useState<GuidedTourStep[] | null>(null);
+  const [adminTourPromptOpen, setAdminTourPromptOpen] = useState(false);
+  const [adminTourUiReady, setAdminTourUiReady] = useState(false);
+  const adminTourPromptOverlayRef = useRef<HTMLDivElement | null>(null);
+  const adminTourPromptCardRef = useRef<HTMLDivElement | null>(null);
+  const adminTourPromptButtonRef = useRef<HTMLButtonElement | null>(null);
   const [statsExpanded, setStatsExpanded] = useState(true);
+  const [droneSearchInput, setDroneSearchInput] = useState("");
+  const [droneSearchQuery, setDroneSearchQuery] = useState("");
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
   const [userForm, setUserForm] = useState({ full_name: "", role: "student", grade: "", subject: "" });
   const [sopFile, setSopFile] = useState<File | null>(null);
@@ -241,7 +303,7 @@ export default function AdminPage() {
     });
   }, [vrModuleRows]);
   const vrModulesBySubject = useMemo(() => {
-    const grouped: Record<string, string[]> = {};
+    const grouped: Record<string, VrModuleRow[]> = {};
     vrSubjects.forEach((subject) => {
       grouped[subject] = [];
     });
@@ -251,10 +313,15 @@ export default function AdminPage() {
       const subject = normalizeVrSubjectKey(rawSubject) ?? rawSubject;
       if (!subject) return;
       if (!grouped[subject]) grouped[subject] = [];
-      grouped[subject].push(row.module_name ?? "");
+      grouped[subject].push(row);
     });
     Object.keys(grouped).forEach((subject) => {
-      grouped[subject] = dedupeAndSortModuleNames(grouped[subject] ?? []);
+      grouped[subject] = [...(grouped[subject] ?? [])].sort((a, b) =>
+        (a.module_name ?? "").localeCompare(b.module_name ?? "", undefined, {
+          sensitivity: "base",
+          numeric: true,
+        }),
+      );
     });
     return grouped;
   }, [vrModuleRows, vrSubjects]);
@@ -549,6 +616,98 @@ export default function AdminPage() {
     [isAdmin, loadVrModules, vrModuleDraftBySubject],
   );
 
+  const editVrModule = useCallback(
+    async (row: VrModuleRow) => {
+      if (!isAdmin) return;
+      const currentModuleName = row.module_name?.trim() ?? "";
+      const nextModuleNameRaw = window.prompt(`Edit VR module for ${row.subject}`, currentModuleName);
+      if (nextModuleNameRaw === null) return;
+
+      const nextModuleName = nextModuleNameRaw.trim();
+      if (!nextModuleName) {
+        setVrModuleStatus("Module name is required.");
+        return;
+      }
+      if (nextModuleName === currentModuleName) return;
+
+      setSavingVrModuleId(row.id);
+      setVrModuleStatus(`Updating "${currentModuleName}"...`);
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+        if (!token) {
+          setVrModuleStatus("No active session; please sign in again.");
+          return;
+        }
+
+        const response = await fetch("/api/admin/vr-modules", {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ id: row.id, moduleName: nextModuleName }),
+        });
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        if (!response.ok) {
+          setVrModuleStatus(body?.error ?? `Unable to update module (status ${response.status}).`);
+          return;
+        }
+
+        await loadVrModules();
+        setVrModuleStatus(`Updated module to "${nextModuleName}".`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unable to update module";
+        setVrModuleStatus(message);
+      } finally {
+        setSavingVrModuleId(null);
+      }
+    },
+    [isAdmin, loadVrModules],
+  );
+
+  const deleteVrModule = useCallback(
+    async (row: VrModuleRow) => {
+      if (!isAdmin) return;
+      const shouldDelete = window.confirm(`Delete "${row.module_name}" from ${row.subject}?`);
+      if (!shouldDelete) return;
+
+      setDeletingVrModuleId(row.id);
+      setVrModuleStatus(`Deleting "${row.module_name}"...`);
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+        if (!token) {
+          setVrModuleStatus("No active session; please sign in again.");
+          return;
+        }
+
+        const response = await fetch("/api/admin/vr-modules", {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ id: row.id }),
+        });
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        if (!response.ok) {
+          setVrModuleStatus(body?.error ?? `Unable to delete module (status ${response.status}).`);
+          return;
+        }
+
+        await loadVrModules();
+        setVrModuleStatus(`Deleted "${row.module_name}".`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unable to delete module";
+        setVrModuleStatus(message);
+      } finally {
+        setDeletingVrModuleId(null);
+      }
+    },
+    [isAdmin, loadVrModules],
+  );
+
   const updateTeacherRequestStatus = useCallback(
     async (id: string, nextStatus: string) => {
       if (!isAdmin) return;
@@ -662,6 +821,34 @@ export default function AdminPage() {
     return copy;
   }, [userRows, userSort]);
 
+  const filteredCurriculumRows = useMemo(() => {
+    const query = droneSearchQuery.trim().toLowerCase();
+    if (!query) return curriculumRows;
+    return curriculumRows.filter((item) => {
+      const assetLabels = (item.assets ?? []).map((asset) => asset.label).join(" ");
+      const haystack = [
+        item.title,
+        item.grade,
+        item.subject,
+        item.module,
+        item.description,
+        assetLabels,
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [curriculumRows, droneSearchQuery]);
+
+  const runDroneSearch = useCallback(() => {
+    setDroneSearchQuery(droneSearchInput.trim());
+  }, [droneSearchInput]);
+
+  const clearDroneSearch = useCallback(() => {
+    setDroneSearchInput("");
+    setDroneSearchQuery("");
+  }, []);
+
   const reorderCurriculum = (sourceId: string, targetId: string) => {
     setCurriculumRows((prev) => {
       const from = prev.findIndex((item) => item.id === sourceId);
@@ -691,8 +878,31 @@ export default function AdminPage() {
       if (!canEditCurriculum) return;
       setDataStatus(statusLabel);
       try {
+        const curriculumPromise: Promise<CurriculumModule[]> = isTeacher
+          ? (async () => {
+              const { data: sessionData } = await supabase.auth.getSession();
+              const token = sessionData.session?.access_token ?? null;
+              if (!token) {
+                return fetchCurriculumModules({ includeUnpublished: true });
+              }
+              const res = await fetch("/api/teacher/modules", {
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              const body = (await res.json().catch(() => ({}))) as {
+                modules?: unknown;
+                error?: string;
+              };
+              if (!res.ok) {
+                throw new Error(body?.error ?? `Unable to load modules (status ${res.status})`);
+              }
+              const rows = Array.isArray(body.modules)
+                ? (body.modules as TeacherModuleApiRow[])
+                : [];
+              return rows.map(mapTeacherModuleRow);
+            })()
+          : fetchCurriculumModules({ includeUnpublished: true });
         const [nextCurriculum, nextProducts] = await Promise.all([
-          fetchCurriculumModules({ includeUnpublished: true }),
+          curriculumPromise,
           isAdmin ? fetchProducts() : Promise.resolve([] as Product[]),
         ]);
 
@@ -737,7 +947,7 @@ export default function AdminPage() {
         setDataStatus(`Unable to load shared data (${message}).${setupHint}`);
       }
     },
-    [canEditCurriculum, isAdmin, loadSalesInquiries, loadTeacherRequests, loadVrModules, reloadUsers],
+    [canEditCurriculum, isAdmin, isTeacher, loadSalesInquiries, loadTeacherRequests, loadVrModules, reloadUsers],
   );
 
   const openUserEditor = (user: AdminUser, event?: MouseEvent<HTMLButtonElement>) => {
@@ -838,7 +1048,7 @@ export default function AdminPage() {
         const setupHint = isMissingTableSchemaCacheError(error.message)
           ? "Supabase tables are not created yet. Apply `supabase/schema.sql` in your Supabase SQL editor, then retry."
           : null;
-        setAuthStatus(`Unable to verify admin access: ${error.message}${setupHint ? ` â€” ${setupHint}` : ""}`);
+        setAuthStatus(`Unable to verify admin access: ${error.message}${setupHint ? ` Ã¢â‚¬â€ ${setupHint}` : ""}`);
         setIsAdmin(false);
         return;
       }
@@ -1100,9 +1310,567 @@ export default function AdminPage() {
     }
   }, [activeAdminSection, editingCurriculumId, editingId, editingUser]);
 
+  const adminTourComputedSteps = useMemo<GuidedTourStep[]>(() => {
+    if (!isAdmin) return [];
+
+    return [
+      {
+        id: "admin-header",
+        target: '[data-tour="admin-header"]',
+        title: "Admin Control Header",
+        description: "This top bar gives you fast access to notifications, menu actions, and dashboard context.",
+        placement: "bottom",
+      },
+      {
+        id: "admin-stats",
+        target: '[data-tour="admin-stats"]',
+        title: "KPI Cards",
+        description: "These cards summarize live platform metrics at a glance.",
+        placement: "bottom",
+        padding: 20,
+        scrollBlock: "start",
+        forcePageTop: true,
+      },
+      {
+        id: "admin-ribbon",
+        target: '[data-tour="admin-ribbon"]',
+        title: "Section Ribbon",
+        description: "Switch among drone activities, VR modules, users, products, and more from this ribbon.",
+        placement: "bottom",
+        padding: 24,
+        scrollBlock: "start",
+        forcePageTop: true,
+      },
+      {
+        id: "admin-drone-section",
+        target: '[data-tour="admin-drone-section"]',
+        title: "Drone Activity Section",
+        description: "Manage curriculum entries and activity metadata here.",
+        placement: "bottom",
+        padding: 24,
+      },
+      {
+        id: "admin-vr-modules-section",
+        target: '[data-tour="admin-vr-modules-section"]',
+        title: "VR Modules Section",
+        description: "Create, edit, and delete VR modules by subject in this workspace.",
+        placement: "top",
+      },
+      {
+        id: "admin-upload-section",
+        target: '[data-tour="admin-upload-section"]',
+        title: "Upload Content Section",
+        description: "Upload and publish curriculum files from this section.",
+        placement: "top",
+      },
+      {
+        id: "admin-questions-section",
+        target: '[data-tour="admin-questions-section"]',
+        title: "Manage Questions Section",
+        description: "Review and update assessment questions from this panel.",
+        placement: "top",
+      },
+      {
+        id: "admin-sentiment-section",
+        target: '[data-tour="admin-sentiment-section"]',
+        title: "Sentiment Summaries Section",
+        description: "Track generated sentiment reports and open or remove files here.",
+        placement: "top",
+      },
+      {
+        id: "admin-users-section",
+        target: '[data-tour="admin-users-section"]',
+        title: "Registered Users Section",
+        description: "Review and update user profiles, roles, and basic attributes.",
+        placement: "top",
+      },
+      {
+        id: "admin-products-section",
+        target: '[data-tour="admin-products-section"]',
+        title: "Product Catalogue Section",
+        description: "Maintain product listings, pricing, and inventory details here.",
+        placement: "top",
+      },
+      {
+        id: "admin-orders-section",
+        target: '[data-tour="admin-orders-section"]',
+        title: "Orders Section",
+        description: "Track order-related actions and monitor delivery status updates.",
+        placement: "top",
+      },
+      {
+        id: "admin-notification-bell",
+        target: '[data-tour="admin-notification-bell"]',
+        title: "Notification Bell",
+        description: "Open this bell to monitor unread teacher requests and sales queries.",
+        placement: "left",
+        forcePageTop: true,
+      },
+      {
+        id: "admin-notification-panel",
+        target: '[data-tour="admin-notification-panel"]',
+        title: "Notification Panel",
+        description: "Unread operational alerts are grouped in this panel.",
+        placement: "left",
+        forcePageTop: true,
+      },
+      {
+        id: "admin-menu-trigger",
+        target: '[data-tour="admin-menu-trigger"]',
+        title: "Admin Menu",
+        description: "Open this menu for quick control-room workflows.",
+        placement: "left",
+        forcePageTop: true,
+      },
+      {
+        id: "admin-menu-panel",
+        target: '[data-tour="admin-menu-panel"]',
+        title: "Admin Action Panel",
+        description: "This panel centralizes requests, queries, analytics, and sign-out actions.",
+        placement: "left",
+        forcePageTop: true,
+      },
+      {
+        id: "admin-menu-teacher-requests",
+        target: '[data-tour="admin-menu-teacher-requests"]',
+        title: "Teacher Requests Shortcut",
+        description: "Jump into pending teacher content requests directly from here.",
+        placement: "left",
+      },
+      {
+        id: "admin-teacher-requests-modal",
+        target: '[data-tour="admin-teacher-requests-modal"]',
+        title: "Teacher Requests Workspace",
+        description: "Review requested items, needed-by dates, and status updates in this workspace.",
+        placement: "top",
+      },
+      {
+        id: "admin-menu-sales-queries",
+        target: '[data-tour="admin-menu-sales-queries"]',
+        title: "Sales Queries Shortcut",
+        description: "Open inbound sales conversations requiring follow-up.",
+        placement: "left",
+      },
+      {
+        id: "admin-sales-inquiries-modal",
+        target: '[data-tour="admin-sales-inquiries-modal"]',
+        title: "Sales Queries Workspace",
+        description: "Track and update sales inquiry statuses from this modal.",
+        placement: "top",
+      },
+      {
+        id: "admin-menu-user-analytics",
+        target: '[data-tour="admin-menu-user-analytics"]',
+        title: "User Analytics",
+        description: "Use this link to inspect login activity and engagement insights.",
+        placement: "left",
+      },
+      {
+        id: "admin-menu-signout",
+        target: '[data-tour="admin-menu-signout"]',
+        title: "Sign Out Safely",
+        description: "End the current admin session securely from this action.",
+        placement: "left",
+      },
+    ];
+  }, [isAdmin]);
+
+  const adminTourSteps = adminTourLockedSteps ?? adminTourComputedSteps;
+
+  const isAdminTourUiReady = useCallback(() => {
+    if (typeof window === "undefined") return false;
+    if (dataStatus) return false;
+    return ADMIN_TOUR_BOOT_SELECTORS.every((selector) => {
+      const node = document.querySelector(selector) as HTMLElement | null;
+      if (!node) return false;
+      const rect = node.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    });
+  }, [dataStatus]);
+
+  const waitForAdminTourUi = useCallback(
+    (onReady: () => void) => {
+      if (typeof window === "undefined") {
+        onReady();
+        return;
+      }
+      let cancelled = false;
+      let attempts = 0;
+      let timerId: number | null = null;
+      let rafA: number | null = null;
+      let rafB: number | null = null;
+
+      const run = () => {
+        if (cancelled) return;
+        attempts += 1;
+        if (!isAdminTourUiReady()) {
+          if (attempts >= 50) {
+            onReady();
+            return;
+          }
+          timerId = window.setTimeout(run, 120);
+          return;
+        }
+        rafA = window.requestAnimationFrame(() => {
+          rafB = window.requestAnimationFrame(() => {
+            if (cancelled) return;
+            onReady();
+          });
+        });
+      };
+      run();
+
+      return () => {
+        cancelled = true;
+        if (timerId) window.clearTimeout(timerId);
+        if (rafA) window.cancelAnimationFrame(rafA);
+        if (rafB) window.cancelAnimationFrame(rafB);
+      };
+    },
+    [isAdminTourUiReady],
+  );
+
+  const startAdminTour = useCallback(() => {
+    setAdminMenuOpen(false);
+    setAdminNotificationsOpen(false);
+    setShowTeacherRequests(false);
+    setShowSalesInquiries(false);
+    setActiveAdminSection("drone");
+    setAdminTourPromptOpen(false);
+    const kickoff = () => {
+      const preferredInitialStepIndex = adminTourComputedSteps.findIndex(
+        (tourStep) => tourStep.id === ADMIN_TOUR_INITIAL_STEP_ID,
+      );
+      const orderedSteps =
+        preferredInitialStepIndex > 0
+          ? [...adminTourComputedSteps.slice(preferredInitialStepIndex), ...adminTourComputedSteps.slice(0, preferredInitialStepIndex)]
+          : adminTourComputedSteps;
+      setAdminTourLockedSteps(orderedSteps);
+      setAdminTourActiveStepId(orderedSteps[0]?.id ?? null);
+      setAdminTourRun(true);
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem(ADMIN_TOUR_STORAGE_KEY);
+      }
+    };
+    const cleanup = waitForAdminTourUi(kickoff);
+    return cleanup;
+  }, [adminTourComputedSteps, waitForAdminTourUi]);
+
+  const closeAdminTour = useCallback((completed: boolean) => {
+    setAdminTourRun(false);
+    setAdminTourActiveStepId(null);
+    setAdminTourLockedSteps(null);
+    setAdminTourPromptOpen(false);
+    setAdminMenuOpen(false);
+    setAdminNotificationsOpen(false);
+    setShowTeacherRequests(false);
+    setShowSalesInquiries(false);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(ADMIN_TOUR_STORAGE_KEY, completed ? "done" : "skipped");
+    }
+  }, []);
+
+  const adminTourCurrentStepIndex = useMemo(() => {
+    if (!adminTourActiveStepId) return 0;
+    const resolvedIndex = adminTourSteps.findIndex((tourStep) => tourStep.id === adminTourActiveStepId);
+    return resolvedIndex >= 0 ? resolvedIndex : 0;
+  }, [adminTourActiveStepId, adminTourSteps]);
+
+  const handleAdminTourStepChange = useCallback(
+    (nextStepIndex: number) => {
+      if (nextStepIndex < 0) return;
+      if (nextStepIndex >= adminTourSteps.length) {
+        closeAdminTour(true);
+        return;
+      }
+      const nextStepId = adminTourSteps[nextStepIndex]?.id;
+      if (!nextStepId) {
+        closeAdminTour(true);
+        return;
+      }
+      setAdminTourActiveStepId(nextStepId);
+    },
+    [adminTourSteps, closeAdminTour],
+  );
+
+  useEffect(() => {
+    if (!adminTourRun) return;
+    const stepId = adminTourActiveStepId ?? adminTourSteps[adminTourCurrentStepIndex]?.id;
+    if (!stepId) return;
+
+    const menuStepIds = new Set([
+      "admin-menu-panel",
+      "admin-menu-teacher-requests",
+      "admin-menu-sales-queries",
+      "admin-menu-user-analytics",
+      "admin-menu-signout",
+    ]);
+    const notificationStepIds = new Set(["admin-notification-panel"]);
+    const openTeacherRequests = stepId === "admin-teacher-requests-modal";
+    const openSalesInquiries = stepId === "admin-sales-inquiries-modal";
+
+    setAdminMenuOpen(menuStepIds.has(stepId));
+    setAdminNotificationsOpen(notificationStepIds.has(stepId));
+    setShowTeacherRequests(openTeacherRequests);
+    setShowSalesInquiries(openSalesInquiries);
+
+    if (openTeacherRequests) {
+      void loadTeacherRequests();
+    }
+    if (openSalesInquiries) {
+      void loadSalesInquiries();
+    }
+
+    if (stepId === "admin-users-section") {
+      setActiveAdminSection("users");
+    } else if (stepId === "admin-products-section") {
+      setActiveAdminSection("products");
+    } else if (stepId === "admin-orders-section") {
+      setActiveAdminSection("orders");
+    } else if (stepId === "admin-vr-modules-section") {
+      setActiveAdminSection("vrModules");
+    } else if (stepId === "admin-upload-section") {
+      setActiveAdminSection("upload");
+    } else if (stepId === "admin-questions-section") {
+      setActiveAdminSection("questions");
+    } else if (stepId === "admin-sentiment-section") {
+      setActiveAdminSection("sentiment");
+    } else if (stepId === "admin-drone-section") {
+      setActiveAdminSection("drone");
+    }
+  }, [
+    adminTourActiveStepId,
+    adminTourCurrentStepIndex,
+    adminTourRun,
+    adminTourSteps,
+    loadSalesInquiries,
+    loadTeacherRequests,
+  ]);
+
+  useEffect(() => {
+    if (!adminTourRun) return;
+    if (adminTourSteps.length === 0) {
+      closeAdminTour(false);
+      return;
+    }
+    const activeStepExists = !!adminTourActiveStepId && adminTourSteps.some((tourStep) => tourStep.id === adminTourActiveStepId);
+    if (!activeStepExists) {
+      setAdminTourActiveStepId(adminTourSteps[0]?.id ?? null);
+    }
+  }, [adminTourActiveStepId, adminTourRun, adminTourSteps, closeAdminTour]);
+
+  useEffect(() => {
+    if (!isAdmin) {
+      setAdminTourUiReady(false);
+      return;
+    }
+    const cleanup = waitForAdminTourUi(() => {
+      setAdminTourUiReady(isAdminTourUiReady());
+    });
+    return cleanup;
+  }, [isAdmin, isAdminTourUiReady, waitForAdminTourUi, dataStatus, activeAdminSection, statsExpanded, curriculumRows.length, productRows.length]);
+
+  useEffect(() => {
+    if (!isAdmin || adminTourInitialized) return;
+    if (typeof window === "undefined") return;
+    if (!adminTourUiReady) return;
+
+    setAdminTourRun(false);
+    setAdminTourPromptOpen(true);
+    setAdminTourInitialized(true);
+  }, [adminTourInitialized, isAdmin, adminTourUiReady]);
+
+  useEffect(() => {
+    if (!adminTourPromptOpen || adminTourRun) return;
+    if (typeof window === "undefined") return;
+
+    let cancelled = false;
+    let timerId: number | null = null;
+    let rafId: number | null = null;
+    let smoothLockUntil = 0;
+    const observedNode = adminTourPromptCardRef.current;
+    const resizeObserver =
+      typeof ResizeObserver !== "undefined" && observedNode
+        ? new ResizeObserver(() => {
+            scheduleEnsurePromptVisible();
+          })
+        : null;
+    const rootResizeObserver =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => {
+            scheduleEnsurePromptVisible();
+          })
+        : null;
+    const mutationObserver =
+      typeof MutationObserver !== "undefined"
+        ? new MutationObserver(() => {
+            scheduleEnsurePromptVisible();
+          })
+        : null;
+
+    const ensurePromptVisible = () => {
+      if (cancelled) return;
+      const node = adminTourPromptCardRef.current;
+      if (!node) return;
+
+      const rect = node.getBoundingClientRect();
+      const targetCenterY = window.innerHeight / 2;
+      const cardCenterY = rect.top + rect.height / 2;
+      const deltaY = cardCenterY - targetCenterY;
+      if (Math.abs(deltaY) > 1) {
+        const now = window.performance.now();
+        if (now < smoothLockUntil) return;
+        if (Math.abs(deltaY) < 6) return;
+        const overlayNode = adminTourPromptOverlayRef.current;
+        const canOverlayScroll =
+          !!overlayNode && overlayNode.scrollHeight - overlayNode.clientHeight > 1;
+        if (canOverlayScroll && overlayNode) {
+          overlayNode.scrollBy({ top: deltaY, behavior: "smooth" });
+        } else {
+          window.scrollBy({ top: deltaY, behavior: "smooth" });
+        }
+        smoothLockUntil = now + 300;
+      }
+    };
+
+    const scheduleEnsurePromptVisible = () => {
+      if (cancelled) return;
+      if (rafId) window.cancelAnimationFrame(rafId);
+      rafId = window.requestAnimationFrame(() => {
+        ensurePromptVisible();
+      });
+    };
+
+    ensurePromptVisible();
+    timerId = window.setTimeout(scheduleEnsurePromptVisible, 160);
+    window.addEventListener("resize", scheduleEnsurePromptVisible, { passive: true });
+    document.addEventListener("transitionend", scheduleEnsurePromptVisible, true);
+    resizeObserver?.observe(observedNode);
+    rootResizeObserver?.observe(document.documentElement);
+    mutationObserver?.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["class", "style", "aria-expanded"],
+    });
+
+    return () => {
+      cancelled = true;
+      if (timerId) window.clearTimeout(timerId);
+      if (rafId) window.cancelAnimationFrame(rafId);
+      resizeObserver?.disconnect();
+      rootResizeObserver?.disconnect();
+      mutationObserver?.disconnect();
+      window.removeEventListener("resize", scheduleEnsurePromptVisible);
+      document.removeEventListener("transitionend", scheduleEnsurePromptVisible, true);
+    };
+  }, [adminTourPromptOpen, adminTourRun]);
+
   return (
     <main className="section-padding space-y-8">
-      <div className="sticky top-0 z-30 space-y-4 rounded-2xl border border-white/10 bg-surface/65 p-3 shadow-[0_10px_30px_rgba(0,0,0,0.2)] backdrop-blur-xl">
+      {isAdmin && (
+        <GuidedTour
+          run={adminTourRun}
+          stepIndex={adminTourCurrentStepIndex}
+          steps={adminTourSteps}
+          onStepIndexChange={handleAdminTourStepChange}
+          onClose={closeAdminTour}
+          palette={ADMIN_TOUR_PALETTE}
+        />
+      )}
+
+      {isAdmin && adminTourPromptOpen && !adminTourRun && adminTourUiReady && (
+        <div
+          ref={adminTourPromptOverlayRef}
+          className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto px-4 py-4"
+          style={{ background: "rgba(15, 23, 42, 0.14)" }}
+        >
+          <div
+            ref={adminTourPromptCardRef}
+            className="w-full max-w-lg rounded-2xl p-5 overflow-y-auto"
+            style={{
+              maxHeight: "calc(100dvh - 2rem)",
+              border: `1px solid color-mix(in srgb, ${ADMIN_TOUR_PALETTE.accent} 28%, transparent)`,
+              background: "var(--surface)",
+              color: "var(--foreground)",
+              boxShadow:
+                `0 18px 42px rgba(15, 23, 42, 0.18), 0 0 0 1px color-mix(in srgb, ${ADMIN_TOUR_PALETTE.accent} 12%, transparent)`,
+            }}
+          >
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                borderRadius: 999,
+                border: `1px solid color-mix(in srgb, ${ADMIN_TOUR_PALETTE.accent} 40%, transparent)`,
+                background: `color-mix(in srgb, ${ADMIN_TOUR_PALETTE.accent} 10%, #ffffff)`,
+                padding: "2px 10px",
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                color: ADMIN_TOUR_PALETTE.accentStrong,
+              }}
+            >
+              Admin Walkthrough
+            </span>
+            <h3 className="mt-3 text-2xl font-semibold" style={{ color: ADMIN_TOUR_PALETTE.accentStrong }}>
+              Take Tour
+            </h3>
+            <p className="mt-2 text-sm" style={{ color: "color-mix(in srgb, var(--foreground) 82%, #64748b)" }}>
+              Start a guided walkthrough of all admin features from this dashboard.
+            </p>
+            <div className="mt-5 flex items-center gap-3">
+              <button
+                type="button"
+                ref={adminTourPromptButtonRef}
+                onClick={() => {
+                  void playUiClickTone();
+                  startAdminTour();
+                }}
+                disabled={!adminTourUiReady}
+                style={{
+                  borderRadius: 8,
+                  border: `1px solid color-mix(in srgb, ${ADMIN_TOUR_PALETTE.accentStrong} 42%, transparent)`,
+                  background: ADMIN_TOUR_PALETTE.accent,
+                  color: "#ffffff",
+                  padding: "8px 14px",
+                  fontSize: 14,
+                  fontWeight: 700,
+                  cursor: adminTourUiReady ? "pointer" : "not-allowed",
+                  opacity: adminTourUiReady ? 1 : 0.65,
+                }}
+              >
+                Take tour
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void playUiClickTone();
+                  setAdminTourPromptOpen(false);
+                }}
+                style={{
+                  borderRadius: 8,
+                  border: `1px solid color-mix(in srgb, ${ADMIN_TOUR_PALETTE.accent} 32%, transparent)`,
+                  background: "color-mix(in srgb, var(--background-2) 70%, #ffffff)",
+                  color: ADMIN_TOUR_PALETTE.accentStrong,
+                  padding: "8px 12px",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Skip
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div
+        className="sticky top-0 z-30 space-y-4 rounded-2xl border border-white/10 bg-surface/65 p-3 shadow-[0_10px_30px_rgba(0,0,0,0.2)] backdrop-blur-xl"
+        data-tour={isAdmin ? "admin-header" : undefined}
+      >
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <p className="text-accent-strong uppercase text-xs tracking-[0.2em]">{dashboardRoleLabel}</p>
@@ -1122,6 +1890,7 @@ export default function AdminPage() {
                   setAdminMenuOpen(false);
                   setAdminNotificationsOpen((open) => !open);
                 }}
+                data-tour="admin-notification-bell"
                 className="relative inline-flex items-center justify-center h-11 w-11 rounded-full border border-white/10 outline outline-1 outline-black/50 bg-white/5 hover:border-accent-strong"
                 aria-label="Unread notifications"
               >
@@ -1144,7 +1913,10 @@ export default function AdminPage() {
               </button>
 
               {adminNotificationsOpen && (
-                <div className="absolute right-0 mt-2 w-96 max-h-96 overflow-auto rounded-2xl border border-stone-300 bg-white shadow-2xl p-3 space-y-2 z-50 text-slate-900">
+                <div
+                  className="absolute right-0 mt-2 w-96 max-h-96 overflow-auto rounded-2xl border border-stone-300 bg-white shadow-2xl p-3 space-y-2 z-50 text-slate-900"
+                  data-tour="admin-notification-panel"
+                >
                   <div className="flex items-center justify-between text-sm">
                     <span className="font-semibold">Notifications</span>
                     <span className="text-xs text-slate-500">{unreadNotificationCount} unread</span>
@@ -1202,6 +1974,7 @@ export default function AdminPage() {
               type="button"
               aria-expanded={adminMenuOpen}
               aria-haspopup="menu"
+              data-tour="admin-menu-trigger"
               onClick={() => {
                 setAdminNotificationsOpen(false);
                 setAdminMenuOpen((open) => !open);
@@ -1218,7 +1991,10 @@ export default function AdminPage() {
             </button>
 
             {adminMenuOpen && (
-              <div className="absolute right-0 mt-3 w-80 rounded-2xl bg-white border border-stone-300 outline outline-1 outline-black/5 shadow-2xl shadow-slate-900/15 ring-1 ring-black/5 p-4 space-y-3 z-40 transition">
+              <div
+                className="absolute right-0 mt-3 w-80 rounded-2xl bg-white border border-stone-300 outline outline-1 outline-black/5 shadow-2xl shadow-slate-900/15 ring-1 ring-black/5 p-4 space-y-3 z-40 transition"
+                data-tour="admin-menu-panel"
+              >
                 <div className="flex items-center justify-between">
                   <p className="text-xs uppercase tracking-[0.16em] text-accent-strong">{dashboardRoleLabel} actions</p>
                   <span className="text-[11px] text-slate-400">Quick access</span>
@@ -1255,6 +2031,7 @@ export default function AdminPage() {
                 {isAdmin && (
                   <button
                     type="button"
+                    data-tour="admin-menu-teacher-requests"
                     onClick={() => {
                       setAdminMenuOpen(false);
                       openTeacherRequestsModal();
@@ -1297,6 +2074,7 @@ export default function AdminPage() {
                 {isAdmin && (
                   <button
                     type="button"
+                    data-tour="admin-menu-sales-queries"
                     onClick={() => {
                       setAdminMenuOpen(false);
                       openSalesInquiriesModal();
@@ -1336,6 +2114,7 @@ export default function AdminPage() {
                 {isAdmin && (
                   <Link
                     href="/admin/user-activity"
+                    data-tour="admin-menu-user-analytics"
                     onClick={() => setAdminMenuOpen(false)}
                     className="flex items-center gap-3 rounded-xl px-3 py-2.5 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300/60 text-sm text-slate-800 transition"
                   >
@@ -1363,6 +2142,7 @@ export default function AdminPage() {
 
                 <button
                   type="button"
+                  data-tour="admin-menu-signout"
                   onClick={() => {
                     setAdminMenuOpen(false);
                     startSignOut(async () => {
@@ -1416,7 +2196,7 @@ export default function AdminPage() {
         </div>
       )}
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4" data-tour={isAdmin ? "admin-stats" : undefined}>
         {stats.map((item) => (
           <div
             key={item.label}
@@ -1446,7 +2226,10 @@ export default function AdminPage() {
         ))}
       </div>
 
-      <div className="relative rounded-3xl border border-stone-300/75 bg-gradient-to-r from-stone-100 via-amber-50/80 to-zinc-100/95 p-2.5 ring-1 ring-white/70 shadow-[0_20px_38px_rgba(120,113,108,0.22),inset_0_2px_0_rgba(255,255,255,0.88)]">
+      <div
+        className="relative rounded-3xl border border-stone-300/75 bg-gradient-to-r from-stone-100 via-amber-50/80 to-zinc-100/95 p-2.5 ring-1 ring-white/70 shadow-[0_20px_38px_rgba(120,113,108,0.22),inset_0_2px_0_rgba(255,255,255,0.88)]"
+        data-tour={isAdmin ? "admin-ribbon" : undefined}
+      >
         <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {ribbonSections.map((section) => renderSectionRibbonButton(section))}
         </div>
@@ -1463,6 +2246,7 @@ export default function AdminPage() {
             className="w-full max-w-7xl max-h-[92vh] overflow-hidden glass-panel rounded-2xl p-8 space-y-6"
             role="dialog"
             aria-modal="true"
+            data-tour="admin-teacher-requests-modal"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between gap-3">
@@ -1550,7 +2334,7 @@ export default function AdminPage() {
                             {req.status ?? "pending"}
                           </span>
                         </td>
-                        <td className="py-2 pr-3 text-slate-300">{req.notes ?? "—"}</td>
+                        <td className="py-2 pr-3 text-slate-300">{req.notes ?? "â€”"}</td>
                         <td className="py-2 pr-3">
                           <div className="flex gap-2">
                             <button
@@ -1586,12 +2370,13 @@ export default function AdminPage() {
             className="w-full max-w-7xl max-h-[92vh] overflow-hidden glass-panel rounded-2xl p-8 space-y-6"
             role="dialog"
             aria-modal="true"
+            data-tour="admin-sales-inquiries-modal"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.16em] text-accent-strong">Sales queries</p>
-                <h2 className="text-lg font-semibold text-white">Talk to sales submissions</h2>
+                <h2 className="text-lg font-semibold text-white">Latest Queries</h2>
               </div>
               <div className="flex gap-2">
                 <button
@@ -1644,7 +2429,7 @@ export default function AdminPage() {
                             {item.email}
                           </a>
                         </td>
-                        <td className="py-2 pr-3 text-slate-300">{item.school || "—"}</td>
+                        <td className="py-2 pr-3 text-slate-300">{item.school || "â€”"}</td>
                         <td className="py-2 pr-3 text-slate-300 max-w-xs">
                           <p className="whitespace-pre-wrap break-words">{item.message}</p>
                         </td>
@@ -1695,10 +2480,45 @@ export default function AdminPage() {
       )}
 
       {activeAdminSection === "drone" && (
-      <div className="glass-panel rounded-2xl p-6 space-y-4">
-        <div className="flex items-center justify-between gap-3">
+      <div className="glass-panel rounded-2xl p-6 space-y-4" data-tour={isAdmin ? "admin-drone-section" : undefined}>
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           <h2 className="text-lg font-semibold text-white">Drone Activities</h2>
+          <div className="flex w-full lg:w-auto items-center gap-2">
+            <input
+              type="text"
+              value={droneSearchInput}
+              onChange={(event) => setDroneSearchInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  runDroneSearch();
+                }
+              }}
+              placeholder="Search activities"
+              className="w-full lg:w-72 rounded-lg border border-slate-400/70 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-400/40"
+            />
+            <button
+              type="button"
+              className="px-3 py-2 rounded-lg bg-accent !text-true-white text-sm font-semibold hover:opacity-90"
+              style={{ color: "#fff" }}
+              onClick={runDroneSearch}
+            >
+              Search
+            </button>
+            {droneSearchQuery && (
+              <button
+                type="button"
+                className="px-3 py-2 rounded-lg border border-white/20 text-white text-sm font-semibold hover:bg-white/10"
+                onClick={clearDroneSearch}
+              >
+                Clear
+              </button>
+            )}
+          </div>
         </div>
+        <p className="text-xs text-slate-300">
+          Showing {filteredCurriculumRows.length} of {curriculumRows.length} activities
+        </p>
         {canEditCurriculum && !isAdmin && (
           <p className="text-sm text-slate-300">
             You can change the Grade field; other fields stay locked for teacher accounts.
@@ -1716,14 +2536,14 @@ export default function AdminPage() {
               </tr>
             </thead>
             <tbody>
-              {curriculumRows.length === 0 ? (
+              {filteredCurriculumRows.length === 0 ? (
                 <tr className="border-b border-white/5">
                   <td className="py-2 pr-3 text-slate-300" colSpan={5}>
-                    No curriculum uploaded yet. Click â€œUpload contentâ€ to add your first drone activity.
+                    <span className="italic">No Module Found</span>
                   </td>
                 </tr>
               ) : (
-                curriculumRows.map((item) => (
+                filteredCurriculumRows.map((item) => (
                   <tr
                     key={item.id}
                     className={`border-b border-white/5 ${draggingId === item.id ? "opacity-60" : ""}`}
@@ -1800,7 +2620,10 @@ export default function AdminPage() {
       )}
 
       {activeAdminSection === "vrModules" && (
-      <div className="glass-panel rounded-2xl p-6 space-y-4">
+      <div
+        className="glass-panel rounded-2xl p-6 space-y-4"
+        data-tour={isAdmin ? "admin-vr-modules-section" : undefined}
+      >
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-white">VR Modules</h2>
           <button
@@ -1847,21 +2670,42 @@ export default function AdminPage() {
                 </div>
 
                 <div className="overflow-auto rounded-xl border border-white/10 bg-white/5">
-                  <table className="table-v1">
+                  <table className="table-v1 table-fixed">
                     <thead>
                       <tr className="text-left text-slate-400 border-b border-white/10">
                         <th className="py-2 pr-3">Available VR modules</th>
+                        <th className="py-2 pr-3 w-44 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {modules.length === 0 ? (
                         <tr className="border-b border-white/5">
-                          <td className="py-3 pr-3 text-slate-400">No modules available yet.</td>
+                          <td className="py-3 pr-3 text-slate-400" colSpan={2}>
+                            No modules available yet.
+                          </td>
                         </tr>
                       ) : (
-                        modules.map((moduleName) => (
-                          <tr key={`${subject}-${moduleName}`} className="border-b border-white/5">
-                            <td className="py-3 pr-3 text-slate-200">{moduleName}</td>
+                        modules.map((moduleRow) => (
+                          <tr key={moduleRow.id} className="border-b border-white/5">
+                            <td className="py-3 pr-3 text-slate-200 break-words">{moduleRow.module_name}</td>
+                            <td className="py-3 pr-3 align-middle">
+                              <div className="flex flex-wrap items-center justify-end gap-2">
+                                <button
+                                  className="px-3 py-1 rounded-lg border border-blue-500 text-blue-400 text-xs font-semibold hover:bg-blue-500/10 transition disabled:opacity-50"
+                                  onClick={() => void editVrModule(moduleRow)}
+                                  disabled={!isAdmin || savingVrModuleId === moduleRow.id || deletingVrModuleId === moduleRow.id}
+                                >
+                                  {savingVrModuleId === moduleRow.id ? "Saving..." : "Edit"}
+                                </button>
+                                <button
+                                  className="px-3 py-1 rounded-lg border border-red-600/70 text-red-400 text-xs font-semibold hover:bg-red-600/25 transition disabled:opacity-50"
+                                  onClick={() => void deleteVrModule(moduleRow)}
+                                  disabled={!isAdmin || savingVrModuleId === moduleRow.id || deletingVrModuleId === moduleRow.id}
+                                >
+                                  {deletingVrModuleId === moduleRow.id ? "Deleting..." : "Delete"}
+                                </button>
+                              </div>
+                            </td>
                           </tr>
                         ))
                       )}
@@ -1876,19 +2720,25 @@ export default function AdminPage() {
       )}
 
       {activeAdminSection === "upload" && (
-        <UploadCurriculumView
-          embedded
-          onDone={() => {
-            setActiveAdminSection("drone");
-            void loadData("Refreshing data...");
-          }}
-        />
+        <div data-tour={isAdmin ? "admin-upload-section" : undefined}>
+          <UploadCurriculumView
+            embedded
+            onDone={() => {
+              setActiveAdminSection("drone");
+              void loadData("Refreshing data...");
+            }}
+          />
+        </div>
       )}
 
-      {activeAdminSection === "questions" && <AdminQuestionsView embedded />}
+      {activeAdminSection === "questions" && (
+        <div data-tour={isAdmin ? "admin-questions-section" : undefined}>
+          <AdminQuestionsView embedded />
+        </div>
+      )}
 
       {activeAdminSection === "products" && (
-      <div className="glass-panel rounded-2xl p-6 space-y-4">
+      <div className="glass-panel rounded-2xl p-6 space-y-4" data-tour={isAdmin ? "admin-products-section" : undefined}>
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-white">Product catalogue</h2>
           <Link href="/shop" className="text-sm text-accent-strong hover:underline">
@@ -2008,7 +2858,10 @@ export default function AdminPage() {
       )}
 
       {activeAdminSection === "sentiment" && (
-      <div className="glass-panel rounded-2xl p-6 space-y-4">
+      <div
+        className="glass-panel rounded-2xl p-6 space-y-4"
+        data-tour={isAdmin ? "admin-sentiment-section" : undefined}
+      >
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-white">Sentiment summaries</h2>
           <span className="text-sm text-slate-400">{sentimentFiles.length} files</span>
@@ -2067,7 +2920,7 @@ export default function AdminPage() {
       )}
 
       {activeAdminSection === "users" && (
-      <div className="glass-panel rounded-2xl p-6 space-y-4">
+      <div className="glass-panel rounded-2xl p-6 space-y-4" data-tour={isAdmin ? "admin-users-section" : undefined}>
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
             <h2 className="text-lg font-semibold text-white">Registered users</h2>
@@ -2126,9 +2979,9 @@ export default function AdminPage() {
                   <tr key={user.id} className="border-b border-white/5">
                     <td className="py-2 pr-3 font-semibold text-white">{user.full_name}</td>
                     <td className="py-2 pr-3 text-slate-300">{user.displayRole}</td>
-                    <td className="py-2 pr-3 text-slate-300">{user.grade ?? "—"}</td>
+                    <td className="py-2 pr-3 text-slate-300">{user.grade ?? "â€”"}</td>
                     <td className="py-2 pr-3 text-slate-300">
-                      {user.role === "teacher" ? user.subject ?? "—" : "—"}
+                      {user.role === "teacher" ? user.subject ?? "â€”" : "â€”"}
                     </td>
                     <td className="py-2 pr-3 text-slate-400 font-mono">{shortId(user.id)}</td>
                     <td className="py-2 pr-3 text-slate-300">{formatJoinedDate(user.created_at)}</td>
@@ -2172,7 +3025,7 @@ export default function AdminPage() {
               />
             </label>
             <label className="block text-sm text-slate-300 space-y-2">
-              Price (â‚¹)
+              Price (Ã¢â€šÂ¹)
               <input
                 type="number"
                 value={editForm.price}
@@ -2750,7 +3603,7 @@ export default function AdminPage() {
               <label className="block text-sm text-slate-300 space-y-2">
                 Email (read-only)
                 <input
-                  value={editingUser.email ?? "—"}
+                  value={editingUser.email ?? "â€”"}
                   readOnly
                   className="w-full rounded-xl border border-slate-400/60 bg-white/5 px-3 py-2 text-slate-400 focus:outline-none cursor-not-allowed"
                 />
@@ -2787,7 +3640,10 @@ export default function AdminPage() {
       )}
 
       {activeAdminSection === "orders" && (
-      <div className="glass-panel rounded-2xl p-6 space-y-3">
+      <div
+        className="glass-panel rounded-2xl p-6 space-y-3"
+        data-tour={isAdmin ? "admin-orders-section" : undefined}
+      >
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-white">Orders</h2>
           <button className="text-sm px-3 py-1 rounded-lg bg-white/10 border border-white/15 text-white">
