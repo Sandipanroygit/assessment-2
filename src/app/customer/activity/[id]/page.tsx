@@ -8,7 +8,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { fetchCurriculumModuleById, uploadFileToBucket } from "@/lib/supabaseData";
 import type { CurriculumModule } from "@/types";
 import { logActivity } from "@/lib/activityLogger";
-import { GuidedTour, type GuidedTourStep } from "@/components/GuidedTour";
+import { GuidedTour, type GuidedTourPlacement, type GuidedTourStep } from "@/components/GuidedTour";
 import logo from "../../../../../image/logo.jpg";
 import {
   AmbientLight,
