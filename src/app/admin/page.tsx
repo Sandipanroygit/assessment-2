@@ -1745,7 +1745,9 @@ export default function AdminPage() {
     timerId = window.setTimeout(scheduleEnsurePromptVisible, 160);
     window.addEventListener("resize", scheduleEnsurePromptVisible, { passive: true });
     document.addEventListener("transitionend", scheduleEnsurePromptVisible, true);
-    resizeObserver?.observe(observedNode);
+    if (observedNode) {
+      resizeObserver?.observe(observedNode);
+    }
     rootResizeObserver?.observe(document.documentElement);
     mutationObserver?.observe(document.body, {
       childList: true,
