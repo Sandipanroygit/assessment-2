@@ -9,6 +9,7 @@ const getAudioContextCtor = (): AudioContextCtor | null => {
 };
 
 let sharedCtx: AudioContext | null = null;
+let tonePrimeListenerAttached = false;
 
 const getContext = async (): Promise<AudioContext | null> => {
   const AudioContextType = getAudioContextCtor();
@@ -27,6 +28,31 @@ const getContext = async (): Promise<AudioContext | null> => {
   }
 
   return sharedCtx;
+};
+
+const attachTonePrimeListeners = () => {
+  if (typeof window === "undefined" || tonePrimeListenerAttached) return;
+  tonePrimeListenerAttached = true;
+
+  const unlock = async () => {
+    const audioCtx = await getContext();
+    if (!audioCtx) return;
+    window.removeEventListener("pointerdown", unlock);
+    window.removeEventListener("keydown", unlock);
+    tonePrimeListenerAttached = false;
+  };
+
+  window.addEventListener("pointerdown", unlock, { passive: true });
+  window.addEventListener("keydown", unlock);
+};
+
+export const primeUiTone = () => {
+  attachTonePrimeListeners();
+};
+
+export const unlockUiTone = async () => {
+  const audioCtx = await getContext();
+  return Boolean(audioCtx);
 };
 
 export const playUiClickTone = async () => {
@@ -51,3 +77,38 @@ export const playUiClickTone = async () => {
   oscillator.stop(now + 0.12);
 };
 
+const playEagleReadyToneInternal = async (): Promise<boolean> => {
+  const audioCtx = await getContext();
+  if (!audioCtx) return false;
+
+  const now = audioCtx.currentTime;
+  const notes = [
+    { frequency: 587.33, offset: 0, duration: 0.14 },
+    { frequency: 739.99, offset: 0.13, duration: 0.15 },
+    { frequency: 880, offset: 0.28, duration: 0.18 },
+  ] as const;
+
+  notes.forEach((note) => {
+    const oscillator = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    const start = now + note.offset;
+    const end = start + note.duration;
+
+    oscillator.type = "triangle";
+    oscillator.frequency.setValueAtTime(note.frequency, start);
+
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(0.15, start + 0.022);
+    gain.gain.exponentialRampToValueAtTime(0.0001, end);
+
+    oscillator.connect(gain);
+    gain.connect(audioCtx.destination);
+    oscillator.start(start);
+    oscillator.stop(end + 0.01);
+  });
+  return true;
+};
+
+export const playEagleReadyTone = async () => {
+  await playEagleReadyToneInternal();
+};

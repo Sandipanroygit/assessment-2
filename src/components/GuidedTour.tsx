@@ -347,7 +347,8 @@ export function GuidedTour({
     if (!mounted || !step || typeof window === "undefined") return null;
     return `${window.location.pathname}::${step.id}`;
   }, [mounted, step]);
-  const storedStepPosition = stepPositionKey ? customPositions[stepPositionKey] ?? null : null;
+  const storedStepPosition =
+    enableCardShifting && stepPositionKey ? customPositions[stepPositionKey] ?? null : null;
 
   const clearTargetHighlight = useCallback(() => {
     highlightedNodesRef.current.forEach((entry) => {
@@ -367,6 +368,10 @@ export function GuidedTour({
 
   useEffect(() => {
     if (!mounted) return;
+    if (!enableCardShifting) {
+      setCustomPositions({});
+      return;
+    }
     try {
       const raw = window.localStorage.getItem(CUSTOM_POSITION_STORAGE_KEY);
       if (!raw) return;
@@ -386,16 +391,16 @@ export function GuidedTour({
     } catch {
       // ignore malformed storage
     }
-  }, [mounted]);
+  }, [enableCardShifting, mounted]);
 
   useEffect(() => {
-    if (!mounted) return;
+    if (!mounted || !enableCardShifting) return;
     try {
       window.localStorage.setItem(CUSTOM_POSITION_STORAGE_KEY, JSON.stringify(customPositions));
     } catch {
       // ignore storage write failures
     }
-  }, [customPositions, mounted]);
+  }, [customPositions, enableCardShifting, mounted]);
 
   useEffect(() => {
     accentColorRef.current = accentColor;

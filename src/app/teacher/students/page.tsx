@@ -38,6 +38,7 @@ export default function TeacherStudentsPage() {
   const router = useRouter();
   const [students, setStudents] = useState<StudentRow[]>([]);
   const [status, setStatus] = useState<string | null>(null);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [, startLoading] = useTransition();
   const [sortField, setSortField] = useState<SortField>("grade");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -51,25 +52,41 @@ export default function TeacherStudentsPage() {
 
   useEffect(() => {
     const load = async () => {
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token ?? null;
-      if (!token) {
-        setStatus("Please log in again.");
-        return;
-      }
-      startLoading(async () => {
-        setStatus("Loading students...");
-        const res = await fetch("/api/teacher/students", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          setStatus(body?.error ?? "Unable to load students");
+      try {
+        const { data } = await supabase.auth.getSession();
+        const token = data.session?.access_token ?? null;
+        if (!token) {
+          setStatus("Please log in again.");
+          setIsInitialLoading(false);
           return;
         }
-        setStudents(body.students ?? []);
-        setStatus(null);
-      });
+        startLoading(() => {
+          void (async () => {
+            setStatus("Loading students...");
+            try {
+              const res = await fetch("/api/teacher/students", {
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              const body = await res.json().catch(() => ({}));
+              if (!res.ok) {
+                setStatus(body?.error ?? "Unable to load students");
+                return;
+              }
+              setStudents(body.students ?? []);
+              setStatus(null);
+            } catch (err) {
+              const message = err instanceof Error ? err.message : "Unable to load students";
+              setStatus(message);
+            } finally {
+              setIsInitialLoading(false);
+            }
+          })();
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unable to load students";
+        setStatus(message);
+        setIsInitialLoading(false);
+      }
     };
     void load();
   }, []);
@@ -168,43 +185,46 @@ export default function TeacherStudentsPage() {
     }
   }, []);
 
-  const closeTour = useCallback((completed: boolean) => {
-    setTourRun(false);
-    setTourStepIndex(0);
-    setTourDisplayOffset(0);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(TEACHER_STUDENTS_TOUR_STORAGE_KEY, completed ? "done" : "skipped");
-      window.localStorage.removeItem(TEACHER_STUDENTS_TOUR_CHAIN_KEY);
-    }
-    if (returnToDashboardAfterTour && completed) {
+  const closeTour = useCallback(
+    (completed: boolean) => {
+      setTourRun(false);
+      setTourStepIndex(0);
+      setTourDisplayOffset(0);
       if (typeof window !== "undefined") {
-        const displayTotal =
-          tourDisplayTotalOverride ??
-          (tourDisplayOffset > 0 ? tourDisplayOffset + studentTourSteps.length : undefined);
-        window.localStorage.setItem(
-          TEACHER_DASHBOARD_TOUR_RESUME_KEY,
-          JSON.stringify({
-            stepId: dashboardResumeStepId,
-            displayOffset: tourDisplayOffset + studentTourSteps.length,
-            displayTotal,
-          }),
-        );
+        window.localStorage.setItem(TEACHER_STUDENTS_TOUR_STORAGE_KEY, completed ? "done" : "skipped");
+        window.localStorage.removeItem(TEACHER_STUDENTS_TOUR_CHAIN_KEY);
+      }
+      if (returnToDashboardAfterTour && completed) {
+        if (typeof window !== "undefined") {
+          const displayTotal =
+            tourDisplayTotalOverride ??
+            (tourDisplayOffset > 0 ? tourDisplayOffset + studentTourSteps.length : undefined);
+          window.localStorage.setItem(
+            TEACHER_DASHBOARD_TOUR_RESUME_KEY,
+            JSON.stringify({
+              stepId: dashboardResumeStepId,
+              displayOffset: tourDisplayOffset + studentTourSteps.length,
+              displayTotal,
+            }),
+          );
+        }
+        setReturnToDashboardAfterTour(false);
+        router.push("/customer");
+        return;
       }
       setReturnToDashboardAfterTour(false);
-      router.push("/customer");
-      return;
-    }
-    setReturnToDashboardAfterTour(false);
-    setDashboardResumeStepId("menu-signout");
-    setTourDisplayTotalOverride(null);
-  }, [
-    dashboardResumeStepId,
-    returnToDashboardAfterTour,
-    router,
-    studentTourSteps.length,
-    tourDisplayOffset,
-    tourDisplayTotalOverride,
-  ]);
+      setDashboardResumeStepId("menu-signout");
+      setTourDisplayTotalOverride(null);
+    },
+    [
+      dashboardResumeStepId,
+      returnToDashboardAfterTour,
+      router,
+      studentTourSteps.length,
+      tourDisplayOffset,
+      tourDisplayTotalOverride,
+    ],
+  );
 
   const handleTourStepChange = useCallback(
     (nextStepIndex: number) => {
@@ -231,7 +251,7 @@ export default function TeacherStudentsPage() {
 
   useEffect(() => {
     if (tourInitialized) return;
-    if (status === "Loading students...") return;
+    if (isInitialLoading) return;
     if (typeof window === "undefined") return;
 
     const forcedFromDashboard =
@@ -275,7 +295,7 @@ export default function TeacherStudentsPage() {
       setTourRun(true);
     }
     setTourInitialized(true);
-  }, [status, tourInitialized]);
+  }, [isInitialLoading, tourInitialized]);
 
   const tourDisplayTotal = useMemo(
     () =>
@@ -323,61 +343,94 @@ export default function TeacherStudentsPage() {
         </div>
       </div>
 
-      <div className="glass-panel rounded-2xl p-4 flex flex-wrap gap-3 items-center" data-tour="teacher-students-controls">
-        <div className="text-sm text-slate-300">Students: {students.length}</div>
-        <label className="inline-flex items-center gap-2 text-sm text-slate-300">
-          Sort by
-          <select
-            data-tour="teacher-students-sort-field"
-            className="rounded-lg bg-accent border border-accent-strong px-3 py-2 text-sm text-true-white shadow-glow"
-            value={sortField}
-            onChange={(e) => setSortField(e.target.value as SortField)}
-          >
-            <option value="name">Name</option>
-            <option value="grade">Grade</option>
-            <option value="joined">Date joined</option>
-          </select>
-        </label>
-        <button
-          data-tour="teacher-students-sort-order"
-          className="px-3 py-2 rounded-lg border border-accent bg-accent text-sm text-true-white shadow-glow hover:opacity-90"
-          onClick={() => setSortDir((prev) => (prev === "asc" ? "desc" : "asc"))}
-        >
-          Order ({sortDirectionLabel})
-        </button>
-        {status && (
-          <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-amber-200">{status}</div>
-        )}
-      </div>
+      {isInitialLoading ? (
+        <>
+          <div className="glass-panel rounded-2xl p-4 flex flex-wrap gap-3 items-center">
+            <div className="h-4 w-24 rounded bg-white/15 animate-pulse" />
+            <div className="h-10 w-44 rounded-lg bg-white/10 animate-pulse" />
+            <div className="h-10 w-32 rounded-lg bg-white/10 animate-pulse" />
+          </div>
 
-      <div className="glass-panel rounded-2xl p-4 overflow-auto" data-tour="teacher-students-table">
-        <table className="table-v1">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Grade</th>
-              <th>Date joined</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sortedStudents.length === 0 ? (
-              <tr>
-                <td colSpan={4}>No students found for this subject yet.</td>
-              </tr>
-            ) : (
-              sortedStudents.map((student) => (
-                <tr key={student.id}>
-                  <td className="font-semibold text-white">{student.full_name}</td>
-                  <td className="text-slate-300">{student.email ?? "--"}</td>
-                  <td className="text-slate-300">{student.grade ?? "--"}</td>
-                  <td className="text-slate-300">{formatJoinedDate(student.joined_at)}</td>
-                </tr>
-              ))
+          <div className="glass-panel rounded-2xl p-4 overflow-auto">
+            <div className="space-y-3 min-w-[640px]">
+              <div className="grid grid-cols-4 gap-3">
+                <div className="h-4 rounded bg-white/10 animate-pulse" />
+                <div className="h-4 rounded bg-white/10 animate-pulse" />
+                <div className="h-4 rounded bg-white/10 animate-pulse" />
+                <div className="h-4 rounded bg-white/10 animate-pulse" />
+              </div>
+              {Array.from({ length: 6 }).map((_, index) => (
+                <div key={`students-skeleton-${index}`} className="grid grid-cols-4 gap-3">
+                  <div className="h-4 rounded bg-white/10 animate-pulse" />
+                  <div className="h-4 rounded bg-white/10 animate-pulse" />
+                  <div className="h-4 rounded bg-white/10 animate-pulse" />
+                  <div className="h-4 rounded bg-white/10 animate-pulse" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="glass-panel rounded-2xl p-4 flex flex-wrap gap-3 items-center" data-tour="teacher-students-controls">
+            <div className="text-sm text-slate-300">Students: {students.length}</div>
+            <label className="inline-flex items-center gap-2 text-sm text-slate-300">
+              Sort by
+              <select
+                data-tour="teacher-students-sort-field"
+                className="rounded-lg bg-accent border border-accent-strong px-3 py-2 text-sm text-true-white shadow-glow"
+                value={sortField}
+                onChange={(e) => setSortField(e.target.value as SortField)}
+              >
+                <option value="name">Name</option>
+                <option value="grade">Grade</option>
+                <option value="joined">Date joined</option>
+              </select>
+            </label>
+            <button
+              data-tour="teacher-students-sort-order"
+              className="px-3 py-2 rounded-lg border border-accent bg-accent text-sm text-true-white shadow-glow hover:opacity-90"
+              onClick={() => setSortDir((prev) => (prev === "asc" ? "desc" : "asc"))}
+            >
+              Order ({sortDirectionLabel})
+            </button>
+            {status && (
+              <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-amber-200">
+                {status}
+              </div>
             )}
-          </tbody>
-        </table>
-      </div>
+          </div>
+
+          <div className="glass-panel rounded-2xl p-4 overflow-auto" data-tour="teacher-students-table">
+            <table className="table-v1">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Grade</th>
+                  <th>Date joined</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedStudents.length === 0 ? (
+                  <tr>
+                    <td colSpan={4}>No students found for this subject yet.</td>
+                  </tr>
+                ) : (
+                  sortedStudents.map((student) => (
+                    <tr key={student.id}>
+                      <td className="font-semibold text-white">{student.full_name}</td>
+                      <td className="text-slate-300">{student.email ?? "--"}</td>
+                      <td className="text-slate-300">{student.grade ?? "--"}</td>
+                      <td className="text-slate-300">{formatJoinedDate(student.joined_at)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </main>
   );
 }

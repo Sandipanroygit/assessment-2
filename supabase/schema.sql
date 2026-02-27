@@ -86,6 +86,83 @@ create table if not exists public.sales_inquiries (
   created_at timestamp with time zone default now()
 );
 
+create table if not exists public.steamh_projects (
+  id uuid primary key default gen_random_uuid(),
+  student_id uuid references public.profiles (id) on delete set null,
+  student_name text not null,
+  school_name text,
+  grade text,
+  subject text,
+  title text not null,
+  summary text not null,
+  description text not null,
+  challenge text,
+  solution text,
+  tools_used text[] default '{}'::text[],
+  tags text[] default '{}'::text[],
+  image_urls jsonb default '[]',
+  video_urls jsonb default '[]',
+  attachment_urls jsonb default '[]',
+  external_links jsonb default '[]',
+  published boolean default true,
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone default now()
+);
+
+create index if not exists steamh_projects_published_created_idx
+  on public.steamh_projects (published, created_at desc);
+
+create index if not exists steamh_projects_student_created_idx
+  on public.steamh_projects (student_id, created_at desc);
+
+create table if not exists public.steamh_collaboration_requests (
+  id uuid primary key default gen_random_uuid(),
+  project_id text not null,
+  project_title text not null,
+  requester_id uuid references public.profiles (id) on delete set null,
+  requester_name text not null,
+  requester_email text,
+  requester_role text,
+  requester_grade text,
+  publisher_profile_id uuid references public.profiles (id) on delete set null,
+  publisher_name text not null,
+  publisher_grade text not null,
+  message text not null,
+  status text check (status in ('new', 'read', 'closed')) default 'new',
+  created_at timestamp with time zone default now()
+);
+
+create index if not exists steamh_collab_requester_created_idx
+  on public.steamh_collaboration_requests (requester_id, created_at desc);
+
+create index if not exists steamh_collab_publisher_created_idx
+  on public.steamh_collaboration_requests (publisher_profile_id, created_at desc);
+
+create table if not exists public.steamh_assignments (
+  id uuid primary key default gen_random_uuid(),
+  teacher_id uuid not null references public.profiles (id) on delete cascade,
+  teacher_name text not null,
+  student_id uuid not null references public.profiles (id) on delete cascade,
+  student_name text not null,
+  title text not null,
+  instructions text,
+  subject text,
+  grade text,
+  due_at timestamp with time zone not null,
+  status text check (status in ('assigned', 'submitted', 'closed')) default 'assigned',
+  submitted_project_id uuid references public.steamh_projects (id) on delete set null,
+  submitted_at timestamp with time zone,
+  last_reminded_at timestamp with time zone,
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone default now()
+);
+
+create index if not exists steamh_assignments_teacher_due_idx
+  on public.steamh_assignments (teacher_id, due_at asc, created_at desc);
+
+create index if not exists steamh_assignments_student_due_idx
+  on public.steamh_assignments (student_id, due_at asc, created_at desc);
+
 create table if not exists public.activity_submissions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references public.profiles (id) on delete set null,
@@ -169,6 +246,9 @@ alter table public.order_items enable row level security;
 alter table public.analytics_events enable row level security;
 alter table public.page_views enable row level security;
 alter table public.sales_inquiries enable row level security;
+alter table public.steamh_projects enable row level security;
+alter table public.steamh_collaboration_requests enable row level security;
+alter table public.steamh_assignments enable row level security;
 alter table public.activity_submissions enable row level security;
 alter table public.notifications enable row level security;
 alter table public.student_queries enable row level security;
@@ -302,6 +382,91 @@ create policy "Admins read sales inquiries" on public.sales_inquiries
   for select using (public.is_admin());
 create policy "Admins update sales inquiries" on public.sales_inquiries
   for update using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "Public read published STEAM-H projects" on public.steamh_projects;
+drop policy if exists "Students read own STEAM-H projects" on public.steamh_projects;
+drop policy if exists "Students insert own STEAM-H projects" on public.steamh_projects;
+drop policy if exists "Students update own STEAM-H projects" on public.steamh_projects;
+drop policy if exists "Students delete own STEAM-H projects" on public.steamh_projects;
+drop policy if exists "Admins manage STEAM-H projects" on public.steamh_projects;
+create policy "Public read published STEAM-H projects" on public.steamh_projects
+  for select using (published is true);
+create policy "Students read own STEAM-H projects" on public.steamh_projects
+  for select using (
+    auth.uid() = student_id
+    and exists (
+      select 1
+      from public.profiles p
+      where p.id = auth.uid() and p.role in ('student', 'customer')
+    )
+  );
+create policy "Students insert own STEAM-H projects" on public.steamh_projects
+  for insert with check (
+    auth.uid() = student_id
+    and exists (
+      select 1
+      from public.profiles p
+      where p.id = auth.uid() and p.role in ('student', 'customer')
+    )
+  );
+create policy "Students update own STEAM-H projects" on public.steamh_projects
+  for update
+  using (
+    auth.uid() = student_id
+    and exists (
+      select 1
+      from public.profiles p
+      where p.id = auth.uid() and p.role in ('student', 'customer')
+    )
+  )
+  with check (
+    auth.uid() = student_id
+    and exists (
+      select 1
+      from public.profiles p
+      where p.id = auth.uid() and p.role in ('student', 'customer')
+    )
+  );
+create policy "Students delete own STEAM-H projects" on public.steamh_projects
+  for delete using (
+    auth.uid() = student_id
+    and exists (
+      select 1
+      from public.profiles p
+      where p.id = auth.uid() and p.role in ('student', 'customer')
+    )
+  );
+create policy "Admins manage STEAM-H projects" on public.steamh_projects
+  for all using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "Requesters read own collaboration requests" on public.steamh_collaboration_requests;
+drop policy if exists "Requesters insert collaboration requests" on public.steamh_collaboration_requests;
+drop policy if exists "Publishers read collaboration requests" on public.steamh_collaboration_requests;
+drop policy if exists "Publishers update collaboration requests" on public.steamh_collaboration_requests;
+drop policy if exists "Admins manage collaboration requests" on public.steamh_collaboration_requests;
+create policy "Requesters read own collaboration requests" on public.steamh_collaboration_requests
+  for select using (auth.uid() = requester_id);
+create policy "Requesters insert collaboration requests" on public.steamh_collaboration_requests
+  for insert with check (auth.uid() = requester_id);
+create policy "Publishers read collaboration requests" on public.steamh_collaboration_requests
+  for select using (auth.uid() = publisher_profile_id);
+create policy "Publishers update collaboration requests" on public.steamh_collaboration_requests
+  for update using (auth.uid() = publisher_profile_id)
+  with check (auth.uid() = publisher_profile_id);
+create policy "Admins manage collaboration requests" on public.steamh_collaboration_requests
+  for all using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "Teachers manage own STEAM-H assignments" on public.steamh_assignments;
+drop policy if exists "Students read own STEAM-H assignments" on public.steamh_assignments;
+drop policy if exists "Admins manage STEAM-H assignments" on public.steamh_assignments;
+create policy "Teachers manage own STEAM-H assignments" on public.steamh_assignments
+  for all
+  using (auth.uid() = teacher_id and public.is_teacher())
+  with check (auth.uid() = teacher_id and public.is_teacher());
+create policy "Students read own STEAM-H assignments" on public.steamh_assignments
+  for select using (auth.uid() = student_id);
+create policy "Admins manage STEAM-H assignments" on public.steamh_assignments
+  for all using (public.is_admin()) with check (public.is_admin());
 
 -- Activity submissions: students manage their own; admins can read all
 drop policy if exists "Students read own submissions" on public.activity_submissions;

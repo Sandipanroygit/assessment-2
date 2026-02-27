@@ -35,17 +35,18 @@ export async function GET(req: Request) {
   const metadataGrade = cleanString(userData.user.user_metadata?.grade);
 
   let profileRole: string | null = null;
-  let profileSubject: string | null = null;
   let profileGrade: string | null = null;
 
-  if (metadataRole !== "teacher" || !metadataSubject || !metadataGrade) {
-    const { data: profileData } = await supabaseAdmin
+  if (metadataRole !== "teacher" || !metadataGrade) {
+    const { data: profileData, error: profileError } = await supabaseAdmin
       .from("profiles")
-      .select("role,subject,grade")
+      .select("role,grade")
       .eq("id", userData.user.id)
       .maybeSingle();
+    if (profileError) {
+      return NextResponse.json({ error: profileError.message }, { status: 500 });
+    }
     profileRole = normalizeRole(profileData?.role) || null;
-    profileSubject = cleanString(profileData?.subject);
     profileGrade = cleanString(profileData?.grade);
   }
 
@@ -54,7 +55,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Only teachers can view" }, { status: 403 });
   }
 
-  const subject = metadataSubject ?? profileSubject;
+  const subject = metadataSubject;
   const grade = metadataGrade ?? profileGrade;
 
   const buildQuery = (includeJudgingLogic: boolean) => {

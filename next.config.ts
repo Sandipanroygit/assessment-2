@@ -11,6 +11,10 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "doosnktiqxrvhpwmbrnu.supabase.co",
       },
+      {
+        protocol: "https",
+        hostname: "content.instructables.com",
+      },
     ],
   },
 };

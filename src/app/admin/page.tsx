@@ -771,13 +771,34 @@ export default function AdminPage() {
     [isAdmin],
   );
   const stats = useMemo(
-    () => [
-      { label: "Active modules", value: String(curriculumRows.length), delta: "Manage drone modules" },
-      { label: "Products live", value: String(productRows.length), delta: "Ready in shop" },
-      { label: "Orders this week", value: "0", delta: "No orders yet" },
-      { label: "Registered users", value: String(userCount ?? userRows.length), delta: "Total signups to date" },
-    ],
-    [curriculumRows.length, productRows.length, userRows.length, userCount],
+    () => {
+      const teacherUsersCount = userRows.filter((user) => mapRoleLabel(user.role) === "Teacher").length;
+      const studentUsersCount = userRows.filter((user) => mapRoleLabel(user.role) === "Student").length;
+
+      return [
+        {
+          label: "Active modules",
+          value: "",
+          delta: "",
+          breakdown: [
+            { label: "Drone", value: String(curriculumRows.length) },
+            { label: "VR", value: String(vrModuleRows.length) },
+          ],
+        },
+        { label: "Products live", value: String(productRows.length), delta: "Ready in shop" },
+        { label: "STEAM-H Project", value: "97", delta: "Student showcase entries" },
+        {
+          label: "Registered users",
+          value: "",
+          delta: "",
+          breakdown: [
+            { label: "Teacher", value: String(teacherUsersCount) },
+            { label: "Student", value: String(studentUsersCount) },
+          ],
+        },
+      ];
+    },
+    [curriculumRows.length, vrModuleRows.length, productRows.length, userRows],
   );
 
   const userLookup = useMemo(() => {
@@ -1030,6 +1051,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     const loadProfile = async () => {
+      try {
       const { data } = await supabase.auth.getUser();
       const user = data.user;
       if (!user) {
@@ -1062,8 +1084,12 @@ export default function AdminPage() {
           ? null
           : "Admin or teacher access is required. Ask an admin to upgrade your role or run `npm run seed:admin` to create an admin account.",
       );
+      } catch {
+        setAuthStatus("Unable to verify admin access right now. Check your internet and refresh.");
+        setIsAdmin(false);
+      }
     };
-    loadProfile();
+    void loadProfile();
   }, [router]);
 
   useEffect(() => {
@@ -1675,8 +1701,10 @@ export default function AdminPage() {
     if (typeof window === "undefined") return;
     if (!adminTourUiReady) return;
 
+    const adminTourStatus = window.localStorage.getItem(ADMIN_TOUR_STORAGE_KEY);
+    const hasAdminTourPreference = adminTourStatus === "done" || adminTourStatus === "skipped";
     setAdminTourRun(false);
-    setAdminTourPromptOpen(true);
+    setAdminTourPromptOpen(!hasAdminTourPreference);
     setAdminTourInitialized(true);
   }, [adminTourInitialized, isAdmin, adminTourUiReady]);
 
@@ -1849,7 +1877,7 @@ export default function AdminPage() {
                 type="button"
                 onClick={() => {
                   void playUiClickTone();
-                  setAdminTourPromptOpen(false);
+                  closeAdminTour(false);
                 }}
                 style={{
                   borderRadius: 8,
@@ -2220,8 +2248,26 @@ export default function AdminPage() {
             </div>
             {statsExpanded && (
               <div className="mt-3 space-y-2">
-                <p className="text-2xl font-semibold text-white">{item.value}</p>
-                <p className="text-xs text-accent-strong">{item.delta}</p>
+                {"breakdown" in item ? (
+                  <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-white/10 bg-white/5">
+                    {item.breakdown.map((entry, index) => (
+                      <div
+                        key={`${item.label}-${entry.label}`}
+                        className={`flex items-center justify-between px-3 py-2 ${
+                          index > 0 ? "border-l-2 border-black/80" : ""
+                        }`}
+                      >
+                        <p className="text-lg font-semibold text-white">{entry.label}</p>
+                        <p className="text-lg font-semibold text-white">{entry.value}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-2xl font-semibold text-white">{item.value}</p>
+                    <p className="text-xs text-accent-strong">{item.delta}</p>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -2966,13 +3012,14 @@ export default function AdminPage() {
                 <th className="py-2 pr-3">Grade</th>
                 <th className="py-2 pr-3">Subject</th>
                 <th className="py-2 pr-3">User ID</th>
+                <th className="py-2 pr-3">Joined</th>
                 <th className="py-2 pr-3">Actions</th>
               </tr>
             </thead>
             <tbody>
               {userRows.length === 0 ? (
                 <tr className="border-b border-white/5">
-                  <td className="py-2 pr-3 text-slate-300" colSpan={5}>
+                  <td className="py-2 pr-3 text-slate-300" colSpan={7}>
                     No users found yet. New accounts will appear here automatically after signup.
                   </td>
                 </tr>
@@ -2985,12 +3032,12 @@ export default function AdminPage() {
                     <td className="py-2 pr-3 text-slate-300">
                       {user.role === "teacher" ? user.subject ?? "â€”" : "â€”"}
                     </td>
-                    <td className="py-2 pr-3 text-slate-400 font-mono">{shortId(user.id)}</td>
+                    <td className="py-2 pr-3 text-slate-400">{shortId(user.id)}</td>
                     <td className="py-2 pr-3 text-slate-300">{formatJoinedDate(user.created_at)}</td>
                     <td className="py-2 pr-3">
                       <div className="flex flex-wrap gap-2">
                         <button
-                          className="px-3 py-1 rounded-lg border border-white/15 text-xs text-slate-100 hover:border-accent-strong transition"
+                          className="px-3 py-1 rounded-lg border-2 border-blue-300/90 bg-blue-600 text-xs font-semibold text-true-white hover:bg-blue-500 hover:border-blue-200 transition"
                           onClick={(e) => openUserEditor(user, e)}
                         >
                           Edit

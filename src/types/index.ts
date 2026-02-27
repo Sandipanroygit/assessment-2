@@ -40,3 +40,50 @@ export interface Order {
   createdAt: string;
   items: Array<{ name: string; qty: number }>;
 }
+
+export interface SteamhProjectLink {
+  label?: string;
+  url: string;
+}
+
+export interface SteamhProject {
+  id: string;
+  studentId: string | null;
+  studentName: string;
+  schoolName: string;
+  grade: string;
+  subject: string;
+  title: string;
+  summary: string;
+  description: string;
+  challenge: string;
+  solution: string;
+  toolsUsed: string[];
+  tags: string[];
+  imageUrls: string[];
+  videoUrls: string[];
+  attachmentUrls: string[];
+  externalLinks: SteamhProjectLink[];
+  published: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SteamhAssignment {
+  id: string;
+  teacherId: string;
+  teacherName: string;
+  studentId: string;
+  studentName: string;
+  title: string;
+  instructions: string | null;
+  subject: string | null;
+  grade: string | null;
+  dueAt: string;
+  status: "assigned" | "submitted" | "closed" | string;
+  submittedProjectId: string | null;
+  submittedAt: string | null;
+  lastRemindedAt: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}

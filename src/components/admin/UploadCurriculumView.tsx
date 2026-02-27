@@ -313,7 +313,7 @@ export function UploadCurriculumView({ embedded = false, onDone }: UploadCurricu
               <textarea
                 value={pythonCode}
                 onChange={(e) => setPythonCode(e.target.value)}
-                className="w-full rounded-xl border border-slate-400/60 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none font-mono"
+                className="w-full rounded-xl border border-slate-400/60 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none"
                 rows={4}
                 placeholder="Paste code snippet or link to file"
               />

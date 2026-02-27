@@ -60,8 +60,14 @@ export async function logActivity(eventName: string, payload: ActivityPayload = 
   if (!eventName.trim()) return;
 
   // Require an authenticated session so we can attribute to user
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
+  let token: string | undefined;
+  try {
+    const { data } = await supabase.auth.getSession();
+    token = data.session?.access_token;
+  } catch {
+    // Network/auth client failures should not break the UI.
+    return;
+  }
   if (!token) return;
 
   const body = {

@@ -2,8 +2,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
 import { logActivity } from "@/lib/activityLogger";
@@ -12,6 +12,18 @@ type AuthMode = "login" | "signup" | "reset";
 type UserRole = "admin" | "teacher" | "student";
 type Profile = { full_name?: string; role?: string; grade?: string };
 const TEACHER_HOME_TOUR_ENTRY_KEY = "teacher_home_tour_entry_pending_v1";
+const TEACHER_TOUR_STORAGE_KEY = "teacher_feature_tour_v2";
+const TEACHER_PROGRESS_TOUR_FORCE_KEY = "teacher_progress_tour_force_once_v2";
+const TEACHER_PROGRESS_TOUR_CHAIN_KEY = "teacher_progress_tour_chain_meta_v2";
+const TEACHER_STUDENTS_TOUR_FORCE_KEY = "teacher_students_tour_force_once_v2";
+const TEACHER_STUDENTS_TOUR_CHAIN_KEY = "teacher_students_tour_chain_meta_v2";
+const TEACHER_DASHBOARD_TOUR_RESUME_KEY = "teacher_dashboard_tour_resume_v2";
+const TEACHER_TOUR_AUTOSTART_KEY = "teacher_dashboard_tour_autostart_v1";
+const STUDENT_TOUR_STORAGE_KEY = "student_feature_tour_v2";
+const STUDENT_ACTIVITY_TOUR_AUTOSTART_KEY = "student_activity_tour_autostart_v2";
+const STUDENT_ACTIVITY_TOUR_CHAIN_KEY = "student_activity_tour_chain_meta_v2";
+const STUDENT_DASHBOARD_TOUR_RESUME_KEY = "student_dashboard_tour_resume_v2";
+const ADMIN_TOUR_STORAGE_KEY = "admin_feature_tour_v1";
 
 const gradeOptions = ["Grade 5", "Grade 6", "Grade 7", "Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12"];
 const subjectOptions = [
@@ -22,8 +34,19 @@ const subjectOptions = [
   "Design Technology",
 ];
 
+const resolveAuthNetworkStatus = (error: unknown, fallback: string) => {
+  if (error instanceof TypeError && error.message.toLowerCase().includes("failed to fetch")) {
+    return "Unable to reach Supabase Auth. Check internet, VPN/proxy, ad-blocker, and then retry.";
+  }
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  return fallback;
+};
+
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const siteUrl =
     process.env.NEXT_PUBLIC_SITE_URL ??
     (typeof window !== "undefined" ? window.location.origin : undefined);
@@ -37,6 +60,22 @@ export default function LoginPage() {
   const [subject, setSubject] = useState<string>(subjectOptions[0]);
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const isEmailNotConfirmed = (status ?? "").toLowerCase().includes("email not confirmed");
+  const statusClassName = isEmailNotConfirmed
+    ? "rounded-xl border border-rose-300/70 bg-rose-50/90 px-3 py-2 text-sm font-medium text-rose-700"
+    : "rounded-xl border border-accent/30 bg-accent/10 px-3 py-2 text-sm text-accent-strong";
+
+  const nextPath = useMemo(() => {
+    const raw = searchParams.get("next");
+    if (!raw) return null;
+    try {
+      const decoded = decodeURIComponent(raw);
+      if (!decoded.startsWith("/") || decoded.startsWith("//")) return null;
+      return decoded;
+    } catch {
+      return null;
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     setStatus(null);
@@ -80,7 +119,12 @@ export default function LoginPage() {
   );
 
   const routeByRole = useCallback(
-    (roleValue?: string, emailOverride?: string | null, fromLogin = false) => {
+    (roleValue?: string, emailOverride?: string | null, fromLogin = false, forcedPath?: string | null) => {
+      if (forcedPath) {
+        router.push(forcedPath);
+        return;
+      }
+
       const isDefaultAdmin = (emailOverride ?? email).toLowerCase() === defaultAdminEmail.toLowerCase();
       const computedRole = roleValue ?? (isDefaultAdmin ? "admin" : undefined);
       if (computedRole === "admin" || isDefaultAdmin) {
@@ -99,15 +143,19 @@ export default function LoginPage() {
 
   useEffect(() => {
     const checkSession = async () => {
-      const { data } = await supabase.auth.getUser();
-      const user = data.user;
-      if (user) {
-        const profile = await ensureProfile(user);
-        routeByRole(profile?.role ?? user.user_metadata.role, user.email);
+      try {
+        const { data } = await supabase.auth.getUser();
+        const user = data.user;
+        if (user) {
+          const profile = await ensureProfile(user);
+          routeByRole(profile?.role ?? user.user_metadata.role, user.email, false, nextPath);
+        }
+      } catch {
+        // Ignore transient network issues during session bootstrap.
       }
     };
-    checkSession();
-  }, [ensureProfile, routeByRole]);
+    void checkSession();
+  }, [ensureProfile, nextPath, routeByRole]);
 
   const handleRoleChange = (nextRole: UserRole) => {
     setRole(nextRole);
@@ -132,20 +180,40 @@ export default function LoginPage() {
     }
     setLoading(true);
     setStatus(null);
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error || !data.user) {
-      setStatus(error?.message ?? "Unable to sign in. Check credentials.");
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      if (error || !data.user) {
+        setStatus(error?.message ?? "Unable to sign in. Check credentials.");
+        return;
+      }
+      const profile = await ensureProfile(data.user);
+      const resolvedRole = (profile?.role ?? (data.user.user_metadata?.role as string | undefined) ?? "student").toLowerCase();
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem(TEACHER_TOUR_STORAGE_KEY);
+        window.localStorage.removeItem(TEACHER_DASHBOARD_TOUR_RESUME_KEY);
+        window.localStorage.removeItem(TEACHER_PROGRESS_TOUR_FORCE_KEY);
+        window.localStorage.removeItem(TEACHER_PROGRESS_TOUR_CHAIN_KEY);
+        window.localStorage.removeItem(TEACHER_STUDENTS_TOUR_FORCE_KEY);
+        window.localStorage.removeItem(TEACHER_STUDENTS_TOUR_CHAIN_KEY);
+        window.localStorage.removeItem(STUDENT_TOUR_STORAGE_KEY);
+        window.localStorage.removeItem(STUDENT_DASHBOARD_TOUR_RESUME_KEY);
+        window.localStorage.removeItem(STUDENT_ACTIVITY_TOUR_CHAIN_KEY);
+        window.localStorage.removeItem(ADMIN_TOUR_STORAGE_KEY);
+        window.sessionStorage.removeItem(TEACHER_HOME_TOUR_ENTRY_KEY);
+        window.sessionStorage.removeItem(TEACHER_TOUR_AUTOSTART_KEY);
+        window.sessionStorage.removeItem(STUDENT_ACTIVITY_TOUR_AUTOSTART_KEY);
+      }
+      void logActivity("auth_login", {
+        category: "auth",
+        metadata: { role: resolvedRole, source: "login_page" },
+      });
+      setStatus(`Hi ${profile?.full_name ?? data.user.email}! Redirecting...`);
+      routeByRole(profile?.role ?? data.user.user_metadata.role, data.user.email, true, nextPath);
+    } catch (err) {
+      setStatus(resolveAuthNetworkStatus(err, "Unable to sign in. Check credentials."));
+    } finally {
       setLoading(false);
-      return;
     }
-    const profile = await ensureProfile(data.user);
-    const resolvedRole = (profile?.role ?? (data.user.user_metadata?.role as string | undefined) ?? "student").toLowerCase();
-    void logActivity("auth_login", {
-      category: "auth",
-      metadata: { role: resolvedRole, source: "login_page" },
-    });
-    setStatus(`Hi ${profile?.full_name ?? data.user.email}! Redirecting...`);
-    routeByRole(profile?.role ?? data.user.user_metadata.role, data.user.email, true);
   };
 
   const handleSignup = async () => {
@@ -178,22 +246,26 @@ export default function LoginPage() {
       metadata.grade = grade;
     }
     const redirectTo = siteUrl ? `${siteUrl}/login` : undefined;
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: metadata,
-        emailRedirectTo: redirectTo,
-      },
-    });
-    if (error || !data.user) {
-      setStatus(error?.message ?? "Unable to sign up.");
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: {
+          data: metadata,
+          emailRedirectTo: redirectTo,
+        },
+      });
+      if (error || !data.user) {
+        setStatus(error?.message ?? "Unable to sign up.");
+        return;
+      }
+      setStatus("Account created. Check your email to confirm, then sign in.");
+      setMode("login");
+    } catch (err) {
+      setStatus(resolveAuthNetworkStatus(err, "Unable to sign up."));
+    } finally {
       setLoading(false);
-      return;
     }
-    setStatus("Account created. Check your email to confirm, then sign in.");
-    setMode("login");
-    setLoading(false);
   };
 
   const handlePasswordReset = async () => {
@@ -207,16 +279,20 @@ export default function LoginPage() {
     }
     setLoading(true);
     setStatus(null);
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: siteUrl ? `${siteUrl}/reset-password` : undefined,
-    });
-    if (error) {
-      setStatus(error.message ?? "Unable to send password reset email.");
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: siteUrl ? `${siteUrl}/reset-password` : undefined,
+      });
+      if (error) {
+        setStatus(error.message ?? "Unable to send password reset email.");
+        return;
+      }
+      setStatus("Password reset link sent. Check your email (and spam).");
+    } catch (err) {
+      setStatus(resolveAuthNetworkStatus(err, "Unable to send password reset email."));
+    } finally {
       setLoading(false);
-      return;
     }
-    setStatus("Password reset link sent. Check your email (and spam).");
-    setLoading(false);
   };
 
   return (
@@ -271,7 +347,7 @@ export default function LoginPage() {
                 />
               </label>
               {status && (
-                <div className="rounded-xl border border-accent/30 bg-accent/10 px-3 py-2 text-sm text-accent-strong">
+                <div className={statusClassName}>
                   {status}
                 </div>
               )}
@@ -393,7 +469,7 @@ export default function LoginPage() {
               )}
 
               {status && (
-                <div className="rounded-xl border border-accent/30 bg-accent/10 px-3 py-2 text-sm text-accent-strong">
+                <div className={statusClassName}>
                   {status}
                 </div>
               )}

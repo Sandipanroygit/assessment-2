@@ -49,6 +49,7 @@ export default function TeacherProgressPage() {
   const [submissions, setSubmissions] = useState<ProgressRow[]>([]);
   const [students, setStudents] = useState<StudentRow[]>([]);
   const [status, setStatus] = useState<string | null>(null);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [, startLoading] = useTransition();
   const [moduleFilter, setModuleFilter] = useState<string>("all");
   const [remindingId, setRemindingId] = useState<string | null>(null);
@@ -63,28 +64,44 @@ export default function TeacherProgressPage() {
 
   useEffect(() => {
     const load = async () => {
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token ?? null;
-      setSessionToken(token);
-      if (!token) {
-        setStatus("Please log in again.");
-        return;
-      }
-      startLoading(async () => {
-        setStatus("Loading progress...");
-        const res = await fetch("/api/teacher/progress", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          setStatus(body?.error ?? "Unable to load progress");
+      try {
+        const { data } = await supabase.auth.getSession();
+        const token = data.session?.access_token ?? null;
+        setSessionToken(token);
+        if (!token) {
+          setStatus("Please log in again.");
+          setIsInitialLoading(false);
           return;
         }
-        setModules(body.modules ?? []);
-        setSubmissions(body.submissions ?? []);
-        setStudents(body.students ?? []);
-        setStatus(null);
-      });
+        startLoading(() => {
+          void (async () => {
+            setStatus("Loading progress...");
+            try {
+              const res = await fetch("/api/teacher/progress", {
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              const body = await res.json().catch(() => ({}));
+              if (!res.ok) {
+                setStatus(body?.error ?? "Unable to load progress");
+                return;
+              }
+              setModules(body.modules ?? []);
+              setSubmissions(body.submissions ?? []);
+              setStudents(body.students ?? []);
+              setStatus(null);
+            } catch (err) {
+              const message = err instanceof Error ? err.message : "Unable to load progress";
+              setStatus(message);
+            } finally {
+              setIsInitialLoading(false);
+            }
+          })();
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unable to load progress";
+        setStatus(message);
+        setIsInitialLoading(false);
+      }
     };
     void load();
   }, []);
@@ -346,7 +363,7 @@ export default function TeacherProgressPage() {
 
   useEffect(() => {
     if (tourInitialized) return;
-    if (status === "Loading progress...") return;
+    if (isInitialLoading) return;
     if (typeof window === "undefined") return;
 
     const forcedFromDashboard =
@@ -389,7 +406,7 @@ export default function TeacherProgressPage() {
       setTourRun(true);
     }
     setTourInitialized(true);
-  }, [status, tourInitialized]);
+  }, [isInitialLoading, tourInitialized]);
 
   const tourDisplayTotal = useMemo(
     () =>
@@ -437,128 +454,161 @@ export default function TeacherProgressPage() {
         </div>
       </div>
 
-      <div className="glass-panel rounded-2xl p-4 flex flex-wrap gap-3 items-center" data-tour="teacher-progress-filter-panel">
-        <label className="text-sm text-slate-200 space-y-1">
-          Module
-          <select
-            data-tour="teacher-progress-module-select"
-            className="w-full rounded-lg bg-white/5 border border-slate-400/60 px-3 py-2"
-            value={moduleFilter}
-            onChange={(e) => setModuleFilter(e.target.value)}
-          >
-            {moduleOptions.map((opt) => (
-              <option key={opt.id} value={opt.id}>
-                {opt.title}
-              </option>
-            ))}
-          </select>
-        </label>
-        {status && (
-          <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-amber-200">{status}</div>
-        )}
-        {reminderBanner && (
-          <div className="rounded-xl border border-emerald-300/40 bg-emerald-700/30 px-3 py-2 text-sm text-emerald-100">
-            {reminderBanner}
+      {isInitialLoading ? (
+        <>
+          <div className="glass-panel rounded-2xl p-4 flex flex-wrap gap-3 items-center">
+            <div className="h-4 w-16 rounded bg-white/15 animate-pulse" />
+            <div className="h-10 w-64 rounded-lg bg-white/10 animate-pulse" />
           </div>
-        )}
-      </div>
-      <div className="glass-panel rounded-2xl p-4 overflow-auto" data-tour="teacher-progress-table">
-        <table className="table-v1">
-          <thead>
-            <tr className="text-left text-slate-400 border-b border-white/10">
-              <th className="py-2 pr-3">Student</th>
-              <th className="py-2 pr-3">Grade</th>
-              <th className="py-2 pr-3" data-tour="teacher-progress-status-column">Status</th>
-              <th className="py-2 pr-3" data-tour="teacher-progress-reminder-column">Reminder</th>
-              <th className="py-2 pr-3">Attempts</th>
-              <th className="py-2 pr-3">Last updated</th>
-            </tr>
-          </thead>
-          <tbody>
-            {studentProgress.length === 0 ? (
-              <tr>
-                <td className="py-3 pr-3 text-slate-300" colSpan={6}>
-                  {filteredModule ? "No students found for this subject/grade yet." : "Select module"}
-                </td>
-              </tr>
-            ) : (
-              studentProgress.map((row) => (
-                <tr key={row.id} className="border-b border-white/5">
-                  <td className="py-2 pr-3 font-semibold text-white">{row.full_name}</td>
-                  <td className="py-2 pr-3 text-slate-300">{row.grade ?? "-"}</td>
-                  <td className="py-2 pr-3">
-                    <span
-                      className={`px-2 py-1 rounded-full text-xs !text-white ${
-                        (() => {
-                          const normalized = (row.status ?? "").toLowerCase();
-                          const isSubmitted = normalized === "submitted" || normalized === "report ready";
-                          const isNotSubmitted = normalized === "not submitted";
-                          const bg =
-                            normalized === "completed" || isSubmitted
-                              ? "bg-emerald-600"
-                              : normalized === "pending"
-                                ? "bg-amber-600"
-                                : isNotSubmitted
-                                  ? "bg-rose-700"
-                                  : "bg-slate-600";
-                          const weight = isSubmitted || isNotSubmitted ? "font-semibold" : "";
-                          return [bg, weight].filter(Boolean).join(" ");
-                        })()
-                      }`}
-                    >
-                      {row.status?.toLowerCase() === "report ready" ? "submitted" : row.status}
-                    </span>
-                  </td>
-                  <td className="py-2 pr-3">
-                    {row.status?.toLowerCase() === "not submitted" ? (
-                      <button
-                        data-tour={
-                          row.id === firstRemindableStudentId ? "teacher-progress-reminder-bell" : undefined
-                        }
-                        className="h-8 w-8 rounded-full bg-amber-500 text-slate-900 text-xs font-semibold border border-amber-300 hover:bg-amber-400 disabled:opacity-50 inline-flex items-center justify-center"
-                        onClick={() =>
-                          void sendReminder(
-                            row.id,
-                            row.full_name,
-                            filteredModule?.id ?? null,
-                            filteredModule?.title ?? row.moduleTitle ?? null,
-                            filteredModule?.subject ?? row.subject ?? null
-                          )
-                        }
-                        disabled={remindingId === row.id}
-                        aria-label="Send reminder"
-                      >
-                        {remindingId === row.id ? (
-                          <span className="text-[10px] font-semibold">...</span>
-                        ) : (
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            className="h-4 w-4"
-                          >
-                            <path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.172V11a6 6 0 1 0-12 0v3.172a2 2 0 0 1-.6 1.428L4 17h5" />
-                            <path d="M9 17a3 3 0 0 0 6 0" />
-                          </svg>
-                        )}
-                        <span className="sr-only">Send reminder</span>
-                      </button>
-                    ) : (
-                      <span className="text-xs text-slate-400">-</span>
-                    )}
-                  </td>
-                  <td className="py-2 pr-3 text-slate-300">{row.attempts}</td>
-                  <td className="py-2 pr-3 text-slate-300">
-                    {row.latest ? new Date(row.latest).toLocaleString() : "-"}
-                  </td>
-                </tr>
-              ))
+          <div className="glass-panel rounded-2xl p-4 overflow-auto">
+            <div className="space-y-3 min-w-[760px]">
+              <div className="grid grid-cols-6 gap-3">
+                <div className="h-4 rounded bg-white/10 animate-pulse" />
+                <div className="h-4 rounded bg-white/10 animate-pulse" />
+                <div className="h-4 rounded bg-white/10 animate-pulse" />
+                <div className="h-4 rounded bg-white/10 animate-pulse" />
+                <div className="h-4 rounded bg-white/10 animate-pulse" />
+                <div className="h-4 rounded bg-white/10 animate-pulse" />
+              </div>
+              {Array.from({ length: 7 }).map((_, index) => (
+                <div key={`progress-skeleton-${index}`} className="grid grid-cols-6 gap-3">
+                  <div className="h-4 rounded bg-white/10 animate-pulse" />
+                  <div className="h-4 rounded bg-white/10 animate-pulse" />
+                  <div className="h-4 rounded bg-white/10 animate-pulse" />
+                  <div className="h-4 rounded bg-white/10 animate-pulse" />
+                  <div className="h-4 rounded bg-white/10 animate-pulse" />
+                  <div className="h-4 rounded bg-white/10 animate-pulse" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="glass-panel rounded-2xl p-4 flex flex-wrap gap-3 items-center" data-tour="teacher-progress-filter-panel">
+            <label className="text-sm text-slate-200 space-y-1">
+              Module
+              <select
+                data-tour="teacher-progress-module-select"
+                className="w-full rounded-lg bg-white/5 border border-slate-400/60 px-3 py-2"
+                value={moduleFilter}
+                onChange={(e) => setModuleFilter(e.target.value)}
+              >
+                {moduleOptions.map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {status && (
+              <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-amber-200">{status}</div>
             )}
-          </tbody>
-        </table>
-      </div>
+            {reminderBanner && (
+              <div className="rounded-xl border border-emerald-300/40 bg-emerald-700/30 px-3 py-2 text-sm text-emerald-100">
+                {reminderBanner}
+              </div>
+            )}
+          </div>
+          <div className="glass-panel rounded-2xl p-4 overflow-auto" data-tour="teacher-progress-table">
+            <table className="table-v1">
+              <thead>
+                <tr className="text-left text-slate-400 border-b border-white/10">
+                  <th className="py-2 pr-3">Student</th>
+                  <th className="py-2 pr-3">Grade</th>
+                  <th className="py-2 pr-3" data-tour="teacher-progress-status-column">Status</th>
+                  <th className="py-2 pr-3" data-tour="teacher-progress-reminder-column">Reminder</th>
+                  <th className="py-2 pr-3">Attempts</th>
+                  <th className="py-2 pr-3">Last updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {studentProgress.length === 0 ? (
+                  <tr>
+                    <td className="py-3 pr-3 text-slate-300" colSpan={6}>
+                      {filteredModule ? "No students found for this subject/grade yet." : "Select module"}
+                    </td>
+                  </tr>
+                ) : (
+                  studentProgress.map((row) => (
+                    <tr key={row.id} className="border-b border-white/5">
+                      <td className="py-2 pr-3 font-semibold text-white">{row.full_name}</td>
+                      <td className="py-2 pr-3 text-slate-300">{row.grade ?? "-"}</td>
+                      <td className="py-2 pr-3">
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs !text-white ${
+                            (() => {
+                              const normalized = (row.status ?? "").toLowerCase();
+                              const isSubmitted = normalized === "submitted" || normalized === "report ready";
+                              const isNotSubmitted = normalized === "not submitted";
+                              const bg =
+                                normalized === "completed" || isSubmitted
+                                  ? "bg-emerald-600"
+                                  : normalized === "pending"
+                                    ? "bg-amber-600"
+                                    : isNotSubmitted
+                                      ? "bg-rose-700"
+                                      : "bg-slate-600";
+                              const weight = isSubmitted || isNotSubmitted ? "font-semibold" : "";
+                              return [bg, weight].filter(Boolean).join(" ");
+                            })()
+                          }`}
+                        >
+                          {row.status?.toLowerCase() === "report ready" ? "submitted" : row.status}
+                        </span>
+                      </td>
+                      <td className="py-2 pr-3">
+                        {row.status?.toLowerCase() === "not submitted" ? (
+                          <button
+                            data-tour={
+                              row.id === firstRemindableStudentId ? "teacher-progress-reminder-bell" : undefined
+                            }
+                            className="h-8 w-8 rounded-full bg-amber-500 text-slate-900 text-xs font-semibold border border-amber-300 hover:bg-amber-400 disabled:opacity-50 inline-flex items-center justify-center"
+                            onClick={() =>
+                              void sendReminder(
+                                row.id,
+                                row.full_name,
+                                filteredModule?.id ?? null,
+                                filteredModule?.title ?? row.moduleTitle ?? null,
+                                filteredModule?.subject ?? row.subject ?? null
+                              )
+                            }
+                            disabled={remindingId === row.id}
+                            aria-label="Send reminder"
+                          >
+                            {remindingId === row.id ? (
+                              <span className="text-[10px] font-semibold">...</span>
+                            ) : (
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                className="h-4 w-4"
+                              >
+                                <path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.172V11a6 6 0 1 0-12 0v3.172a2 2 0 0 1-.6 1.428L4 17h5" />
+                                <path d="M9 17a3 3 0 0 0 6 0" />
+                              </svg>
+                            )}
+                            <span className="sr-only">Send reminder</span>
+                          </button>
+                        ) : (
+                          <span className="text-xs text-slate-400">-</span>
+                        )}
+                      </td>
+                      <td className="py-2 pr-3 text-slate-300">{row.attempts}</td>
+                      <td className="py-2 pr-3 text-slate-300">
+                        {row.latest ? new Date(row.latest).toLocaleString() : "-"}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </main>
   );
 }

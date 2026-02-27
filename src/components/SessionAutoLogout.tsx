@@ -27,11 +27,15 @@ export default function SessionAutoLogout({ minutes = DEFAULT_MINUTES }: Props) 
 
   const redirectToLogin = useCallback(async () => {
     clearTimer();
-    await logActivity("auth_logout", {
-      category: "auth",
-      metadata: { reason: "timeout" },
-    });
-    await supabase.auth.signOut();
+    try {
+      await logActivity("auth_logout", {
+        category: "auth",
+        metadata: { reason: "timeout" },
+      });
+      await supabase.auth.signOut();
+    } catch {
+      // Ignore network failures during forced logout.
+    }
     if (pathname !== "/login") {
       router.replace("/login?reason=timeout");
     }
@@ -62,16 +66,22 @@ export default function SessionAutoLogout({ minutes = DEFAULT_MINUTES }: Props) 
 
   useEffect(() => {
     const init = async () => {
-      const { data } = await supabase.auth.getSession();
-      const hasSession = Boolean(data.session);
-      setEnabled(hasSession);
-      if (!hasSession) {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const hasSession = Boolean(data.session);
+        setEnabled(hasSession);
+        if (!hasSession) {
+          clearTimer();
+          return;
+        }
+        const last = Number(localStorage.getItem(LAST_ACTIVE_KEY) ?? Date.now());
+        localStorage.setItem(LAST_ACTIVE_KEY, `${last}`);
+        schedule(last);
+      } catch {
+        setEnabled(false);
         clearTimer();
-        return;
+        // Ignore transient Supabase/network failures.
       }
-      const last = Number(localStorage.getItem(LAST_ACTIVE_KEY) ?? Date.now());
-      localStorage.setItem(LAST_ACTIVE_KEY, `${last}`);
-      schedule(last);
     };
     void init();
 

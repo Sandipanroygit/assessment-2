@@ -31,9 +31,9 @@ const submissionsBucket = "curriculum-assets";
 const submissionPathPrefix = "activity-submissions";
 const submissionHistoryKey = "activitySubmissionHistory";
 const submissionHideKey = "activitySubmissionHide";
-const STUDENT_ACTIVITY_TOUR_AUTOSTART_KEY = "student_activity_tour_autostart_v1";
-const STUDENT_ACTIVITY_TOUR_CHAIN_KEY = "student_activity_tour_chain_meta_v1";
-const STUDENT_DASHBOARD_TOUR_RESUME_KEY = "student_dashboard_tour_resume_v1";
+const STUDENT_ACTIVITY_TOUR_AUTOSTART_KEY = "student_activity_tour_autostart_v2";
+const STUDENT_ACTIVITY_TOUR_CHAIN_KEY = "student_activity_tour_chain_meta_v2";
+const STUDENT_DASHBOARD_TOUR_RESUME_KEY = "student_dashboard_tour_resume_v2";
 const TEACHER_TOUR_PALETTE = {
   accent: "#2563eb",
   accentStrong: "#1e3a8a",
@@ -212,7 +212,7 @@ const buildReportHtml = ({
     <meta charset="utf-8" />
     <title>AerohawX Activity Report</title>
     <style>
-      body { font-family: Arial, sans-serif; color: #0f172a; padding: 24px; }
+      body { font-family: Inter, Arial, sans-serif; color: #0f172a; padding: 24px; }
       .header { display: block; margin-bottom: 10px; }
       .logo { width: 140px; height: 60px; object-fit: contain; }
       h1 { font-size: 20px; margin: 10px 0 6px 0; color: #0f4c81; }
@@ -575,7 +575,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
       },
       {
         id: "activity-submissions-list",
-        target: '[data-tour="activity-submissions-list-heading"]',
+        target: '[data-tour="activity-submissions-list"]',
         title: "Saved Submissions",
         description: "Review, switch, or delete previous submissions in this list.",
         placement: "bottom",
@@ -586,7 +586,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
       },
       {
         id: "activity-report-panel",
-        target: '[data-tour="activity-report-heading"]',
+        target: '[data-tour="activity-report-panel"]',
         title: "Pressure vs Altitude Analysis",
         description: "Review the Pressure vs Altitude overlay and AI metrics, then download the report from here.",
         placement: "bottom",
@@ -596,7 +596,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
       },
       {
         id: "activity-assessment-panel",
-        target: '[data-tour="activity-assessment-heading"]',
+        target: '[data-tour="activity-assessment-panel"]',
         title: "Quiz Assessment",
         description: "Generate practice MCQs and test your understanding here.",
         placement: "bottom",

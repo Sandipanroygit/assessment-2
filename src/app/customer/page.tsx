@@ -70,10 +70,10 @@ const TEACHER_DASHBOARD_TOUR_RESUME_KEY = "teacher_dashboard_tour_resume_v2";
 const TEACHER_TOUR_AUTOSTART_KEY = "teacher_dashboard_tour_autostart_v1";
 const TEACHER_PROGRESS_TOUR_STEP_COUNT = 7;
 const TEACHER_STUDENTS_TOUR_STEP_COUNT = 5;
-const STUDENT_TOUR_STORAGE_KEY = "student_feature_tour_v1";
-const STUDENT_ACTIVITY_TOUR_AUTOSTART_KEY = "student_activity_tour_autostart_v1";
-const STUDENT_ACTIVITY_TOUR_CHAIN_KEY = "student_activity_tour_chain_meta_v1";
-const STUDENT_DASHBOARD_TOUR_RESUME_KEY = "student_dashboard_tour_resume_v1";
+const STUDENT_TOUR_STORAGE_KEY = "student_feature_tour_v2";
+const STUDENT_ACTIVITY_TOUR_AUTOSTART_KEY = "student_activity_tour_autostart_v2";
+const STUDENT_ACTIVITY_TOUR_CHAIN_KEY = "student_activity_tour_chain_meta_v2";
+const STUDENT_DASHBOARD_TOUR_RESUME_KEY = "student_dashboard_tour_resume_v2";
 const STUDENT_ACTIVITY_TOUR_STEP_COUNT_STANDARD = 14;
 const STUDENT_ACTIVITY_TOUR_STEP_COUNT_DESIGN = 13;
 const TEACHER_TOUR_PALETTE = {
@@ -328,79 +328,95 @@ export default function CustomerPage() {
 
 
   useEffect(() => {
+    let cancelled = false;
+
     const loadProfile = async () => {
-      // Refresh to pick up latest user_metadata (e.g., subject updates from admin)
-      const refreshed = await supabase.auth.refreshSession();
-      const sessionFromRefresh = refreshed.data.session ?? null;
-      const sessionFromStore =
-        sessionFromRefresh ?? (await supabase.auth.getSession()).data.session ?? null;
-      const latestUser = sessionFromStore?.user ?? (await supabase.auth.getUser()).data.user ?? null;
-      const latestToken = sessionFromStore?.access_token ?? null;
-      setSessionToken(latestToken);
-      if (!latestUser) {
+      try {
+        // Refresh to pick up latest user_metadata (e.g., subject updates from admin)
+        const refreshed = await supabase.auth.refreshSession();
+        const sessionFromRefresh = refreshed.data.session ?? null;
+        const sessionFromStore =
+          sessionFromRefresh ?? (await supabase.auth.getSession()).data.session ?? null;
+        const latestUser = sessionFromStore?.user ?? (await supabase.auth.getUser()).data.user ?? null;
+        const latestToken = sessionFromStore?.access_token ?? null;
+        if (cancelled) return;
+        setSessionToken(latestToken);
+        if (!latestUser) {
+          setIsAuthenticated(false);
+          setAuthChecked(true);
+          router.replace("/login");
+          return;
+        }
+        setIsAuthenticated(true);
+
+        // Profile fetch is best-effort; fall back to metadata even if it fails.
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("full_name, role, grade")
+          .eq("id", latestUser.id)
+          .maybeSingle();
+        if (cancelled) return;
+
+        const normalizeRoleValue = (value: unknown) => {
+          const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+          if (normalized === "admin" || normalized === "teacher" || normalized === "student" || normalized === "customer") {
+            return normalized;
+          }
+          return null;
+        };
+        const roleFromMeta = normalizeRoleValue(latestUser.user_metadata?.role);
+        const roleFromProfile = normalizeRoleValue(profileData?.role);
+        const derivedRole = roleFromMeta ?? roleFromProfile ?? "customer";
+        setRole(derivedRole);
+        setFullName(profileData?.full_name ?? latestUser.user_metadata.full_name ?? latestUser.email ?? "Customer");
+
+        const gradeFromMeta =
+          (profileData as { grade?: string } | null)?.grade ??
+          (latestUser.user_metadata?.grade as string | undefined) ??
+          null;
+        if (gradeFromMeta) {
+          setGradeFilter(gradeFromMeta);
+          setUserGrade(gradeFromMeta);
+        }
+
+        const subjectFromMeta = (latestUser.user_metadata?.subject as string | undefined) ?? null;
+        if (derivedRole === "teacher" && subjectFromMeta) {
+          const normalized = normalizeSubject(subjectFromMeta);
+          setSubjectFilter(normalized);
+          setTeacherSubject(normalized);
+        }
+
+        // Ensure profile exists with correct role for RLS (teachers need role=teacher in profiles).
+        const needsProfileUpsert =
+          !profileData || (roleFromProfile ?? "") !== derivedRole;
+        if (needsProfileUpsert) {
+          await supabase.from("profiles").upsert({
+            id: latestUser.id,
+            full_name: latestUser.user_metadata?.full_name || latestUser.email || "User",
+            role: derivedRole,
+            grade: gradeFromMeta ?? undefined,
+          });
+        }
+
+        if (cancelled) return;
+        setAuthChecked(true);
+
+        // If an admin somehow lands here, redirect to the admin control room.
+        if (derivedRole === "admin") {
+          router.replace("/admin");
+        }
+      } catch {
+        if (cancelled) return;
+        setSessionToken(null);
         setIsAuthenticated(false);
         setAuthChecked(true);
-        router.replace("/login");
-        return;
-      }
-      setIsAuthenticated(true);
-
-      // Profile fetch is best-effort; fall back to metadata even if it fails.
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("full_name, role, grade")
-        .eq("id", latestUser.id)
-        .maybeSingle();
-
-      const normalizeRoleValue = (value: unknown) => {
-        const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
-        if (normalized === "admin" || normalized === "teacher" || normalized === "student" || normalized === "customer") {
-          return normalized;
-        }
-        return null;
-      };
-      const roleFromMeta = normalizeRoleValue(latestUser.user_metadata?.role);
-      const roleFromProfile = normalizeRoleValue(profileData?.role);
-      const derivedRole = roleFromMeta ?? roleFromProfile ?? "customer";
-      setRole(derivedRole);
-      setFullName(profileData?.full_name ?? latestUser.user_metadata.full_name ?? latestUser.email ?? "Customer");
-
-      const gradeFromMeta =
-        (profileData as { grade?: string } | null)?.grade ??
-        (latestUser.user_metadata?.grade as string | undefined) ??
-        null;
-      if (gradeFromMeta) {
-        setGradeFilter(gradeFromMeta);
-        setUserGrade(gradeFromMeta);
-      }
-
-      const subjectFromMeta = (latestUser.user_metadata?.subject as string | undefined) ?? null;
-      if (derivedRole === "teacher" && subjectFromMeta) {
-        const normalized = normalizeSubject(subjectFromMeta);
-        setSubjectFilter(normalized);
-        setTeacherSubject(normalized);
-      }
-
-      // Ensure profile exists with correct role for RLS (teachers need role=teacher in profiles).
-      const needsProfileUpsert =
-        !profileData || (roleFromProfile ?? "") !== derivedRole;
-      if (needsProfileUpsert) {
-        await supabase.from("profiles").upsert({
-          id: latestUser.id,
-          full_name: latestUser.user_metadata?.full_name || latestUser.email || "User",
-          role: derivedRole,
-          grade: gradeFromMeta ?? undefined,
-        });
-      }
-
-      setAuthChecked(true);
-
-      // If an admin somehow lands here, redirect to the admin control room.
-      if (derivedRole === "admin") {
-        router.replace("/admin");
+        setDataStatus("Unable to reach the server. Check your internet and refresh.");
       }
     };
-    loadProfile();
+    void loadProfile();
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   useEffect(() => {
@@ -444,10 +460,14 @@ export default function CustomerPage() {
         if (cancelled) return;
         setModules(rows.map((m) => enhanceModule(m)));
         setDataStatus(null);
-      } catch {
+      } catch (err) {
         if (cancelled) return;
         setModules([]);
-        setDataStatus("Database not reachable. No activities available.");
+        const message =
+          err instanceof Error && err.message.trim()
+            ? err.message
+            : "Database not reachable. No activities available.";
+        setDataStatus(message);
       }
     };
 
@@ -1139,7 +1159,8 @@ export default function CustomerPage() {
         id: "menu-trigger",
         target: '[data-tour="teacher-menu-trigger"]',
         title: "Teacher Menu",
-        description: "Open the menu to access content requests, student progress, student queries, and student registry.",
+        description:
+          "Open the menu to access content requests, assignment workflow, student progress, student queries, and student registry.",
         placement: "left",
         forcePageTop: true,
         lockTooltipPositionToPrev: true,
@@ -1582,6 +1603,8 @@ export default function CustomerPage() {
     }
 
     const autoStart = window.sessionStorage.getItem(TEACHER_TOUR_AUTOSTART_KEY) === "1";
+    const teacherTourStatus = window.localStorage.getItem(TEACHER_TOUR_STORAGE_KEY);
+    const hasTeacherTourPreference = teacherTourStatus === "done" || teacherTourStatus === "skipped";
     if (autoStart) {
       window.sessionStorage.removeItem(TEACHER_TOUR_AUTOSTART_KEY);
     }
@@ -1594,7 +1617,7 @@ export default function CustomerPage() {
       setTeacherTourPromptOpen(false);
     } else {
       setTeacherTourRun(false);
-      setTeacherTourPromptOpen(true);
+      setTeacherTourPromptOpen(!hasTeacherTourPreference);
     }
     setTeacherTourInitialized(true);
   }, [authChecked, dataStatus, isAuthenticated, role, teacherTourComputedSteps, teacherTourInitialized]);
@@ -1658,6 +1681,13 @@ export default function CustomerPage() {
         target: '[data-tour="student-menu-doubt"]',
         title: "Doubt Section Shortcut",
         description: "Use this to open your teacher chat and ask questions.",
+        placement: "left",
+      },
+      {
+        id: "student-menu-upload-project",
+        target: '[data-tour="student-menu-upload-project"]',
+        title: "Upload STEAM-H Project",
+        description: "Open this to publish your project to the STEAM-H showcase.",
         placement: "left",
       },
       {
@@ -1852,7 +1882,12 @@ export default function CustomerPage() {
     const stepId = studentTourActiveStepId ?? studentTourSteps[studentTourCurrentStepIndex]?.id;
     if (!stepId) return;
 
-    const menuStepIds = new Set(["student-menu-panel", "student-menu-doubt", "student-menu-signout"]);
+    const menuStepIds = new Set([
+      "student-menu-panel",
+      "student-menu-doubt",
+      "student-menu-upload-project",
+      "student-menu-signout",
+    ]);
     const doubtStepIds = new Set([
       "student-doubt-teacher-select",
       "student-doubt-list",
@@ -1925,8 +1960,10 @@ export default function CustomerPage() {
       }
     }
 
+    const studentTourStatus = window.localStorage.getItem(STUDENT_TOUR_STORAGE_KEY);
+    const hasStudentTourPreference = studentTourStatus === "done" || studentTourStatus === "skipped";
     setStudentTourRun(false);
-    setStudentTourPromptOpen(true);
+    setStudentTourPromptOpen(!hasStudentTourPreference);
     setStudentTourInitialized(true);
   }, [authChecked, dataStatus, isAuthenticated, role, studentTourInitialized]);
 
@@ -2017,7 +2054,7 @@ export default function CustomerPage() {
                 type="button"
                 onClick={() => {
                   void playUiClickTone();
-                  setTeacherTourPromptOpen(false);
+                  closeTeacherTour(false);
                 }}
                 style={{
                   borderRadius: 8,
@@ -2096,7 +2133,7 @@ export default function CustomerPage() {
                 type="button"
                 onClick={() => {
                   void playUiClickTone();
-                  setStudentTourPromptOpen(false);
+                  closeStudentTour(false);
                 }}
                 style={{
                   borderRadius: 8,
@@ -3046,6 +3083,31 @@ export default function CustomerPage() {
                       )}
                     </button>
                     <Link
+                      href="/teacher/assign-task"
+                      onClick={() => setTeacherMenuOpen(false)}
+                      className="flex items-center gap-3 rounded-xl px-3 py-2.5 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300/60 text-sm text-slate-800 transition"
+                    >
+                      <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-500 border border-indigo-300 text-true-white shadow-glow">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          className="h-5 w-5"
+                        >
+                          <path d="M9 5h6" />
+                          <path d="M9 9h6" />
+                          <path d="M9 13h4" />
+                          <path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" />
+                        </svg>
+                      </span>
+                      <div className="text-left">
+                        <p className="font-semibold">STEAM-H Task</p>
+                        <p className="text-xs text-slate-500">Create STEAM-H work for students</p>
+                      </div>
+                    </Link>
+                    <Link
                       href="/teacher/students"
                       data-tour="teacher-menu-students"
                       onClick={() => setTeacherMenuOpen(false)}
@@ -3281,6 +3343,34 @@ export default function CustomerPage() {
                           <p className="text-xs text-slate-500">Send query to your teacher</p>
                         </div>
                       </button>
+
+                      <Link
+                        href="/student/steamh-projects"
+                        data-tour="student-menu-upload-project"
+                        onClick={() => setTeacherMenuOpen(false)}
+                        className="flex items-center gap-3 rounded-xl px-3 py-2.5 bg-slate-50 hover:bg-sky-50 border border-slate-200 hover:border-sky-300/60 text-sm text-slate-800 transition"
+                      >
+                        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-sky-500 border border-sky-300 text-true-white shadow-glow">
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="h-5 w-5"
+                          >
+                            <path d="M12 19V5" />
+                            <path d="m5 12 7-7 7 7" />
+                            <path d="M5 19h14" />
+                          </svg>
+                        </span>
+                        <div className="text-left">
+                          <p className="font-semibold">Upload STEAM-H Project</p>
+                          <p className="text-xs text-slate-500">Publish work to open showcase</p>
+                        </div>
+                      </Link>
 
                       <button
                         type="button"
