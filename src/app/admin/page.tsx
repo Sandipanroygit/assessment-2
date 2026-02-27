@@ -2248,7 +2248,7 @@ export default function AdminPage() {
             </div>
             {statsExpanded && (
               <div className="mt-3 space-y-2">
-                {"breakdown" in item ? (
+                {Array.isArray(item.breakdown) ? (
                   <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-white/10 bg-white/5">
                     {item.breakdown.map((entry, index) => (
                       <div

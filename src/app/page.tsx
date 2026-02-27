@@ -1037,7 +1037,7 @@ export default function Home() {
     requestAnimationFrame(() => setPanelOpen(true));
   };
 
-  const openAssistantChat:any = (source: "button" | "eagle" = "button") => {
+  const openAssistantChat = (source: "button" | "eagle" = "button"): void => {
     if (source === "eagle") {
       setEagleWidgetDismissed(true);
     }
@@ -2625,7 +2625,7 @@ export default function Home() {
 
       <button
         className="fixed bottom-6 right-6 h-12 px-5 rounded-full bg-accent text-slate-50 font-semibold ring-2 ring-accent/30 shadow-[0_12px_30px_rgba(0,98,65,0.35)] hover:ring-accent/50 hover:shadow-[0_16px_40px_rgba(0,98,65,0.45)] hover:-translate-y-1 transition-transform transition-shadow flex items-center gap-2 z-50"
-        onClick={openAssistantChat}
+        onClick={() => openAssistantChat("button")}
       >
         Need help?
       </button>

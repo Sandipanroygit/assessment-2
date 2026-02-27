@@ -187,14 +187,13 @@ export async function fetchSteamhProjectById(id: string, options?: FetchSteamhPr
     .from("steamh_projects")
     .select(STEAMH_PROJECT_SELECT_COLUMNS)
     .eq("id", projectId)
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
 
   if (!includeUnpublished) {
     query = query.eq("published", true);
   }
 
-  const { data, error } = await query;
+  const { data, error } = await query.maybeSingle();
   if (error) throw toError(error, "Unable to load STEAM-H project.");
   if (!data) return null;
 
