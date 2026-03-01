@@ -12,6 +12,7 @@ import heroSlide3 from "../../image/image3.jpg";
 import logo from "../../image/logo.jpg";
 import eagleAssistant from "../../eagle/eagle.png";
 import indusTrustLogo from "../../eagle/Indus Trust.jpeg";
+import nasaPromo from "../../eagle/nasa.gif";
 import CollaborateButton from "@/components/CollaborateButton";
 import { enrichSteamhProjectWithSampleDetails, sampleSteamhProjects } from "@/data/sampleSteamhProjects";
 import { buildProjectCollabPath } from "@/lib/steamhCollaboration";
@@ -192,9 +193,24 @@ const EAGLE_WIDGET_SIZE = 160;
 const EAGLE_WIDGET_DRAG_THRESHOLD = 6;
 const EAGLE_WIDGET_DRAG_ENABLED = false;
 const EAGLE_WIDGET_STORAGE_KEY = "homepage_eagle_widget_position_v1";
+const NASA_PROMO_EDIT_MODE_ENABLED = false;
+const NASA_PROMO_STORAGE_KEY = "homepage_nasa_promo_layout_v1";
+const NASA_PROMO_DEFAULT_WIDTH = 170;
+const NASA_PROMO_MIN_WIDTH = 100;
+const NASA_PROMO_MAX_WIDTH = 620;
+const NASA_PROMO_MIN_X = -220;
+const NASA_PROMO_MAX_X = 520;
+const NASA_PROMO_MIN_Y = -70;
+const NASA_PROMO_MAX_Y = 150;
+const NASA_PROMO_DRAG_THRESHOLD = 4;
+const NASA_PROMO_DEFAULT_SCALE = 1;
+const NASA_PROMO_MIN_SCALE = 1;
+const NASA_PROMO_MAX_SCALE = 2.4;
 const HOME_BLOCK_TWO_SNAP_OFFSET = -290;
 const CARD2_CENTER_SNAP_THRESHOLD = 10;
 const CARD2_EDIT_MODE_ENABLED = false;
+const CARD2_VIEWPORT_REFERENCE_WIDTH = 1440;
+const CARD2_VIEWPORT_MIN_SCALE = 0.74;
 const CARD4_LAYOUT_STORAGE_KEY = "homepage_block4_layout_offsets_v1";
 const CARD4_CENTER_SNAP_THRESHOLD = 10;
 const CARD4_EDIT_MODE_ENABLED = false;
@@ -217,9 +233,33 @@ type Card2ElementId = "header" | "content";
 
 type Card4ElementId = "testimonials" | "bundles" | "footer";
 
-const CARD2_DEFAULT_OFFSETS: Record<Card2ElementId, { x: number; y: number }> = {
+type NasaPromoLayout = {
+  x: number;
+  y: number;
+  width: number;
+  cropScale: number;
+  cropX: number;
+  cropY: number;
+};
+
+const CARD2_LOCKED_OFFSETS: Record<Card2ElementId, { x: number; y: number }> = {
   header: { x: 0, y: -214 },
   content: { x: 0, y: -180 },
+};
+
+const resolveCard2OffsetsForViewport = (viewportWidth: number): Record<Card2ElementId, { x: number; y: number }> => {
+  const scale = Math.min(1, Math.max(CARD2_VIEWPORT_MIN_SCALE, viewportWidth / CARD2_VIEWPORT_REFERENCE_WIDTH));
+
+  return {
+    header: {
+      x: Math.round(CARD2_LOCKED_OFFSETS.header.x * scale),
+      y: Math.round(CARD2_LOCKED_OFFSETS.header.y * scale),
+    },
+    content: {
+      x: Math.round(CARD2_LOCKED_OFFSETS.content.x * scale),
+      y: Math.round(CARD2_LOCKED_OFFSETS.content.y * scale),
+    },
+  };
 };
 
 const CARD4_DEFAULT_OFFSETS: Record<Card4ElementId, { x: number; y: number }> = {
@@ -262,6 +302,32 @@ const clampIndusLogoPosition = (position: { x: number; y: number }) => {
   return {
     x: Math.min(INDUS_LOGO_MAX_X, Math.max(INDUS_LOGO_MIN_X, Math.round(position.x))),
     y: Math.min(INDUS_LOGO_MAX_Y, Math.max(INDUS_LOGO_MIN_Y, Math.round(position.y))),
+  };
+};
+
+const getNasaPromoCropLimits = (width: number, cropScale: number) => {
+  const overflowFactor = Math.max(0, cropScale - 1);
+  return {
+    x: Math.max(0, Math.round((width * overflowFactor) / 2)),
+    y: Math.max(0, Math.round((Math.max(1, width * 0.32) * overflowFactor) / 2)),
+  };
+};
+
+const clampNasaPromoLayout = (layout: NasaPromoLayout): NasaPromoLayout => {
+  const width = Math.min(NASA_PROMO_MAX_WIDTH, Math.max(NASA_PROMO_MIN_WIDTH, Math.round(layout.width)));
+  const cropScale = Math.min(
+    NASA_PROMO_MAX_SCALE,
+    Math.max(NASA_PROMO_MIN_SCALE, Math.round(layout.cropScale * 100) / 100),
+  );
+  const cropLimits = getNasaPromoCropLimits(width, cropScale);
+
+  return {
+    x: Math.min(NASA_PROMO_MAX_X, Math.max(NASA_PROMO_MIN_X, Math.round(layout.x))),
+    y: Math.min(NASA_PROMO_MAX_Y, Math.max(NASA_PROMO_MIN_Y, Math.round(layout.y))),
+    width,
+    cropScale,
+    cropX: Math.min(cropLimits.x, Math.max(-cropLimits.x, Math.round(layout.cropX))),
+    cropY: Math.min(cropLimits.y, Math.max(-cropLimits.y, Math.round(layout.cropY))),
   };
 };
 
@@ -308,12 +374,65 @@ export default function Home() {
   const [eagleWidgetReady, setEagleWidgetReady] = useState(false);
   const [eagleWidgetDismissed, setEagleWidgetDismissed] = useState(false);
   const [eagleWidgetCollapsedByScroll, setEagleWidgetCollapsedByScroll] = useState(false);
+  const [nasaPromoEditMode] = useState(NASA_PROMO_EDIT_MODE_ENABLED);
+  const [nasaPromoLayout, setNasaPromoLayout] = useState<NasaPromoLayout>(() =>
+    clampNasaPromoLayout({
+      x: 0,
+      y: 0,
+      width: NASA_PROMO_DEFAULT_WIDTH,
+      cropScale: NASA_PROMO_DEFAULT_SCALE,
+      cropX: 0,
+      cropY: 0,
+    }),
+  );
   const faqTabDragRef = useRef<{ pointerId: number | null; startY: number; startTop: number; moved: boolean }>({
     pointerId: null,
     startY: 0,
     startTop: 0,
     moved: false,
   });
+  const nasaPromoDragRef = useRef<{
+    pointerId: number | null;
+    startX: number;
+    startY: number;
+    startOffsetX: number;
+    startOffsetY: number;
+    moved: boolean;
+  }>({
+    pointerId: null,
+    startX: 0,
+    startY: 0,
+    startOffsetX: 0,
+    startOffsetY: 0,
+    moved: false,
+  });
+  const nasaPromoResizeRef = useRef<{
+    pointerId: number | null;
+    startX: number;
+    startWidth: number;
+    moved: boolean;
+  }>({
+    pointerId: null,
+    startX: 0,
+    startWidth: NASA_PROMO_DEFAULT_WIDTH,
+    moved: false,
+  });
+  const nasaPromoCropDragRef = useRef<{
+    pointerId: number | null;
+    startX: number;
+    startY: number;
+    startCropX: number;
+    startCropY: number;
+    moved: boolean;
+  }>({
+    pointerId: null,
+    startX: 0,
+    startY: 0,
+    startCropX: 0,
+    startCropY: 0,
+    moved: false,
+  });
+  const nasaPromoSuppressClickRef = useRef(false);
   const eagleBubbleDragRef = useRef<{
     pointerId: number | null;
     startX: number;
@@ -381,7 +500,7 @@ export default function Home() {
   const [card2GuideState, setCard2GuideState] = useState({ vertical: false, horizontal: false });
   const [card2ActiveElement, setCard2ActiveElement] = useState<Card2ElementId | null>(null);
   const [card2Offsets, setCard2Offsets] =
-    useState<Record<Card2ElementId, { x: number; y: number }>>(CARD2_DEFAULT_OFFSETS);
+    useState<Record<Card2ElementId, { x: number; y: number }>>(CARD2_LOCKED_OFFSETS);
   const card4ContainerRef = useRef<HTMLDivElement | null>(null);
   const card4ItemRefs = useRef<Record<Card4ElementId, HTMLDivElement | null>>({
     testimonials: null,
@@ -535,6 +654,18 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined" || card2EditMode) return;
+
+    const syncCard2Offsets = () => {
+      setCard2Offsets(resolveCard2OffsetsForViewport(window.innerWidth));
+    };
+
+    syncCard2Offsets();
+    window.addEventListener("resize", syncCard2Offsets);
+    return () => window.removeEventListener("resize", syncCard2Offsets);
+  }, [card2EditMode]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
 
     try {
@@ -557,6 +688,29 @@ export default function Home() {
       const parsed = JSON.parse(saved) as { x?: number; y?: number };
       if (!Number.isFinite(parsed?.x) || !Number.isFinite(parsed?.y)) return;
       setIndusLogoPosition(clampIndusLogoPosition({ x: parsed.x ?? 0, y: parsed.y ?? 0 }));
+    } catch {
+      // Ignore malformed persisted values.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      const saved = window.localStorage.getItem(NASA_PROMO_STORAGE_KEY);
+      if (!saved) return;
+      const parsed = JSON.parse(saved) as Partial<NasaPromoLayout>;
+      if (!Number.isFinite(parsed?.x) || !Number.isFinite(parsed?.y) || !Number.isFinite(parsed?.width)) return;
+      setNasaPromoLayout(
+        clampNasaPromoLayout({
+          x: parsed.x ?? 0,
+          y: parsed.y ?? 0,
+          width: parsed.width ?? NASA_PROMO_DEFAULT_WIDTH,
+          cropScale: Number.isFinite(parsed.cropScale) ? parsed.cropScale ?? NASA_PROMO_DEFAULT_SCALE : NASA_PROMO_DEFAULT_SCALE,
+          cropX: Number.isFinite(parsed.cropX) ? parsed.cropX ?? 0 : 0,
+          cropY: Number.isFinite(parsed.cropY) ? parsed.cropY ?? 0 : 0,
+        }),
+      );
     } catch {
       // Ignore malformed persisted values.
     }
@@ -588,6 +742,15 @@ export default function Home() {
       // Ignore storage failures.
     }
   }, [indusLogoPosition]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(NASA_PROMO_STORAGE_KEY, JSON.stringify(nasaPromoLayout));
+    } catch {
+      // Ignore storage failures.
+    }
+  }, [nasaPromoLayout]);
 
   useEffect(() => {
     if (card2EditMode) return;
@@ -1376,6 +1539,240 @@ export default function Home() {
     };
   };
 
+  const startNasaPromoDrag = (event: React.PointerEvent<HTMLElement>) => {
+    if (!nasaPromoEditMode) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    const target = event.target as HTMLElement | null;
+    if (target?.closest("[data-nasa-promo-stop-drag='true']")) return;
+
+    nasaPromoDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startOffsetX: nasaPromoLayout.x,
+      startOffsetY: nasaPromoLayout.y,
+      moved: false,
+    };
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  };
+
+  const moveNasaPromoDrag = (event: React.PointerEvent<HTMLElement>) => {
+    if (!nasaPromoEditMode) return;
+
+    const dragState = nasaPromoDragRef.current;
+    if (dragState.pointerId !== event.pointerId) return;
+
+    const deltaX = event.clientX - dragState.startX;
+    const deltaY = event.clientY - dragState.startY;
+
+    if (
+      !dragState.moved &&
+      (Math.abs(deltaX) >= NASA_PROMO_DRAG_THRESHOLD || Math.abs(deltaY) >= NASA_PROMO_DRAG_THRESHOLD)
+    ) {
+      dragState.moved = true;
+    }
+
+    setNasaPromoLayout((previous) =>
+      clampNasaPromoLayout({
+        ...previous,
+        x: dragState.startOffsetX + deltaX,
+        y: dragState.startOffsetY + deltaY,
+      }),
+    );
+  };
+
+  const endNasaPromoDrag = (event: React.PointerEvent<HTMLElement>) => {
+    if (!nasaPromoEditMode) return;
+
+    const dragState = nasaPromoDragRef.current;
+    if (dragState.pointerId !== event.pointerId) return;
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    nasaPromoSuppressClickRef.current = dragState.moved;
+    nasaPromoDragRef.current = {
+      pointerId: null,
+      startX: 0,
+      startY: 0,
+      startOffsetX: 0,
+      startOffsetY: 0,
+      moved: false,
+    };
+  };
+
+  const startNasaPromoResize = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (!nasaPromoEditMode) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+
+    nasaPromoResizeRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startWidth: nasaPromoLayout.width,
+      moved: false,
+    };
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  const moveNasaPromoResize = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (!nasaPromoEditMode) return;
+
+    const resizeState = nasaPromoResizeRef.current;
+    if (resizeState.pointerId !== event.pointerId) return;
+
+    const deltaX = event.clientX - resizeState.startX;
+    if (!resizeState.moved && Math.abs(deltaX) >= NASA_PROMO_DRAG_THRESHOLD) {
+      resizeState.moved = true;
+    }
+
+    setNasaPromoLayout((previous) =>
+      clampNasaPromoLayout({
+        ...previous,
+        width: resizeState.startWidth + deltaX,
+      }),
+    );
+  };
+
+  const endNasaPromoResize = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (!nasaPromoEditMode) return;
+
+    const resizeState = nasaPromoResizeRef.current;
+    if (resizeState.pointerId !== event.pointerId) return;
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    nasaPromoSuppressClickRef.current = nasaPromoSuppressClickRef.current || resizeState.moved;
+    nasaPromoResizeRef.current = {
+      pointerId: null,
+      startX: 0,
+      startWidth: NASA_PROMO_DEFAULT_WIDTH,
+      moved: false,
+    };
+    event.stopPropagation();
+  };
+
+  const onNasaPromoClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (nasaPromoEditMode || nasaPromoSuppressClickRef.current) {
+      event.preventDefault();
+      nasaPromoSuppressClickRef.current = false;
+    }
+  };
+
+  const startNasaPromoCropDrag = (event: React.PointerEvent<HTMLAnchorElement>) => {
+    if (!nasaPromoEditMode) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+
+    nasaPromoCropDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startCropX: nasaPromoLayout.cropX,
+      startCropY: nasaPromoLayout.cropY,
+      moved: false,
+    };
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  const moveNasaPromoCropDrag = (event: React.PointerEvent<HTMLAnchorElement>) => {
+    if (!nasaPromoEditMode) return;
+
+    const dragState = nasaPromoCropDragRef.current;
+    if (dragState.pointerId !== event.pointerId) return;
+
+    const deltaX = event.clientX - dragState.startX;
+    const deltaY = event.clientY - dragState.startY;
+
+    if (
+      !dragState.moved &&
+      (Math.abs(deltaX) >= NASA_PROMO_DRAG_THRESHOLD || Math.abs(deltaY) >= NASA_PROMO_DRAG_THRESHOLD)
+    ) {
+      dragState.moved = true;
+    }
+
+    setNasaPromoLayout((previous) =>
+      clampNasaPromoLayout({
+        ...previous,
+        cropX: dragState.startCropX + deltaX,
+        cropY: dragState.startCropY + deltaY,
+      }),
+    );
+
+    event.stopPropagation();
+  };
+
+  const endNasaPromoCropDrag = (event: React.PointerEvent<HTMLAnchorElement>) => {
+    if (!nasaPromoEditMode) return;
+
+    const dragState = nasaPromoCropDragRef.current;
+    if (dragState.pointerId !== event.pointerId) return;
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    nasaPromoSuppressClickRef.current = nasaPromoSuppressClickRef.current || dragState.moved;
+    nasaPromoCropDragRef.current = {
+      pointerId: null,
+      startX: 0,
+      startY: 0,
+      startCropX: 0,
+      startCropY: 0,
+      moved: false,
+    };
+    event.stopPropagation();
+  };
+
+  const updateNasaPromoCropScale = (nextScale: number) => {
+    setNasaPromoLayout((previous) =>
+      clampNasaPromoLayout({
+        ...previous,
+        cropScale: nextScale,
+      }),
+    );
+  };
+
+  const updateNasaPromoCropX = (nextX: number) => {
+    setNasaPromoLayout((previous) =>
+      clampNasaPromoLayout({
+        ...previous,
+        cropX: nextX,
+      }),
+    );
+  };
+
+  const updateNasaPromoCropY = (nextY: number) => {
+    setNasaPromoLayout((previous) =>
+      clampNasaPromoLayout({
+        ...previous,
+        cropY: nextY,
+      }),
+    );
+  };
+
+  const resetNasaPromoCrop = () => {
+    setNasaPromoLayout((previous) =>
+      clampNasaPromoLayout({
+        ...previous,
+        cropScale: NASA_PROMO_DEFAULT_SCALE,
+        cropX: 0,
+        cropY: 0,
+      }),
+    );
+  };
+
+  const nasaPromoCropLimits = getNasaPromoCropLimits(nasaPromoLayout.width, nasaPromoLayout.cropScale);
+
   const setCard2ItemRef = (id: Card2ElementId, node: HTMLDivElement | null) => {
     card2ItemRefs.current[id] = node;
   };
@@ -1748,6 +2145,142 @@ export default function Home() {
           </div>
         </div>
         <nav className={`hidden md:flex items-center text-sm transition-all duration-300 ${headerCollapsed ? "gap-2" : "gap-4"}`}>
+          {!headerCollapsed && (
+            <div
+              className={`relative flex-none nasa-promo-shimmer ${nasaPromoEditMode ? "select-none outline outline-1 outline-amber-300/70 rounded-md" : ""
+                }`}
+              style={{
+                width: `${headerCollapsed ? Math.min(nasaPromoLayout.width, 120) : nasaPromoLayout.width}px`,
+                transform: `translate(${nasaPromoLayout.x}px, ${nasaPromoLayout.y}px)`,
+                overflow: nasaPromoEditMode ? "visible" : undefined,
+              }}
+              onPointerDown={startNasaPromoDrag}
+              onPointerMove={moveNasaPromoDrag}
+              onPointerUp={endNasaPromoDrag}
+              onPointerCancel={endNasaPromoDrag}
+            >
+              <a
+                href="https://www3.nasa.gov/send-your-name-with-artemis/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="relative inline-flex items-center w-full overflow-hidden rounded-sm"
+                data-nasa-promo-stop-drag="true"
+                aria-label="NASA Artemis campaign"
+                title="NASA Artemis campaign"
+                onClick={onNasaPromoClick}
+                onPointerDown={startNasaPromoCropDrag}
+                onPointerMove={moveNasaPromoCropDrag}
+                onPointerUp={endNasaPromoCropDrag}
+                onPointerCancel={endNasaPromoCropDrag}
+              >
+                <Image
+                  src={nasaPromo}
+                  alt="NASA Artemis promotion"
+                  className="block h-auto w-full object-contain nasa-promo-image-breath"
+                  priority={false}
+                />
+              </a>
+              {nasaPromoEditMode && (
+                <button
+                  type="button"
+                  aria-label="Move NASA promo"
+                  data-nasa-promo-control="true"
+                  className="absolute -top-1.5 -left-1.5 h-5 w-5 rounded-md border border-amber-100 bg-amber-300/95 text-[10px] font-black leading-none text-slate-900 shadow cursor-grab active:cursor-grabbing"
+                  onPointerDown={(event) => {
+                    startNasaPromoDrag(event);
+                    event.stopPropagation();
+                  }}
+                  onPointerMove={(event) => {
+                    moveNasaPromoDrag(event);
+                    event.stopPropagation();
+                  }}
+                  onPointerUp={(event) => {
+                    endNasaPromoDrag(event);
+                    event.stopPropagation();
+                  }}
+                  onPointerCancel={(event) => {
+                    endNasaPromoDrag(event);
+                    event.stopPropagation();
+                  }}
+                >
+                  +
+                </button>
+              )}
+              {nasaPromoEditMode && (
+                <div
+                  data-nasa-promo-stop-drag="true"
+                  className="absolute left-0 top-full z-30 mt-2 w-[220px] rounded-md border border-amber-200/40 bg-slate-950/84 px-2 py-2 text-xs text-amber-100 shadow-lg backdrop-blur"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onPointerMove={(event) => event.stopPropagation()}
+                  onPointerUp={(event) => event.stopPropagation()}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="mb-1 flex items-center justify-between gap-1">
+                    <span className="font-semibold tracking-wide">Crop</span>
+                    <button
+                      type="button"
+                      className="rounded border border-amber-100/50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-100 hover:bg-amber-100/10"
+                      onClick={resetNasaPromoCrop}
+                    >
+                      Reset
+                    </button>
+                  </div>
+                  <label className="mb-1.5 flex items-center gap-1.5">
+                    <span className="w-10 shrink-0 font-semibold">Zoom</span>
+                    <input
+                      type="range"
+                      min={NASA_PROMO_MIN_SCALE}
+                      max={NASA_PROMO_MAX_SCALE}
+                      step={0.01}
+                      value={nasaPromoLayout.cropScale}
+                      onChange={(event) => updateNasaPromoCropScale(Number(event.target.value))}
+                      className="w-full accent-amber-300"
+                      aria-label="NASA promo crop zoom"
+                    />
+                  </label>
+                  <label className="mb-1.5 flex items-center gap-1.5">
+                    <span className="w-10 shrink-0 font-semibold">X</span>
+                    <input
+                      type="range"
+                      min={-nasaPromoCropLimits.x}
+                      max={nasaPromoCropLimits.x}
+                      step={1}
+                      value={nasaPromoLayout.cropX}
+                      onChange={(event) => updateNasaPromoCropX(Number(event.target.value))}
+                      className="w-full accent-amber-300"
+                      aria-label="NASA promo crop horizontal"
+                    />
+                  </label>
+                  <label className="flex items-center gap-1.5">
+                    <span className="w-10 shrink-0 font-semibold">Y</span>
+                    <input
+                      type="range"
+                      min={-nasaPromoCropLimits.y}
+                      max={nasaPromoCropLimits.y}
+                      step={1}
+                      value={nasaPromoLayout.cropY}
+                      onChange={(event) => updateNasaPromoCropY(Number(event.target.value))}
+                      className="w-full accent-amber-300"
+                      aria-label="NASA promo crop vertical"
+                    />
+                  </label>
+                  <p className="mt-1.5 text-[10px] text-amber-100/75">Drag image to crop. Use + handle to move the whole promo.</p>
+                </div>
+              )}
+              {nasaPromoEditMode && (
+                <button
+                  type="button"
+                  aria-label="Resize NASA promo"
+                  data-nasa-promo-stop-drag="true"
+                  className="absolute -bottom-1.5 -right-1.5 h-5 w-5 rounded-md border border-amber-100 bg-amber-300/95 shadow cursor-ew-resize"
+                  onPointerDown={startNasaPromoResize}
+                  onPointerMove={moveNasaPromoResize}
+                  onPointerUp={endNasaPromoResize}
+                  onPointerCancel={endNasaPromoResize}
+                />
+              )}
+            </div>
+          )}
           <div className="hidden md:flex flex-col items-start gap-1">
             {!isAuthed ? (
               <Link

@@ -188,6 +188,54 @@ main{
   animation: eagleWave 0.95s ease-in-out infinite;
 }
 
+@keyframes nasaPromoSweep {
+  0% {
+    transform: translateX(-140%);
+    opacity: 0;
+  }
+  18% {
+    opacity: 0.55;
+  }
+  55% {
+    transform: translateX(140%);
+    opacity: 0.55;
+  }
+  100% {
+    transform: translateX(140%);
+    opacity: 0;
+  }
+}
+
+@keyframes nasaPromoBreath {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 0 rgba(255, 255, 255, 0));
+  }
+  50% {
+    filter: drop-shadow(0 0 7px rgba(250, 204, 21, 0.35));
+  }
+}
+
+.nasa-promo-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.nasa-promo-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(110deg, transparent 32%, rgba(255, 255, 255, 0.62) 50%, transparent 68%);
+  transform: translateX(-140%);
+  animation: nasaPromoSweep 2.8s ease-in-out infinite;
+  mix-blend-mode: screen;
+}
+
+.nasa-promo-image-breath {
+  animation: nasaPromoBreath 2.4s ease-in-out infinite;
+}
+
 .glass-panel {
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.68));
   border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
