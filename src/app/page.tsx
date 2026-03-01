@@ -242,6 +242,15 @@ type NasaPromoLayout = {
   cropY: number;
 };
 
+const NASA_PROMO_LOCKED_LAYOUT: NasaPromoLayout = {
+  x: 0,
+  y: 0,
+  width: NASA_PROMO_DEFAULT_WIDTH,
+  cropScale: NASA_PROMO_DEFAULT_SCALE,
+  cropX: 0,
+  cropY: 0,
+};
+
 const CARD2_LOCKED_OFFSETS: Record<Card2ElementId, { x: number; y: number }> = {
   header: { x: 0, y: -214 },
   content: { x: 0, y: -180 },
@@ -376,14 +385,7 @@ export default function Home() {
   const [eagleWidgetCollapsedByScroll, setEagleWidgetCollapsedByScroll] = useState(false);
   const [nasaPromoEditMode] = useState(NASA_PROMO_EDIT_MODE_ENABLED);
   const [nasaPromoLayout, setNasaPromoLayout] = useState<NasaPromoLayout>(() =>
-    clampNasaPromoLayout({
-      x: 0,
-      y: 0,
-      width: NASA_PROMO_DEFAULT_WIDTH,
-      cropScale: NASA_PROMO_DEFAULT_SCALE,
-      cropX: 0,
-      cropY: 0,
-    }),
+    clampNasaPromoLayout(NASA_PROMO_LOCKED_LAYOUT),
   );
   const faqTabDragRef = useRef<{ pointerId: number | null; startY: number; startTop: number; moved: boolean }>({
     pointerId: null,
@@ -695,6 +697,10 @@ export default function Home() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (!nasaPromoEditMode) {
+      setNasaPromoLayout(clampNasaPromoLayout(NASA_PROMO_LOCKED_LAYOUT));
+      return;
+    }
 
     try {
       const saved = window.localStorage.getItem(NASA_PROMO_STORAGE_KEY);
@@ -714,7 +720,7 @@ export default function Home() {
     } catch {
       // Ignore malformed persisted values.
     }
-  }, []);
+  }, [nasaPromoEditMode]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -745,12 +751,13 @@ export default function Home() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (!nasaPromoEditMode) return;
     try {
       window.localStorage.setItem(NASA_PROMO_STORAGE_KEY, JSON.stringify(nasaPromoLayout));
     } catch {
       // Ignore storage failures.
     }
-  }, [nasaPromoLayout]);
+  }, [nasaPromoEditMode, nasaPromoLayout]);
 
   useEffect(() => {
     if (card2EditMode) return;
