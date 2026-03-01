@@ -12,12 +12,12 @@ import heroSlide3 from "../../image/image3.jpg";
 import logo from "../../image/logo.jpg";
 import eagleAssistant from "../../eagle/eagle.png";
 import indusTrustLogo from "../../eagle/Indus Trust.jpeg";
-import nasaPromo from "../../eagle/nasa.gif";
 import CollaborateButton from "@/components/CollaborateButton";
 import { enrichSteamhProjectWithSampleDetails, sampleSteamhProjects } from "@/data/sampleSteamhProjects";
 import { buildProjectCollabPath } from "@/lib/steamhCollaboration";
 import { supabase } from "@/lib/supabaseClient";
 import { fetchSteamhProjects } from "@/lib/steamhProjects";
+import { uploadFileToBucket } from "@/lib/supabaseData";
 import { playUiClickTone, primeUiTone } from "@/lib/uiTone";
 import type { SteamhProject } from "@/types";
 
@@ -193,8 +193,9 @@ const EAGLE_WIDGET_SIZE = 160;
 const EAGLE_WIDGET_DRAG_THRESHOLD = 6;
 const EAGLE_WIDGET_DRAG_ENABLED = false;
 const EAGLE_WIDGET_STORAGE_KEY = "homepage_eagle_widget_position_v1";
-const NASA_PROMO_EDIT_MODE_ENABLED = false;
-const NASA_PROMO_STORAGE_KEY = "homepage_nasa_promo_layout_v1";
+const NASA_PROMO_ENABLED = true;
+const NASA_PROMO_EDIT_MODE_ENABLED = true;
+const HEADER_AD_STATE_KEY = "homepage_header_ad_config_v1";
 const NASA_PROMO_DEFAULT_WIDTH = 170;
 const NASA_PROMO_MIN_WIDTH = 100;
 const NASA_PROMO_MAX_WIDTH = 620;
@@ -385,11 +386,16 @@ export default function Home() {
   const [eagleWidgetDismissed, setEagleWidgetDismissed] = useState(false);
   const [eagleWidgetCollapsedByScroll, setEagleWidgetCollapsedByScroll] = useState(false);
   const [nasaPromoEditMode] = useState(NASA_PROMO_EDIT_MODE_ENABLED);
+  const canEditHeaderAd = nasaPromoEditMode && isAuthed && (userRole ?? "").trim().toLowerCase() === "admin";
   const [nasaPromoReady, setNasaPromoReady] = useState(false);
   const [nasaPromoLayout, setNasaPromoLayout] = useState<NasaPromoLayout>(() =>
     clampNasaPromoLayout(NASA_PROMO_LOCKED_LAYOUT),
   );
-  const [nasaPromoLastSavedAt, setNasaPromoLastSavedAt] = useState<number | null>(null);
+  const [headerAdImageUrl, setHeaderAdImageUrl] = useState("");
+  const [headerAdLinkUrl, setHeaderAdLinkUrl] = useState("https://www3.nasa.gov/send-your-name-with-artemis/");
+  const [headerAdSaveStatus, setHeaderAdSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [headerAdError, setHeaderAdError] = useState<string | null>(null);
+  const canManageHeaderAd = canEditHeaderAd && headerAdSaveStatus !== "saved";
   const faqTabDragRef = useRef<{ pointerId: number | null; startY: number; startTop: number; moved: boolean }>({
     pointerId: null,
     startY: 0,
@@ -683,44 +689,74 @@ export default function Home() {
     }
   }, []);
 
-  useLayoutEffect(() => {
-    if (typeof window === "undefined") return;
+  useEffect(() => {
+    let cancelled = false;
 
-    if (!nasaPromoEditMode) {
+    const applyFallback = () => {
+      if (cancelled) return;
       setNasaPromoLayout(clampNasaPromoLayout(NASA_PROMO_LOCKED_LAYOUT));
-      setNasaPromoReady(true);
-      return;
-    }
+      setHeaderAdImageUrl("");
+      setHeaderAdLinkUrl("https://www3.nasa.gov/send-your-name-with-artemis/");
+    };
 
-    try {
-      const saved = window.localStorage.getItem(NASA_PROMO_STORAGE_KEY);
-      if (!saved) {
-        setNasaPromoLayout(clampNasaPromoLayout(NASA_PROMO_LOCKED_LAYOUT));
-        return;
+    const loadHeaderAd = async () => {
+      try {
+        const response = await fetch("/api/homepage-ad", { cache: "no-store" });
+        if (!response.ok) {
+          applyFallback();
+          return;
+        }
+
+        const payload = (await response.json().catch(() => ({}))) as {
+          config?: {
+            imageUrl?: string | null;
+            linkUrl?: string | null;
+            layout?: Partial<NasaPromoLayout> | null;
+          } | null;
+        };
+
+        const config = payload?.config;
+        if (!config || typeof config !== "object") {
+          applyFallback();
+          return;
+        }
+
+        const imageUrl = typeof config.imageUrl === "string" ? config.imageUrl.trim() : "";
+        const linkUrl = typeof config.linkUrl === "string" && config.linkUrl.trim()
+          ? config.linkUrl.trim()
+          : "https://www3.nasa.gov/send-your-name-with-artemis/";
+        const layout = config.layout ?? {};
+
+        if (!cancelled) {
+          setHeaderAdImageUrl(imageUrl);
+          setHeaderAdLinkUrl(linkUrl);
+          setNasaPromoLayout(
+            clampNasaPromoLayout({
+              x: Number.isFinite(layout.x) ? layout.x ?? 0 : 0,
+              y: Number.isFinite(layout.y) ? layout.y ?? 0 : 0,
+              width: Number.isFinite(layout.width) ? layout.width ?? NASA_PROMO_DEFAULT_WIDTH : NASA_PROMO_DEFAULT_WIDTH,
+              cropScale: Number.isFinite(layout.cropScale)
+                ? layout.cropScale ?? NASA_PROMO_DEFAULT_SCALE
+                : NASA_PROMO_DEFAULT_SCALE,
+              cropX: Number.isFinite(layout.cropX) ? layout.cropX ?? 0 : 0,
+              cropY: Number.isFinite(layout.cropY) ? layout.cropY ?? 0 : 0,
+            }),
+          );
+        }
+      } catch {
+        applyFallback();
+      } finally {
+        if (!cancelled) {
+          setNasaPromoReady(true);
+        }
       }
+    };
 
-      const parsed = JSON.parse(saved) as Partial<NasaPromoLayout>;
-      if (!Number.isFinite(parsed?.x) || !Number.isFinite(parsed?.y) || !Number.isFinite(parsed?.width)) {
-        setNasaPromoLayout(clampNasaPromoLayout(NASA_PROMO_LOCKED_LAYOUT));
-        return;
-      }
-
-      setNasaPromoLayout(
-        clampNasaPromoLayout({
-          x: parsed.x ?? 0,
-          y: parsed.y ?? 0,
-          width: parsed.width ?? NASA_PROMO_DEFAULT_WIDTH,
-          cropScale: Number.isFinite(parsed.cropScale) ? parsed.cropScale ?? NASA_PROMO_DEFAULT_SCALE : NASA_PROMO_DEFAULT_SCALE,
-          cropX: Number.isFinite(parsed.cropX) ? parsed.cropX ?? 0 : 0,
-          cropY: Number.isFinite(parsed.cropY) ? parsed.cropY ?? 0 : 0,
-        }),
-      );
-    } catch {
-      setNasaPromoLayout(clampNasaPromoLayout(NASA_PROMO_LOCKED_LAYOUT));
-    } finally {
-      setNasaPromoReady(true);
-    }
-  }, [nasaPromoEditMode]);
+    void loadHeaderAd();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1538,7 +1574,7 @@ export default function Home() {
   };
 
   const startNasaPromoDrag = (event: React.PointerEvent<HTMLElement>) => {
-    if (!nasaPromoEditMode) return;
+    if (!canManageHeaderAd) return;
     if (event.pointerType === "mouse" && event.button !== 0) return;
     const target = event.target as HTMLElement | null;
     if (target?.closest("[data-nasa-promo-stop-drag='true']")) return;
@@ -1557,7 +1593,7 @@ export default function Home() {
   };
 
   const moveNasaPromoDrag = (event: React.PointerEvent<HTMLElement>) => {
-    if (!nasaPromoEditMode) return;
+    if (!canManageHeaderAd) return;
 
     const dragState = nasaPromoDragRef.current;
     if (dragState.pointerId !== event.pointerId) return;
@@ -1572,6 +1608,8 @@ export default function Home() {
       dragState.moved = true;
     }
 
+    setHeaderAdSaveStatus("idle");
+    setHeaderAdError(null);
     setNasaPromoLayout((previous) =>
       clampNasaPromoLayout({
         ...previous,
@@ -1582,7 +1620,7 @@ export default function Home() {
   };
 
   const endNasaPromoDrag = (event: React.PointerEvent<HTMLElement>) => {
-    if (!nasaPromoEditMode) return;
+    if (!canManageHeaderAd) return;
 
     const dragState = nasaPromoDragRef.current;
     if (dragState.pointerId !== event.pointerId) return;
@@ -1603,7 +1641,7 @@ export default function Home() {
   };
 
   const startNasaPromoResize = (event: React.PointerEvent<HTMLButtonElement>) => {
-    if (!nasaPromoEditMode) return;
+    if (!canManageHeaderAd) return;
     if (event.pointerType === "mouse" && event.button !== 0) return;
 
     nasaPromoResizeRef.current = {
@@ -1619,7 +1657,7 @@ export default function Home() {
   };
 
   const moveNasaPromoResize = (event: React.PointerEvent<HTMLButtonElement>) => {
-    if (!nasaPromoEditMode) return;
+    if (!canManageHeaderAd) return;
 
     const resizeState = nasaPromoResizeRef.current;
     if (resizeState.pointerId !== event.pointerId) return;
@@ -1629,6 +1667,8 @@ export default function Home() {
       resizeState.moved = true;
     }
 
+    setHeaderAdSaveStatus("idle");
+    setHeaderAdError(null);
     setNasaPromoLayout((previous) =>
       clampNasaPromoLayout({
         ...previous,
@@ -1638,7 +1678,7 @@ export default function Home() {
   };
 
   const endNasaPromoResize = (event: React.PointerEvent<HTMLButtonElement>) => {
-    if (!nasaPromoEditMode) return;
+    if (!canManageHeaderAd) return;
 
     const resizeState = nasaPromoResizeRef.current;
     if (resizeState.pointerId !== event.pointerId) return;
@@ -1658,13 +1698,15 @@ export default function Home() {
   };
 
   const onNasaPromoClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
-    if (nasaPromoEditMode || nasaPromoSuppressClickRef.current) {
+    if (canManageHeaderAd || nasaPromoSuppressClickRef.current) {
       event.preventDefault();
       nasaPromoSuppressClickRef.current = false;
     }
   };
 
   const updateNasaPromoCropScale = (nextScale: number) => {
+    setHeaderAdSaveStatus("idle");
+    setHeaderAdError(null);
     setNasaPromoLayout((previous) =>
       clampNasaPromoLayout({
         ...previous,
@@ -1674,6 +1716,8 @@ export default function Home() {
   };
 
   const resetNasaPromoCrop = () => {
+    setHeaderAdSaveStatus("idle");
+    setHeaderAdError(null);
     setNasaPromoLayout((previous) =>
       clampNasaPromoLayout({
         ...previous,
@@ -1684,14 +1728,86 @@ export default function Home() {
     );
   };
 
-  const saveNasaPromoLayout = () => {
-    if (typeof window === "undefined") return;
+  const uploadHeaderAdFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    event.target.value = "";
+    if (!file) return;
+    if (!canManageHeaderAd) return;
+
+    setHeaderAdSaveStatus("idle");
+    setHeaderAdError(null);
+
     try {
-      window.localStorage.setItem(NASA_PROMO_STORAGE_KEY, JSON.stringify(clampNasaPromoLayout(nasaPromoLayout)));
-      setNasaPromoLastSavedAt(Date.now());
-    } catch {
-      // Ignore storage failures.
+      const { data, error } = await supabase.auth.getUser();
+      if (error || !data.user) {
+        throw new Error("Admin session not found.");
+      }
+
+      const uploadedUrl = await uploadFileToBucket({
+        bucket: "curriculum-assets",
+        file,
+        pathPrefix: `header-ads/${data.user.id}`,
+      });
+
+      setHeaderAdImageUrl(uploadedUrl);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to upload ad image.";
+      setHeaderAdError(message);
+      setHeaderAdSaveStatus("error");
     }
+  };
+
+  const saveNasaPromoLayout = async (overrideImageUrl?: string) => {
+    if (!canManageHeaderAd) return;
+
+    setHeaderAdSaveStatus("saving");
+    setHeaderAdError(null);
+
+    try {
+      const { data, error } = await supabase.auth.getUser();
+      if (error || !data.user) {
+        throw new Error("Admin session not found.");
+      }
+
+      const nextImageUrl = typeof overrideImageUrl === "string" ? overrideImageUrl : headerAdImageUrl;
+      const nextLinkUrl =
+        typeof headerAdLinkUrl === "string" && headerAdLinkUrl.trim()
+          ? headerAdLinkUrl.trim()
+          : "https://www3.nasa.gov/send-your-name-with-artemis/";
+
+      const config = {
+        enabled: Boolean(nextImageUrl),
+        imageUrl: nextImageUrl || null,
+        linkUrl: nextLinkUrl,
+        layout: clampNasaPromoLayout(nasaPromoLayout),
+      };
+
+      const { error: upsertError } = await supabase.from("client_state").upsert(
+        {
+          user_id: data.user.id,
+          key: HEADER_AD_STATE_KEY,
+          value: config,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id,key" },
+      );
+
+      if (upsertError) {
+        throw new Error(upsertError.message);
+      }
+
+      setHeaderAdSaveStatus("saved");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to save header ad.";
+      setHeaderAdError(message);
+      setHeaderAdSaveStatus("error");
+    }
+  };
+
+  const removeHeaderAd = async () => {
+    if (!canManageHeaderAd) return;
+    setHeaderAdImageUrl("");
+    await saveNasaPromoLayout("");
   };
 
   const setCard2ItemRef = (id: Card2ElementId, node: HTMLDivElement | null) => {
@@ -2066,14 +2182,14 @@ export default function Home() {
           </div>
         </div>
         <nav className={`hidden md:flex items-center text-sm transition-all duration-300 ${headerCollapsed ? "gap-2" : "gap-4"}`}>
-          {!headerCollapsed && nasaPromoReady && (
+          {(canManageHeaderAd || !headerCollapsed) && nasaPromoReady && NASA_PROMO_ENABLED && (headerAdImageUrl || canManageHeaderAd) && (
             <div
-              className={`relative flex-none nasa-promo-shimmer ${nasaPromoEditMode ? "select-none outline outline-1 outline-amber-300/70 rounded-md" : ""
+              className={`relative flex-none nasa-promo-shimmer ${canManageHeaderAd ? "select-none outline outline-1 outline-amber-300/70 rounded-md" : ""
                 }`}
               style={{
                 width: `${headerCollapsed ? Math.min(nasaPromoLayout.width, 120) : nasaPromoLayout.width}px`,
                 transform: `translate(${nasaPromoLayout.x}px, ${nasaPromoLayout.y}px)`,
-                overflow: nasaPromoEditMode ? "visible" : "hidden",
+                overflow: canManageHeaderAd ? "visible" : "hidden",
               }}
               onPointerDown={startNasaPromoDrag}
               onPointerMove={moveNasaPromoDrag}
@@ -2081,30 +2197,35 @@ export default function Home() {
               onPointerCancel={endNasaPromoDrag}
             >
               <a
-                href="https://www3.nasa.gov/send-your-name-with-artemis/"
+                href={headerAdLinkUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="relative inline-flex items-center w-full overflow-hidden rounded-sm"
-                aria-label="NASA Artemis campaign"
-                title="NASA Artemis campaign"
+                aria-label="Header advertisement"
+                title="Header advertisement"
                 onClick={onNasaPromoClick}
               >
-                <Image
-                  src={nasaPromo}
-                  alt="NASA Artemis promotion"
-                  className="block h-auto w-full object-contain nasa-promo-image-breath"
-                  style={{
-                    transform: `scale(${nasaPromoLayout.cropScale})`,
-                    transformOrigin: "center center",
-                  }}
-                  unoptimized
-                  priority={false}
-                />
+                {headerAdImageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={headerAdImageUrl}
+                    alt="Header advertisement"
+                    className="block h-auto w-full object-contain nasa-promo-image-breath"
+                    style={{
+                      transform: `scale(${nasaPromoLayout.cropScale})`,
+                      transformOrigin: "center center",
+                    }}
+                  />
+                ) : (
+                  <span className="flex h-16 w-full items-center justify-center rounded-sm border border-dashed border-slate-400/70 bg-white/90 px-2 text-xs font-semibold text-slate-900">
+                    Upload header advertisement
+                  </span>
+                )}
               </a>
-              {nasaPromoEditMode && (
+              {canManageHeaderAd && (
                 <button
                   type="button"
-                  aria-label="Move NASA promo"
+                  aria-label="Move header ad"
                   data-nasa-promo-control="true"
                   className="absolute -top-1.5 -left-1.5 h-5 w-5 rounded-md border border-amber-100 bg-amber-300/95 text-[10px] font-black leading-none text-slate-900 shadow cursor-grab active:cursor-grabbing"
                   onPointerDown={(event) => {
@@ -2127,34 +2248,70 @@ export default function Home() {
                   +
                 </button>
               )}
-              {nasaPromoEditMode && (
+              {canManageHeaderAd && (
                 <div
                   data-nasa-promo-stop-drag="true"
-                  className="absolute left-0 top-full z-30 mt-2 w-[220px] rounded-md border border-amber-200/40 bg-slate-950/84 px-2 py-2 text-xs text-amber-100 shadow-lg backdrop-blur"
+                  className="absolute left-0 top-full z-30 mt-2 w-[260px] rounded-md border border-white/35 bg-black/92 px-2 py-2 text-xs text-white shadow-lg backdrop-blur"
                   onPointerDown={(event) => event.stopPropagation()}
                   onPointerMove={(event) => event.stopPropagation()}
                   onPointerUp={(event) => event.stopPropagation()}
                   onClick={(event) => event.stopPropagation()}
                 >
-                  <div className="mb-1 flex items-center justify-between gap-1">
+                  <div className="mb-2 flex items-center justify-between gap-1">
                     <span className="font-semibold tracking-wide">Zoom</span>
                     <div className="flex items-center gap-1">
                       <button
                         type="button"
-                        className="rounded border border-emerald-200/60 bg-emerald-300/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-100 hover:bg-emerald-300/20"
-                        onClick={saveNasaPromoLayout}
+                        className="rounded border border-emerald-200/80 bg-emerald-500/25 px-1.5 py-0.5 text-[10px] font-semibold text-white hover:bg-emerald-500/35"
+                        onClick={() => {
+                          void saveNasaPromoLayout();
+                        }}
                       >
                         Save
                       </button>
                       <button
                         type="button"
-                        className="rounded border border-amber-100/50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-100 hover:bg-amber-100/10"
+                        className="rounded border border-white/50 px-1.5 py-0.5 text-[10px] font-semibold text-white hover:bg-white/15"
                         onClick={resetNasaPromoCrop}
                       >
                         Reset
                       </button>
+                      <button
+                        type="button"
+                        className="rounded border border-rose-300/80 bg-rose-500/25 px-1.5 py-0.5 text-[10px] font-semibold text-white hover:bg-rose-500/35"
+                        onClick={() => {
+                          void removeHeaderAd();
+                        }}
+                      >
+                        Remove
+                      </button>
                     </div>
                   </div>
+                  <label className="mb-1.5 block">
+                    <span className="mb-0.5 block font-semibold">Upload</span>
+                    <input
+                      type="file"
+                      accept="image/*,.gif"
+                      onChange={(event) => {
+                        void uploadHeaderAdFile(event);
+                      }}
+                      className="file-accent w-full rounded border border-white/35 bg-white/15 px-1.5 py-1 text-[11px] text-white"
+                    />
+                  </label>
+                  <label className="mb-1.5 block">
+                    <span className="mb-0.5 block font-semibold">Link</span>
+                    <input
+                      type="url"
+                      value={headerAdLinkUrl}
+                      onChange={(event) => {
+                        setHeaderAdLinkUrl(event.target.value);
+                        setHeaderAdSaveStatus("idle");
+                        setHeaderAdError(null);
+                      }}
+                      placeholder="https://example.com"
+                      className="w-full rounded border border-white/35 bg-white/15 px-2 py-1 text-[11px] text-white placeholder:text-white/65"
+                    />
+                  </label>
                   <label className="mb-1.5 flex items-center gap-1.5">
                     <span className="w-10 shrink-0 font-semibold">Zoom</span>
                     <input
@@ -2164,20 +2321,24 @@ export default function Home() {
                       step={0.01}
                       value={nasaPromoLayout.cropScale}
                       onChange={(event) => updateNasaPromoCropScale(Number(event.target.value))}
-                      className="w-full accent-amber-300"
+                      className="w-full accent-emerald-400"
                       aria-label="NASA promo crop zoom"
                     />
                   </label>
-                  <p className="mt-1.5 text-[10px] text-amber-100/75">Drag to move, bottom-right handle to resize, then click Save.</p>
-                  {nasaPromoLastSavedAt !== null && (
+                  <p className="mt-1.5 text-[10px] text-white/85">Drag to move, bottom-right handle to resize, then click Save.</p>
+                  {headerAdSaveStatus === "saving" && (
+                    <p className="mt-1 text-[10px] font-semibold text-cyan-200">Saving...</p>
+                  )}
+                  {headerAdSaveStatus === "saved" && (
                     <p className="mt-1 text-[10px] font-semibold text-emerald-200">Saved</p>
                   )}
+                  {headerAdError && <p className="mt-1 text-[10px] font-semibold text-rose-200">{headerAdError}</p>}
                 </div>
               )}
-              {nasaPromoEditMode && (
+              {canManageHeaderAd && (
                 <button
                   type="button"
-                  aria-label="Resize NASA promo"
+                  aria-label="Resize header ad"
                   data-nasa-promo-stop-drag="true"
                   className="absolute -bottom-1.5 -right-1.5 h-5 w-5 rounded-md border border-amber-100 bg-amber-300/95 shadow cursor-ew-resize"
                   onPointerDown={startNasaPromoResize}

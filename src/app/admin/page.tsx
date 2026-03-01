@@ -2058,6 +2058,35 @@ export default function AdminPage() {
                     </div>
                   </Link>
 
+                  {isAdmin && (
+                    <Link
+                      href="/?adEditor=1"
+                      onClick={() => setAdminMenuOpen(false)}
+                      className="flex items-center gap-3 rounded-xl px-3 py-2.5 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300/60 text-sm text-slate-800 transition"
+                    >
+                      <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-cyan-500 border border-cyan-300 text-true-white shadow-glow">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="h-5 w-5"
+                        >
+                          <rect x="3" y="4" width="18" height="14" rx="2" />
+                          <path d="M3 9h18" />
+                          <path d="m8 15 3-3 2 2 3-3" />
+                        </svg>
+                      </span>
+                      <div className="text-left">
+                        <p className="font-semibold">Post advertisement</p>
+                        <p className="text-xs text-slate-500">Upload, drag, zoom, and save header ad</p>
+                      </div>
+                    </Link>
+                  )}
+
                 {isAdmin && (
                   <button
                     type="button"
