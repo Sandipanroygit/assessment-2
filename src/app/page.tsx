@@ -2157,9 +2157,9 @@ export default function Home() {
               className={`relative flex-none nasa-promo-shimmer ${nasaPromoEditMode ? "select-none outline outline-1 outline-amber-300/70 rounded-md" : ""
                 }`}
               style={{
-                width: `${headerCollapsed ? Math.min(nasaPromoLayout.width, 120) : nasaPromoLayout.width}px`,
-                transform: `translate(${nasaPromoLayout.x}px, ${nasaPromoLayout.y}px)`,
-                overflow: nasaPromoEditMode ? "visible" : undefined,
+                width: `${NASA_PROMO_DEFAULT_WIDTH}px`,
+                transform: "translate(0px, 0px)",
+                overflow: "hidden",
               }}
               onPointerDown={startNasaPromoDrag}
               onPointerMove={moveNasaPromoDrag}
@@ -2184,6 +2184,7 @@ export default function Home() {
                   src={nasaPromo}
                   alt="NASA Artemis promotion"
                   className="block h-auto w-full object-contain nasa-promo-image-breath"
+                  unoptimized
                   priority={false}
                 />
               </a>
