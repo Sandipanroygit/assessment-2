@@ -4,7 +4,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import heroSlide1 from "../../image/image1.jpg";
 import heroSlide2 from "../../image/image2.jpg";
@@ -370,6 +370,7 @@ export default function Home() {
   const [contactSubmitting, setContactSubmitting] = useState(false);
   const [contactError, setContactError] = useState<string | null>(null);
   const [faqOpen, setFaqOpen] = useState(false);
+  const [faqTabReady, setFaqTabReady] = useState(false);
   const [faqTabTop, setFaqTabTop] = useState<number | null>(null);
   const [eagleSpeechReady, setEagleSpeechReady] = useState(false);
   const [eagleBubblePosition, setEagleBubblePosition] = useState<{ top: number; right: number }>({
@@ -384,9 +385,11 @@ export default function Home() {
   const [eagleWidgetDismissed, setEagleWidgetDismissed] = useState(false);
   const [eagleWidgetCollapsedByScroll, setEagleWidgetCollapsedByScroll] = useState(false);
   const [nasaPromoEditMode] = useState(NASA_PROMO_EDIT_MODE_ENABLED);
+  const [nasaPromoReady, setNasaPromoReady] = useState(false);
   const [nasaPromoLayout, setNasaPromoLayout] = useState<NasaPromoLayout>(() =>
     clampNasaPromoLayout(NASA_PROMO_LOCKED_LAYOUT),
   );
+  const [nasaPromoLastSavedAt, setNasaPromoLastSavedAt] = useState<number | null>(null);
   const faqTabDragRef = useRef<{ pointerId: number | null; startY: number; startTop: number; moved: boolean }>({
     pointerId: null,
     startY: 0,
@@ -680,18 +683,22 @@ export default function Home() {
     }
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (typeof window === "undefined") return;
-    if (!nasaPromoEditMode) {
-      setNasaPromoLayout(clampNasaPromoLayout(NASA_PROMO_LOCKED_LAYOUT));
-      return;
-    }
 
     try {
       const saved = window.localStorage.getItem(NASA_PROMO_STORAGE_KEY);
-      if (!saved) return;
+      if (!saved) {
+        setNasaPromoLayout(clampNasaPromoLayout(NASA_PROMO_LOCKED_LAYOUT));
+        return;
+      }
+
       const parsed = JSON.parse(saved) as Partial<NasaPromoLayout>;
-      if (!Number.isFinite(parsed?.x) || !Number.isFinite(parsed?.y) || !Number.isFinite(parsed?.width)) return;
+      if (!Number.isFinite(parsed?.x) || !Number.isFinite(parsed?.y) || !Number.isFinite(parsed?.width)) {
+        setNasaPromoLayout(clampNasaPromoLayout(NASA_PROMO_LOCKED_LAYOUT));
+        return;
+      }
+
       setNasaPromoLayout(
         clampNasaPromoLayout({
           x: parsed.x ?? 0,
@@ -703,9 +710,11 @@ export default function Home() {
         }),
       );
     } catch {
-      // Ignore malformed persisted values.
+      setNasaPromoLayout(clampNasaPromoLayout(NASA_PROMO_LOCKED_LAYOUT));
+    } finally {
+      setNasaPromoReady(true);
     }
-  }, [nasaPromoEditMode]);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -733,16 +742,6 @@ export default function Home() {
       // Ignore storage failures.
     }
   }, [indusLogoPosition]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!nasaPromoEditMode) return;
-    try {
-      window.localStorage.setItem(NASA_PROMO_STORAGE_KEY, JSON.stringify(nasaPromoLayout));
-    } catch {
-      // Ignore storage failures.
-    }
-  }, [nasaPromoEditMode, nasaPromoLayout]);
 
   useEffect(() => {
     if (card2EditMode) return;
@@ -1240,7 +1239,7 @@ export default function Home() {
     }
   };
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (typeof window === "undefined") return;
 
     const syncFaqTabTop = () => {
@@ -1252,6 +1251,7 @@ export default function Home() {
     };
 
     syncFaqTabTop();
+    setFaqTabReady(true);
     window.addEventListener("resize", syncFaqTabTop);
     return () => window.removeEventListener("resize", syncFaqTabTop);
   }, []);
@@ -1678,6 +1678,16 @@ export default function Home() {
     );
   };
 
+  const saveNasaPromoLayout = () => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(NASA_PROMO_STORAGE_KEY, JSON.stringify(clampNasaPromoLayout(nasaPromoLayout)));
+      setNasaPromoLastSavedAt(Date.now());
+    } catch {
+      // Ignore storage failures.
+    }
+  };
+
   const setCard2ItemRef = (id: Card2ElementId, node: HTMLDivElement | null) => {
     card2ItemRefs.current[id] = node;
   };
@@ -2050,7 +2060,7 @@ export default function Home() {
           </div>
         </div>
         <nav className={`hidden md:flex items-center text-sm transition-all duration-300 ${headerCollapsed ? "gap-2" : "gap-4"}`}>
-          {!headerCollapsed && (
+          {!headerCollapsed && nasaPromoReady && (
             <div
               className={`relative flex-none nasa-promo-shimmer ${nasaPromoEditMode ? "select-none outline outline-1 outline-amber-300/70 rounded-md" : ""
                 }`}
@@ -2122,13 +2132,22 @@ export default function Home() {
                 >
                   <div className="mb-1 flex items-center justify-between gap-1">
                     <span className="font-semibold tracking-wide">Zoom</span>
-                    <button
-                      type="button"
-                      className="rounded border border-amber-100/50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-100 hover:bg-amber-100/10"
-                      onClick={resetNasaPromoCrop}
-                    >
-                      Reset
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        className="rounded border border-emerald-200/60 bg-emerald-300/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-100 hover:bg-emerald-300/20"
+                        onClick={saveNasaPromoLayout}
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded border border-amber-100/50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-100 hover:bg-amber-100/10"
+                        onClick={resetNasaPromoCrop}
+                      >
+                        Reset
+                      </button>
+                    </div>
                   </div>
                   <label className="mb-1.5 flex items-center gap-1.5">
                     <span className="w-10 shrink-0 font-semibold">Zoom</span>
@@ -2143,7 +2162,10 @@ export default function Home() {
                       aria-label="NASA promo crop zoom"
                     />
                   </label>
-                  <p className="mt-1.5 text-[10px] text-amber-100/75">Drag the gif to move. Use this slider to zoom.</p>
+                  <p className="mt-1.5 text-[10px] text-amber-100/75">Drag to move, bottom-right handle to resize, then click Save.</p>
+                  {nasaPromoLastSavedAt !== null && (
+                    <p className="mt-1 text-[10px] font-semibold text-emerald-200">Saved</p>
+                  )}
                 </div>
               )}
               {nasaPromoEditMode && (
@@ -3038,25 +3060,27 @@ export default function Home() {
         </div>
       )}
 
-      <button
-        className="fixed right-1 h-24 w-10 border border-accent-strong/30 bg-[#0b1d36] text-slate-50 text-sm shadow-[0_10px_24px_rgba(11,29,54,0.28)] hover:bg-[#11264a] transition-colors z-50 rotate-180 [writing-mode:vertical-rl] tracking-wide rounded-xl touch-none cursor-grab active:cursor-grabbing select-none"
-        style={{ top: `${faqTabTop ?? FAQ_TAB_MARGIN}px` }}
-        onPointerDown={startFaqTabDrag}
-        onPointerMove={moveFaqTabDrag}
-        onPointerUp={endFaqTabDrag}
-        onPointerCancel={endFaqTabDrag}
-        onClick={(event) => {
-          if (suppressFaqClickRef.current) {
-            suppressFaqClickRef.current = false;
-            event.preventDefault();
-            return;
-          }
-          setFaqOpen((v) => !v);
-          setChatOpen(false);
-        }}
-      >
-        Quick FAQ
-      </button>
+      {faqTabReady && (
+        <button
+          className="fixed right-1 h-24 w-10 border border-accent-strong/30 bg-[#0b1d36] text-slate-50 text-sm shadow-[0_10px_24px_rgba(11,29,54,0.28)] hover:bg-[#11264a] transition-colors z-50 rotate-180 [writing-mode:vertical-rl] tracking-wide rounded-xl touch-none cursor-grab active:cursor-grabbing select-none"
+          style={{ top: `${faqTabTop ?? FAQ_TAB_MARGIN}px` }}
+          onPointerDown={startFaqTabDrag}
+          onPointerMove={moveFaqTabDrag}
+          onPointerUp={endFaqTabDrag}
+          onPointerCancel={endFaqTabDrag}
+          onClick={(event) => {
+            if (suppressFaqClickRef.current) {
+              suppressFaqClickRef.current = false;
+              event.preventDefault();
+              return;
+            }
+            setFaqOpen((v) => !v);
+            setChatOpen(false);
+          }}
+        >
+          Quick FAQ
+        </button>
+      )}
 
       {chatOpen && (
         <div className="fixed bottom-24 right-6 w-80 rounded-2xl border border-accent/20 bg-white p-3 z-40 space-y-3 shadow-2xl">
