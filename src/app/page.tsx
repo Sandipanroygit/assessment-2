@@ -193,7 +193,6 @@ const EAGLE_WIDGET_DRAG_THRESHOLD = 6;
 const EAGLE_WIDGET_DRAG_ENABLED = false;
 const EAGLE_WIDGET_STORAGE_KEY = "homepage_eagle_widget_position_v1";
 const HOME_BLOCK_TWO_SNAP_OFFSET = -290;
-const CARD2_LAYOUT_STORAGE_KEY = "homepage_block2_layout_offsets_v1";
 const CARD2_CENTER_SNAP_THRESHOLD = 10;
 const CARD2_EDIT_MODE_ENABLED = false;
 const CARD4_LAYOUT_STORAGE_KEY = "homepage_block4_layout_offsets_v1";
@@ -219,8 +218,8 @@ type Card2ElementId = "header" | "content";
 type Card4ElementId = "testimonials" | "bundles" | "footer";
 
 const CARD2_DEFAULT_OFFSETS: Record<Card2ElementId, { x: number; y: number }> = {
-  header: { x: 0, y: 0 },
-  content: { x: 0, y: 0 },
+  header: { x: 0, y: -294 },
+  content: { x: 0, y: -258 },
 };
 
 const CARD4_DEFAULT_OFFSETS: Record<Card4ElementId, { x: number; y: number }> = {
@@ -513,28 +512,6 @@ export default function Home() {
     if (typeof window === "undefined") return;
 
     try {
-      const saved = window.localStorage.getItem(CARD2_LAYOUT_STORAGE_KEY);
-      if (!saved) return;
-      const parsed = JSON.parse(saved) as Partial<Record<Card2ElementId, { x?: number; y?: number }>>;
-      setCard2Offsets({
-        header: {
-          x: Number.isFinite(parsed.header?.x) ? Math.round(parsed.header?.x ?? 0) : 0,
-          y: Number.isFinite(parsed.header?.y) ? Math.round(parsed.header?.y ?? 0) : 0,
-        },
-        content: {
-          x: Number.isFinite(parsed.content?.x) ? Math.round(parsed.content?.x ?? 0) : 0,
-          y: Number.isFinite(parsed.content?.y) ? Math.round(parsed.content?.y ?? 0) : 0,
-        },
-      });
-    } catch {
-      // Ignore malformed persisted values.
-    }
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    try {
       const saved = window.localStorage.getItem(CARD4_LAYOUT_STORAGE_KEY);
       if (!saved) return;
       const parsed = JSON.parse(saved) as Partial<Record<Card4ElementId, { x?: number; y?: number }>>;
@@ -584,15 +561,6 @@ export default function Home() {
       // Ignore malformed persisted values.
     }
   }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      window.localStorage.setItem(CARD2_LAYOUT_STORAGE_KEY, JSON.stringify(card2Offsets));
-    } catch {
-      // Ignore storage failures.
-    }
-  }, [card2Offsets]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2022,7 +1990,6 @@ export default function Home() {
           <section
             id="steamh-showcase"
             className="section-padding space-y-8"
-            style={{ paddingTop: "clamp(6.75rem, 10vw, 8rem)" }}
           >
             <div
               ref={(node) => setCard2ItemRef("header", node)}
