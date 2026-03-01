@@ -193,7 +193,7 @@ const EAGLE_WIDGET_SIZE = 160;
 const EAGLE_WIDGET_DRAG_THRESHOLD = 6;
 const EAGLE_WIDGET_DRAG_ENABLED = false;
 const EAGLE_WIDGET_STORAGE_KEY = "homepage_eagle_widget_position_v1";
-const NASA_PROMO_EDIT_MODE_ENABLED = false;
+const NASA_PROMO_EDIT_MODE_ENABLED = true;
 const NASA_PROMO_STORAGE_KEY = "homepage_nasa_promo_layout_v1";
 const NASA_PROMO_DEFAULT_WIDTH = 170;
 const NASA_PROMO_MIN_WIDTH = 100;
@@ -417,21 +417,6 @@ export default function Home() {
     pointerId: null,
     startX: 0,
     startWidth: NASA_PROMO_DEFAULT_WIDTH,
-    moved: false,
-  });
-  const nasaPromoCropDragRef = useRef<{
-    pointerId: number | null;
-    startX: number;
-    startY: number;
-    startCropX: number;
-    startCropY: number;
-    moved: boolean;
-  }>({
-    pointerId: null,
-    startX: 0,
-    startY: 0,
-    startCropX: 0,
-    startCropY: 0,
     moved: false,
   });
   const nasaPromoSuppressClickRef = useRef(false);
@@ -1673,96 +1658,11 @@ export default function Home() {
     }
   };
 
-  const startNasaPromoCropDrag = (event: React.PointerEvent<HTMLAnchorElement>) => {
-    if (!nasaPromoEditMode) return;
-    if (event.pointerType === "mouse" && event.button !== 0) return;
-
-    nasaPromoCropDragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      startCropX: nasaPromoLayout.cropX,
-      startCropY: nasaPromoLayout.cropY,
-      moved: false,
-    };
-
-    event.currentTarget.setPointerCapture(event.pointerId);
-    event.preventDefault();
-    event.stopPropagation();
-  };
-
-  const moveNasaPromoCropDrag = (event: React.PointerEvent<HTMLAnchorElement>) => {
-    if (!nasaPromoEditMode) return;
-
-    const dragState = nasaPromoCropDragRef.current;
-    if (dragState.pointerId !== event.pointerId) return;
-
-    const deltaX = event.clientX - dragState.startX;
-    const deltaY = event.clientY - dragState.startY;
-
-    if (
-      !dragState.moved &&
-      (Math.abs(deltaX) >= NASA_PROMO_DRAG_THRESHOLD || Math.abs(deltaY) >= NASA_PROMO_DRAG_THRESHOLD)
-    ) {
-      dragState.moved = true;
-    }
-
-    setNasaPromoLayout((previous) =>
-      clampNasaPromoLayout({
-        ...previous,
-        cropX: dragState.startCropX + deltaX,
-        cropY: dragState.startCropY + deltaY,
-      }),
-    );
-
-    event.stopPropagation();
-  };
-
-  const endNasaPromoCropDrag = (event: React.PointerEvent<HTMLAnchorElement>) => {
-    if (!nasaPromoEditMode) return;
-
-    const dragState = nasaPromoCropDragRef.current;
-    if (dragState.pointerId !== event.pointerId) return;
-
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-
-    nasaPromoSuppressClickRef.current = nasaPromoSuppressClickRef.current || dragState.moved;
-    nasaPromoCropDragRef.current = {
-      pointerId: null,
-      startX: 0,
-      startY: 0,
-      startCropX: 0,
-      startCropY: 0,
-      moved: false,
-    };
-    event.stopPropagation();
-  };
-
   const updateNasaPromoCropScale = (nextScale: number) => {
     setNasaPromoLayout((previous) =>
       clampNasaPromoLayout({
         ...previous,
         cropScale: nextScale,
-      }),
-    );
-  };
-
-  const updateNasaPromoCropX = (nextX: number) => {
-    setNasaPromoLayout((previous) =>
-      clampNasaPromoLayout({
-        ...previous,
-        cropX: nextX,
-      }),
-    );
-  };
-
-  const updateNasaPromoCropY = (nextY: number) => {
-    setNasaPromoLayout((previous) =>
-      clampNasaPromoLayout({
-        ...previous,
-        cropY: nextY,
       }),
     );
   };
@@ -1777,8 +1677,6 @@ export default function Home() {
       }),
     );
   };
-
-  const nasaPromoCropLimits = getNasaPromoCropLimits(nasaPromoLayout.width, nasaPromoLayout.cropScale);
 
   const setCard2ItemRef = (id: Card2ElementId, node: HTMLDivElement | null) => {
     card2ItemRefs.current[id] = node;
@@ -2157,9 +2055,9 @@ export default function Home() {
               className={`relative flex-none nasa-promo-shimmer ${nasaPromoEditMode ? "select-none outline outline-1 outline-amber-300/70 rounded-md" : ""
                 }`}
               style={{
-                width: `${NASA_PROMO_DEFAULT_WIDTH}px`,
-                transform: "translate(0px, 0px)",
-                overflow: "hidden",
+                width: `${headerCollapsed ? Math.min(nasaPromoLayout.width, 120) : nasaPromoLayout.width}px`,
+                transform: `translate(${nasaPromoLayout.x}px, ${nasaPromoLayout.y}px)`,
+                overflow: nasaPromoEditMode ? "visible" : "hidden",
               }}
               onPointerDown={startNasaPromoDrag}
               onPointerMove={moveNasaPromoDrag}
@@ -2171,19 +2069,18 @@ export default function Home() {
                 target="_blank"
                 rel="noopener noreferrer"
                 className="relative inline-flex items-center w-full overflow-hidden rounded-sm"
-                data-nasa-promo-stop-drag="true"
                 aria-label="NASA Artemis campaign"
                 title="NASA Artemis campaign"
                 onClick={onNasaPromoClick}
-                onPointerDown={startNasaPromoCropDrag}
-                onPointerMove={moveNasaPromoCropDrag}
-                onPointerUp={endNasaPromoCropDrag}
-                onPointerCancel={endNasaPromoCropDrag}
               >
                 <Image
                   src={nasaPromo}
                   alt="NASA Artemis promotion"
                   className="block h-auto w-full object-contain nasa-promo-image-breath"
+                  style={{
+                    transform: `scale(${nasaPromoLayout.cropScale})`,
+                    transformOrigin: "center center",
+                  }}
                   unoptimized
                   priority={false}
                 />
@@ -2224,7 +2121,7 @@ export default function Home() {
                   onClick={(event) => event.stopPropagation()}
                 >
                   <div className="mb-1 flex items-center justify-between gap-1">
-                    <span className="font-semibold tracking-wide">Crop</span>
+                    <span className="font-semibold tracking-wide">Zoom</span>
                     <button
                       type="button"
                       className="rounded border border-amber-100/50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-100 hover:bg-amber-100/10"
@@ -2246,33 +2143,7 @@ export default function Home() {
                       aria-label="NASA promo crop zoom"
                     />
                   </label>
-                  <label className="mb-1.5 flex items-center gap-1.5">
-                    <span className="w-10 shrink-0 font-semibold">X</span>
-                    <input
-                      type="range"
-                      min={-nasaPromoCropLimits.x}
-                      max={nasaPromoCropLimits.x}
-                      step={1}
-                      value={nasaPromoLayout.cropX}
-                      onChange={(event) => updateNasaPromoCropX(Number(event.target.value))}
-                      className="w-full accent-amber-300"
-                      aria-label="NASA promo crop horizontal"
-                    />
-                  </label>
-                  <label className="flex items-center gap-1.5">
-                    <span className="w-10 shrink-0 font-semibold">Y</span>
-                    <input
-                      type="range"
-                      min={-nasaPromoCropLimits.y}
-                      max={nasaPromoCropLimits.y}
-                      step={1}
-                      value={nasaPromoLayout.cropY}
-                      onChange={(event) => updateNasaPromoCropY(Number(event.target.value))}
-                      className="w-full accent-amber-300"
-                      aria-label="NASA promo crop vertical"
-                    />
-                  </label>
-                  <p className="mt-1.5 text-[10px] text-amber-100/75">Drag image to crop. Use + handle to move the whole promo.</p>
+                  <p className="mt-1.5 text-[10px] text-amber-100/75">Drag the gif to move. Use this slider to zoom.</p>
                 </div>
               )}
               {nasaPromoEditMode && (
