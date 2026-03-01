@@ -686,6 +686,12 @@ export default function Home() {
   useLayoutEffect(() => {
     if (typeof window === "undefined") return;
 
+    if (!nasaPromoEditMode) {
+      setNasaPromoLayout(clampNasaPromoLayout(NASA_PROMO_LOCKED_LAYOUT));
+      setNasaPromoReady(true);
+      return;
+    }
+
     try {
       const saved = window.localStorage.getItem(NASA_PROMO_STORAGE_KEY);
       if (!saved) {
@@ -714,7 +720,7 @@ export default function Home() {
     } finally {
       setNasaPromoReady(true);
     }
-  }, []);
+  }, [nasaPromoEditMode]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
