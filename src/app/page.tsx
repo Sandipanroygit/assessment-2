@@ -2329,9 +2329,6 @@ export default function Home() {
                   {headerAdSaveStatus === "saving" && (
                     <p className="mt-1 text-[10px] font-semibold text-cyan-200">Saving...</p>
                   )}
-                  {headerAdSaveStatus === "saved" && (
-                    <p className="mt-1 text-[10px] font-semibold text-emerald-200">Saved</p>
-                  )}
                   {headerAdError && <p className="mt-1 text-[10px] font-semibold text-rose-200">{headerAdError}</p>}
                 </div>
               )}
