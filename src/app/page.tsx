@@ -218,7 +218,7 @@ type Card2ElementId = "header" | "content";
 type Card4ElementId = "testimonials" | "bundles" | "footer";
 
 const CARD2_DEFAULT_OFFSETS: Record<Card2ElementId, { x: number; y: number }> = {
-  header: { x: 0, y: -294 },
+  header: { x: 0, y: -214 },
   content: { x: 0, y: -180 },
 };
 
