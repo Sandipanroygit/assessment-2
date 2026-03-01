@@ -723,6 +723,8 @@ export default function Home() {
 
     const blockIds = ["home-block-1", "home-block-2", "home-block-3", "home-block-4"] as const;
     let snapLock = false;
+    let wheelDeltaAccumulator = 0;
+    let wheelDeltaResetTimer: number | null = null;
 
     const hasScrollableAncestor = (start: HTMLElement | null) => {
       let node: HTMLElement | null = start;
@@ -752,15 +754,48 @@ export default function Home() {
       }, 760);
     };
 
+    const normalizeWheelDelta = (event: WheelEvent) => {
+      if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) return event.deltaY * 16;
+      if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) return event.deltaY * window.innerHeight;
+      return event.deltaY;
+    };
+
+    const resetWheelDeltaAccumulator = () => {
+      wheelDeltaAccumulator = 0;
+      if (wheelDeltaResetTimer !== null) {
+        window.clearTimeout(wheelDeltaResetTimer);
+        wheelDeltaResetTimer = null;
+      }
+    };
+
     const handleWheel = (event: WheelEvent) => {
-      if (Math.abs(event.deltaY) < 14) return;
+      const deltaY = normalizeWheelDelta(event);
+      if (Math.abs(deltaY) < 1) return;
+
       if (snapLock) {
         event.preventDefault();
+        resetWheelDeltaAccumulator();
         return;
       }
 
       const targetNode = event.target instanceof HTMLElement ? event.target : null;
-      if (hasScrollableAncestor(targetNode)) return;
+      if (hasScrollableAncestor(targetNode)) {
+        resetWheelDeltaAccumulator();
+        return;
+      }
+
+      wheelDeltaAccumulator += deltaY;
+      if (wheelDeltaResetTimer !== null) {
+        window.clearTimeout(wheelDeltaResetTimer);
+      }
+      wheelDeltaResetTimer = window.setTimeout(() => {
+        wheelDeltaAccumulator = 0;
+        wheelDeltaResetTimer = null;
+      }, 120);
+
+      if (Math.abs(wheelDeltaAccumulator) < 42) return;
+      const direction = wheelDeltaAccumulator > 0 ? 1 : -1;
+      resetWheelDeltaAccumulator();
 
       const blocks = blockIds
         .map((id) => document.getElementById(id))
@@ -781,7 +816,7 @@ export default function Home() {
       });
 
       const nextIndex =
-        event.deltaY > 0
+        direction > 0
           ? Math.min(blocks.length - 1, currentIndex + 1)
           : Math.max(0, currentIndex - 1);
 
@@ -805,6 +840,7 @@ export default function Home() {
     window.addEventListener("wheel", handleWheel, { passive: false });
     return () => {
       window.removeEventListener("wheel", handleWheel);
+      resetWheelDeltaAccumulator();
       if (blockTwoAlignTimerRef.current !== null) {
         window.clearTimeout(blockTwoAlignTimerRef.current);
         blockTwoAlignTimerRef.current = null;
