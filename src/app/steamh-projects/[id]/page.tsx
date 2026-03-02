@@ -233,10 +233,12 @@ export default function SteamhProjectDetailPage({ params }: { params: Promise<{ 
               >
                 Jump to Insights
               </a>
-              <CollaborateButton
-                href={buildProjectCollabPath(project.id)}
-                label="Collaborate with Publisher"
-              />
+              {project.collaborationEnabled !== false && (
+                <CollaborateButton
+                  href={buildProjectCollabPath(project.id)}
+                  label="Collaborate with Publisher"
+                />
+              )}
             </div>
           </div>
         </div>

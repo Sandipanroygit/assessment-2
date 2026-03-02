@@ -91,6 +91,13 @@ export default function SteamhProjectCollaborationPage({ params }: { params: Pro
           setError(null);
           return;
         }
+        if (selectedProject.collaborationEnabled === false) {
+          setProject(null);
+          setViewer(null);
+          setStatus(null);
+          setError("Collaboration is disabled by the project author for this submission.");
+          return;
+        }
 
         const viewerName =
           (typeof profileResult.data?.full_name === "string" && profileResult.data.full_name.trim()) ||

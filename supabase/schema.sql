@@ -104,10 +104,13 @@ create table if not exists public.steamh_projects (
   video_urls jsonb default '[]',
   attachment_urls jsonb default '[]',
   external_links jsonb default '[]',
+  collaboration_enabled boolean default true,
   published boolean default true,
   created_at timestamp with time zone default now(),
   updated_at timestamp with time zone default now()
 );
+
+alter table public.steamh_projects add column if not exists collaboration_enabled boolean default true;
 
 create index if not exists steamh_projects_published_created_idx
   on public.steamh_projects (published, created_at desc);

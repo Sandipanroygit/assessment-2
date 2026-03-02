@@ -65,6 +65,7 @@ export interface SteamhProject {
   attachmentUrls: string[];
   externalLinks: SteamhProjectLink[];
   published: boolean;
+  collaborationEnabled?: boolean;
   createdAt: string;
   updatedAt: string;
 }

@@ -2733,11 +2733,13 @@ export default function Home() {
                                 >
                                   View
                                 </Link>
-                                <CollaborateButton
-                                  href={buildProjectCollabPath(project.id)}
-                                  label="Collaborate"
-                                  compact
-                                />
+                                {project.collaborationEnabled !== false && (
+                                  <CollaborateButton
+                                    href={buildProjectCollabPath(project.id)}
+                                    label="Collaborate"
+                                    compact
+                                  />
+                                )}
                               </div>
                             </div>
                           </div>

@@ -34,6 +34,7 @@ type SteamhProjectRow = {
   attachment_urls: unknown;
   external_links: unknown;
   published: boolean | null;
+  collaboration_enabled?: boolean | null;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -48,8 +49,10 @@ type FetchSteamhProjectByIdOptions = {
   includeUnpublished?: boolean;
 };
 
-const STEAMH_PROJECT_SELECT_COLUMNS =
+const STEAMH_PROJECT_SELECT_COLUMNS_BASE =
   "id,student_id,student_name,school_name,grade,subject,title,summary,description,challenge,solution,tools_used,tags,image_urls,video_urls,attachment_urls,external_links,published,created_at,updated_at";
+const STEAMH_PROJECT_SELECT_COLUMNS_WITH_COLLAB =
+  `${STEAMH_PROJECT_SELECT_COLUMNS_BASE},collaboration_enabled`;
 
 const parseStringArray = (value: unknown): string[] => {
   if (Array.isArray(value)) {
@@ -84,6 +87,9 @@ const getErrorMessage = (error: unknown) => {
   }
   return "";
 };
+const isMissingCollaborationEnabledColumn = (error: unknown) =>
+  /collaboration_enabled/i.test(getErrorMessage(error)) &&
+  /(column|schema cache)/i.test(getErrorMessage(error));
 
 const toError = (error: unknown, fallbackMessage: string) => {
   if (error instanceof Error) return error;
@@ -93,6 +99,7 @@ const toError = (error: unknown, fallbackMessage: string) => {
 };
 
 const normalizePublished = (value: boolean | null) => value !== false;
+const normalizeCollaborationEnabled = (value?: boolean | null) => value !== false;
 const normalizeDate = (value: string | null) => value ?? new Date().toISOString();
 
 export const mapSteamhProjectRow = (row: SteamhProjectRow): SteamhProject => {
@@ -117,6 +124,7 @@ export const mapSteamhProjectRow = (row: SteamhProjectRow): SteamhProject => {
     attachmentUrls: parseStringArray(row.attachment_urls),
     externalLinks: parseExternalLinks(row.external_links),
     published: normalizePublished(row.published),
+    collaborationEnabled: normalizeCollaborationEnabled(row.collaboration_enabled),
     createdAt: normalizeDate(row.created_at),
     updatedAt: normalizeDate(row.updated_at),
   };
@@ -156,22 +164,33 @@ export async function fetchSteamhProjects(options?: FetchSteamhProjectsOptions) 
   const includeUnpublished = options?.includeUnpublished ?? false;
   const studentId = options?.studentId ?? null;
   const limit = options?.limit ?? null;
-  let query = supabase
-    .from("steamh_projects")
-    .select(STEAMH_PROJECT_SELECT_COLUMNS)
-    .order("created_at", { ascending: false });
+  const buildQuery = (includeCollaborationEnabled: boolean) => {
+    let query = supabase
+      .from("steamh_projects")
+      .select(includeCollaborationEnabled ? STEAMH_PROJECT_SELECT_COLUMNS_WITH_COLLAB : STEAMH_PROJECT_SELECT_COLUMNS_BASE)
+      .order("created_at", { ascending: false });
 
-  if (!includeUnpublished) {
-    query = query.eq("published", true);
-  }
-  if (studentId) {
-    query = query.eq("student_id", studentId);
-  }
-  if (limit && Number.isFinite(limit) && limit > 0) {
-    query = query.limit(limit);
-  }
+    if (!includeUnpublished) {
+      query = query.eq("published", true);
+    }
+    if (studentId) {
+      query = query.eq("student_id", studentId);
+    }
+    if (limit && Number.isFinite(limit) && limit > 0) {
+      query = query.limit(limit);
+    }
 
-  const { data, error } = await query;
+    return query;
+  };
+
+  const withCollaborationEnabled = await buildQuery(true);
+  let data = withCollaborationEnabled.data;
+  let error = withCollaborationEnabled.error;
+  if (error && isMissingCollaborationEnabledColumn(error)) {
+    const fallback = await buildQuery(false);
+    data = fallback.data;
+    error = fallback.error;
+  }
   if (error) throw toError(error, "Unable to load STEAM-H projects.");
   return ((data as SteamhProjectRow[] | null) ?? [])
     .map(mapSteamhProjectRow)
@@ -183,17 +202,28 @@ export async function fetchSteamhProjectById(id: string, options?: FetchSteamhPr
   if (!projectId) return null;
 
   const includeUnpublished = options?.includeUnpublished ?? false;
-  let query = supabase
-    .from("steamh_projects")
-    .select(STEAMH_PROJECT_SELECT_COLUMNS)
-    .eq("id", projectId)
-    .limit(1);
+  const buildQuery = (includeCollaborationEnabled: boolean) => {
+    let query = supabase
+      .from("steamh_projects")
+      .select(includeCollaborationEnabled ? STEAMH_PROJECT_SELECT_COLUMNS_WITH_COLLAB : STEAMH_PROJECT_SELECT_COLUMNS_BASE)
+      .eq("id", projectId)
+      .limit(1);
 
-  if (!includeUnpublished) {
-    query = query.eq("published", true);
+    if (!includeUnpublished) {
+      query = query.eq("published", true);
+    }
+
+    return query;
+  };
+
+  const withCollaborationEnabled = await buildQuery(true).maybeSingle();
+  let data = withCollaborationEnabled.data;
+  let error = withCollaborationEnabled.error;
+  if (error && isMissingCollaborationEnabledColumn(error)) {
+    const fallback = await buildQuery(false).maybeSingle();
+    data = fallback.data;
+    error = fallback.error;
   }
-
-  const { data, error } = await query.maybeSingle();
   if (error) throw toError(error, "Unable to load STEAM-H project.");
   if (!data) return null;
 

@@ -19,6 +19,7 @@ create table if not exists public.steamh_projects (
   video_urls jsonb default '[]',
   attachment_urls jsonb default '[]',
   external_links jsonb default '[]',
+  collaboration_enabled boolean default true,
   published boolean default true,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
@@ -40,6 +41,7 @@ alter table public.steamh_projects add column if not exists image_urls jsonb def
 alter table public.steamh_projects add column if not exists video_urls jsonb default '[]';
 alter table public.steamh_projects add column if not exists attachment_urls jsonb default '[]';
 alter table public.steamh_projects add column if not exists external_links jsonb default '[]';
+alter table public.steamh_projects add column if not exists collaboration_enabled boolean default true;
 alter table public.steamh_projects add column if not exists published boolean default true;
 alter table public.steamh_projects add column if not exists created_at timestamptz default now();
 alter table public.steamh_projects add column if not exists updated_at timestamptz default now();
@@ -48,7 +50,8 @@ update public.steamh_projects
 set student_name = coalesce(student_name, 'Student'),
     title = coalesce(title, 'Untitled project'),
     summary = coalesce(summary, 'No summary provided.'),
-    description = coalesce(description, 'No description provided.');
+    description = coalesce(description, 'No description provided.'),
+    collaboration_enabled = coalesce(collaboration_enabled, true);
 
 alter table public.steamh_projects
   alter column student_name set not null,

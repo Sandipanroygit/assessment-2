@@ -25,6 +25,15 @@ const extractToken = (req: Request) => {
 const isMissingTableError = (message: string) =>
   message.toLowerCase().includes("steamh_collaboration_requests") &&
   (message.toLowerCase().includes("schema cache") || message.toLowerCase().includes("relation"));
+const isMissingCollaborationEnabledColumnError = (error: unknown) => {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "object" && error && "message" in error
+        ? String((error as { message?: unknown }).message ?? "")
+        : "";
+  return /collaboration_enabled/i.test(message) && /(column|schema cache)/i.test(message);
+};
 
 const normalizeRole = (value: unknown) => (typeof value === "string" ? value.trim().toLowerCase() : "");
 
@@ -125,12 +134,32 @@ export async function POST(req: Request) {
       null;
     const requesterEmail = requester.email ?? null;
 
-    const { data: projectOwner } = await supabase
+    const withCollaborationEnabled = await supabase
       .from("steamh_projects")
-      .select("student_name,grade")
+      .select("student_name,grade,collaboration_enabled")
       .eq("id", projectId)
       .limit(1)
       .maybeSingle();
+    let projectOwner = withCollaborationEnabled.data as
+      | { student_name?: string | null; grade?: string | null; collaboration_enabled?: boolean | null }
+      | null;
+    let projectOwnerError = withCollaborationEnabled.error;
+    if (projectOwnerError && isMissingCollaborationEnabledColumnError(projectOwnerError)) {
+      const fallback = await supabase
+        .from("steamh_projects")
+        .select("student_name,grade")
+        .eq("id", projectId)
+        .limit(1)
+        .maybeSingle();
+      projectOwner = fallback.data as { student_name?: string | null; grade?: string | null } | null;
+      projectOwnerError = fallback.error;
+    }
+    if (projectOwnerError) {
+      return NextResponse.json({ error: projectOwnerError.message }, { status: 500 });
+    }
+    if (projectOwner?.collaboration_enabled === false) {
+      return NextResponse.json({ error: "Collaboration is disabled for this project." }, { status: 403 });
+    }
 
     const publisherName =
       (typeof projectOwner?.student_name === "string" && projectOwner.student_name.trim()) ||

@@ -154,6 +154,15 @@ const validateFiles = (
   }
   return null;
 };
+const isMissingCollaborationEnabledColumnError = (error: unknown) => {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "object" && error && "message" in error
+        ? String((error as { message?: unknown }).message ?? "")
+        : "";
+  return /collaboration_enabled/i.test(message) && /(column|schema cache)/i.test(message);
+};
 
 export default function StudentSteamhProjectsPage() {
   const router = useRouter();
@@ -171,6 +180,7 @@ export default function StudentSteamhProjectsPage() {
   const [videoFiles, setVideoFiles] = useState<File[]>([]);
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
   const [fileInputKey, setFileInputKey] = useState(0);
+  const [collaborationEnabled, setCollaborationEnabled] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -450,32 +460,67 @@ export default function StudentSteamhProjectsPage() {
 
       setSubmitStatus("Saving project card...");
 
-      const { data: insertedProject, error } = await supabase
-        .from("steamh_projects")
-        .insert({
-          student_id: userId,
-          student_name: studentName,
-          school_name: schoolName || null,
-          grade,
-          subject,
-          title,
-          summary,
-          description,
-          challenge: challenge || null,
-          solution: solution || null,
-          tools_used: toolsUsed,
-          tags,
-          image_urls: imageUrls,
-          video_urls: [...uploadedVideoUrls, ...videoLinks],
-          attachment_urls: attachmentUrls,
-          external_links: external.links,
-          published: true,
-        })
-        .select("id")
-        .single();
+      const insertPayload = {
+        student_id: userId,
+        student_name: studentName,
+        school_name: schoolName || null,
+        grade,
+        subject,
+        title,
+        summary,
+        description,
+        challenge: challenge || null,
+        solution: solution || null,
+        tools_used: toolsUsed,
+        tags,
+        image_urls: imageUrls,
+        video_urls: [...uploadedVideoUrls, ...videoLinks],
+        attachment_urls: attachmentUrls,
+        external_links: external.links,
+        published: true,
+        collaboration_enabled: collaborationEnabled,
+      };
 
-      if (error || !insertedProject?.id) {
-        throw error ?? new Error("Unable to save project.");
+      let insertedProject: { id: string } | null = null;
+      let insertError: unknown = null;
+      let collaborationPreferenceWarning: string | null = null;
+
+      const firstInsert = await supabase.from("steamh_projects").insert(insertPayload).select("id").single();
+      insertedProject = firstInsert.data as { id: string } | null;
+      insertError = firstInsert.error;
+
+      if (insertError && isMissingCollaborationEnabledColumnError(insertError)) {
+        collaborationPreferenceWarning =
+          "Saved project, but collaboration preference could not be stored. Apply `supabase/steamh_projects_patch.sql` in Supabase SQL Editor.";
+        const fallbackInsert = await supabase
+          .from("steamh_projects")
+          .insert({
+            student_id: insertPayload.student_id,
+            student_name: insertPayload.student_name,
+            school_name: insertPayload.school_name,
+            grade: insertPayload.grade,
+            subject: insertPayload.subject,
+            title: insertPayload.title,
+            summary: insertPayload.summary,
+            description: insertPayload.description,
+            challenge: insertPayload.challenge,
+            solution: insertPayload.solution,
+            tools_used: insertPayload.tools_used,
+            tags: insertPayload.tags,
+            image_urls: insertPayload.image_urls,
+            video_urls: insertPayload.video_urls,
+            attachment_urls: insertPayload.attachment_urls,
+            external_links: insertPayload.external_links,
+            published: true,
+          })
+          .select("id")
+          .single();
+        insertedProject = fallbackInsert.data as { id: string } | null;
+        insertError = fallbackInsert.error;
+      }
+
+      if (insertError || !insertedProject?.id) {
+        throw insertError ?? new Error("Unable to save project.");
       }
 
       let assignmentWarning: string | null = null;
@@ -513,15 +558,21 @@ export default function StudentSteamhProjectsPage() {
       setVideoFiles([]);
       setAttachmentFiles([]);
       setFileInputKey((prev) => prev + 1);
+      setCollaborationEnabled(true);
       if (!assignmentWarning && selectedAssignmentId) {
         setSelectedAssignmentId("");
       }
+      const warnings = [assignmentWarning, collaborationPreferenceWarning].filter(
+        (item): item is string => Boolean(item && item.trim()),
+      );
       setSubmitStatus(
-        assignmentWarning
-          ? `Project uploaded. Assignment update warning: ${assignmentWarning}`
+        warnings.length > 0
+          ? `Project uploaded with warning: ${warnings.join(" ")}`
           : selectedAssignmentId
             ? "Project uploaded and submitted to your teacher."
-            : "Project uploaded and published to open gallery.",
+            : collaborationEnabled
+              ? "Project uploaded and published to open gallery with collaboration enabled."
+              : "Project uploaded and published to open gallery.",
       );
       await loadStudentProjects(userId);
     } catch (error) {
@@ -886,11 +937,27 @@ export default function StudentSteamhProjectsPage() {
           )}
 
           <div className={`${subtleCardClass} flex flex-wrap items-center justify-between gap-3 p-4`}>
-            <p className="text-xs text-slate-500">
-              {selectedAssignment
-                ? "This upload will be linked to your selected teacher assignment and marked as submitted."
-                : "Published projects become visible in the home page STEAM-H section immediately."}
-            </p>
+            <div className="space-y-2">
+              <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={collaborationEnabled}
+                  onChange={(event) => {
+                    setSubmitError(null);
+                    setSubmitStatus(null);
+                    setCollaborationEnabled(event.target.checked);
+                  }}
+                  disabled={submitting}
+                  className="h-4 w-4 rounded border-accent/40 text-accent focus:ring-accent"
+                />
+                Allow collaboration requests for this project
+              </label>
+              <p className="text-xs text-slate-500">
+                {selectedAssignment
+                  ? "This upload will be linked to your selected teacher assignment and marked as submitted."
+                  : "Project will always publish to the open showcase. Collaboration appears only when this checkbox is enabled."}
+              </p>
+            </div>
             <button
               type="button"
               disabled={submitting}
