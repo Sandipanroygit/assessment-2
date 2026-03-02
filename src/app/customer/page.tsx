@@ -1686,7 +1686,7 @@ export default function CustomerPage() {
       {
         id: "student-menu-upload-project",
         target: '[data-tour="student-menu-upload-project"]',
-        title: "Upload STEAM-H Project",
+        title: "STEAM-H Project",
         description: "Open this to publish your project to the STEAM-H showcase.",
         placement: "left",
       },
@@ -3367,7 +3367,7 @@ export default function CustomerPage() {
                           </svg>
                         </span>
                         <div className="text-left">
-                          <p className="font-semibold">Upload STEAM-H Project</p>
+                          <p className="font-semibold">STEAM-H Project</p>
                           <p className="text-xs text-slate-500">Publish work to open showcase</p>
                         </div>
                       </Link>
