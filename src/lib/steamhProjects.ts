@@ -184,7 +184,7 @@ export async function fetchSteamhProjects(options?: FetchSteamhProjectsOptions) 
   };
 
   const withCollaborationEnabled = await buildQuery(true);
-  let data = withCollaborationEnabled.data;
+  let data: unknown = withCollaborationEnabled.data;
   let error = withCollaborationEnabled.error;
   if (error && isMissingCollaborationEnabledColumn(error)) {
     const fallback = await buildQuery(false);
@@ -217,7 +217,7 @@ export async function fetchSteamhProjectById(id: string, options?: FetchSteamhPr
   };
 
   const withCollaborationEnabled = await buildQuery(true).maybeSingle();
-  let data = withCollaborationEnabled.data;
+  let data: unknown = withCollaborationEnabled.data;
   let error = withCollaborationEnabled.error;
   if (error && isMissingCollaborationEnabledColumn(error)) {
     const fallback = await buildQuery(false).maybeSingle();
