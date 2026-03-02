@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 :root {
-  --base-font-size: 90%;
+  --base-font-size: 80%;
 }
 
 :root,
