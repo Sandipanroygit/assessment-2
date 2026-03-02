@@ -74,6 +74,26 @@ const formatJoinedDate = (value?: string | null) => (value ? new Date(value).toL
 const formatDateTime = (value?: string | null) => (value ? new Date(value).toLocaleString() : "-");
 const sanitizeSegment = (value: string) =>
   value.replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase() || "item";
+const decodeDataUrl = (url?: string) => {
+  if (!url || !url.startsWith("data:")) return null;
+  const commaIndex = url.indexOf(",");
+  if (commaIndex === -1) return null;
+  const meta = url.slice(0, commaIndex);
+  const payload = url.slice(commaIndex + 1);
+  try {
+    if (meta.includes(";base64")) return decodeURIComponent(escape(atob(payload)));
+    return decodeURIComponent(payload);
+  } catch {
+    return null;
+  }
+};
+const encodeToBase64 = (text: string) => {
+  try {
+    return btoa(unescape(encodeURIComponent(text)));
+  } catch {
+    return btoa(text);
+  }
+};
 const studentLabelFromFile = (fileName: string) => {
   const base = fileName.replace(/\.json$/i, "");
   const parts = base.split("-");
@@ -189,6 +209,7 @@ export default function AdminPage() {
   const [editingCurriculumId, setEditingCurriculumId] = useState<string | null>(null);
   const [deletingSentimentPath, setDeletingSentimentPath] = useState<string | null>(null);
   const curriculumEditRef = useRef<HTMLDivElement | null>(null);
+  const curriculumCodeEditRef = useRef<HTMLDivElement | null>(null);
   const [dataStatus, setDataStatus] = useState<string | null>(null);
   const [sentimentStatus, setSentimentStatus] = useState<string | null>(null);
   const [teacherRequests, setTeacherRequests] = useState<TeacherRequest[]>([]);
@@ -228,6 +249,7 @@ export default function AdminPage() {
   const [userForm, setUserForm] = useState({ full_name: "", role: "student", grade: "", subject: "" });
   const [sopFile, setSopFile] = useState<File | null>(null);
   const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [codeFile, setCodeFile] = useState<File | null>(null);
   const [userEditStatus, setUserEditStatus] = useState<string | null>(null);
   const [userPopover, setUserPopover] = useState<{ top: number; left: number } | null>(null);
   const [editForm, setEditForm] = useState({
@@ -251,6 +273,8 @@ export default function AdminPage() {
     assets: "",
     videoLabel: "",
     sopLabel: "",
+    codeLabel: "",
+    codeSnippet: "",
   });
   const unreadTeacherRequestItems = useMemo(
     () => teacherRequests.filter((req) => (req.status ?? "pending") !== "done"),
@@ -862,6 +886,36 @@ export default function AdminPage() {
       return haystack.includes(query);
     });
   }, [curriculumRows, droneSearchQuery]);
+  const openCurriculumEditor = useCallback((item: CurriculumModule, focusCode = false) => {
+    const docAsset = item.assets.find((a) => a.type === "doc") || null;
+    const videoAsset = item.assets.find((a) => a.type === "video") || null;
+    const codeAsset = item.assets.find((a) => a.type === "code") || null;
+    const otherAssets = item.assets.filter((a) => a.type !== "doc" && a.type !== "video" && a.type !== "code");
+    setEditingCurriculumId(item.id);
+    setCurriculumForm({
+      title: item.title,
+      grade: item.grade,
+      subject: item.subject,
+      module: item.module,
+      description: item.description,
+      assets: otherAssets.map((a) => a.label).join(", "),
+      videoLabel: videoAsset?.label ?? "",
+      sopLabel: docAsset?.label ?? "",
+      codeLabel: codeAsset?.label ?? "",
+      codeSnippet: decodeDataUrl(codeAsset?.url) ?? "",
+    });
+    setSopFile(null);
+    setVideoFile(null);
+    setCodeFile(null);
+    requestAnimationFrame(() => {
+      curriculumEditRef.current?.scrollIntoView({ behavior: "smooth" });
+      if (focusCode) {
+        requestAnimationFrame(() => {
+          curriculumCodeEditRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+      }
+    });
+  }, []);
 
   const runDroneSearch = useCallback(() => {
     setDroneSearchQuery(droneSearchInput.trim());
@@ -2640,30 +2694,18 @@ export default function AdminPage() {
                       <div className="flex flex-wrap items-center gap-3">
                         <button
                           className="px-3 py-1 rounded-lg border border-blue-500 text-blue-400 text-xs font-semibold hover:bg-blue-500/10 transition"
-                          onClick={() => {
-                            const docAsset = item.assets.find((a) => a.type === "doc") || null;
-                            const videoAsset = item.assets.find((a) => a.type === "video") || null;
-                            const otherAssets = item.assets.filter((a) => a.type !== "doc" && a.type !== "video");
-                            setEditingCurriculumId(item.id);
-                            setCurriculumForm({
-                              title: item.title,
-                              grade: item.grade,
-                              subject: item.subject,
-                              module: item.module,
-                              description: item.description,
-                              assets: otherAssets.map((a) => a.label).join(", "),
-                              videoLabel: videoAsset?.label ?? "",
-                              sopLabel: docAsset?.label ?? "",
-                            });
-                            setSopFile(null);
-                            setVideoFile(null);
-                            requestAnimationFrame(() => {
-                              curriculumEditRef.current?.scrollIntoView({ behavior: "smooth" });
-                            });
-                          }}
+                          onClick={() => openCurriculumEditor(item)}
                         >
                           Edit
                         </button>
+                        {isAdmin && (
+                          <button
+                            className="px-3 py-1 rounded-lg border border-emerald-500 text-emerald-300 text-xs font-semibold hover:bg-emerald-500/10 transition"
+                            onClick={() => openCurriculumEditor(item, true)}
+                          >
+                            Edit code
+                          </button>
+                        )}
                         <button
                           className="px-3 py-1 rounded-lg border border-red-600/70 text-red-400 text-xs font-semibold hover:bg-red-600/25 transition"
                           onClick={async () => {
@@ -3344,6 +3386,7 @@ export default function AdminPage() {
                 setEditingCurriculumId(null);
                 setSopFile(null);
                 setVideoFile(null);
+                setCodeFile(null);
               }}
             >
               Cancel
@@ -3450,6 +3493,27 @@ export default function AdminPage() {
               </p>
             );
           })()}
+          {(() => {
+            if (!editingCurriculumId) return null;
+            const code =
+              curriculumRows
+                .find((c) => c.id === editingCurriculumId)
+                ?.assets.find((a) => a.type === "code") ?? null;
+            if (!code) return null;
+            return (
+              <p className="text-xs text-slate-400">
+                Current code:{" "}
+                <a
+                  href={code.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-accent underline underline-offset-4"
+                >
+                  {code.label || "Open code file"}
+                </a>
+              </p>
+            );
+          })()}
           <label className="block text-sm text-slate-300 space-y-2">
             Video label
             <input
@@ -3492,8 +3556,46 @@ export default function AdminPage() {
             />
             {sopFile?.name && <p className="text-xs text-slate-400">Selected: {sopFile.name}</p>}
           </label>
+          <div ref={curriculumCodeEditRef} className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-3">
+            <p className="text-sm font-semibold text-white">Activity code editor</p>
+            <label className="block text-sm text-slate-300 space-y-2">
+              Code label
+              <input
+                value={curriculumForm.codeLabel ?? ""}
+                onChange={(e) => setCurriculumForm((f) => ({ ...f, codeLabel: e.target.value }))}
+                className="w-full rounded-xl border border-slate-400/60 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none"
+                disabled={!isAdmin}
+                placeholder="e.g., mission.py"
+              />
+            </label>
+            <label className="block text-sm text-slate-300 space-y-2">
+              Upload code file (.py/.txt/.ino)
+              <input
+                type="file"
+                accept=".py,.txt,.ino"
+                onChange={(e) => setCodeFile(e.target.files?.[0] ?? null)}
+                className="w-full rounded-xl border border-slate-400/60 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none file-accent"
+                disabled={!isAdmin}
+              />
+              {codeFile?.name && <p className="text-xs text-slate-400">Selected: {codeFile.name}</p>}
+            </label>
+            <label className="block text-sm text-slate-300 space-y-2">
+              Edit code directly
+              <textarea
+                value={curriculumForm.codeSnippet}
+                onChange={(e) => setCurriculumForm((f) => ({ ...f, codeSnippet: e.target.value }))}
+                className="w-full rounded-xl border border-slate-400/60 bg-black/40 px-3 py-2 font-mono text-sm text-slate-100 focus:border-accent focus:outline-none"
+                rows={10}
+                disabled={!isAdmin}
+                placeholder="Paste or edit activity code here. Saving stores this as the module code snippet."
+              />
+            </label>
+            <p className="text-xs text-slate-400">
+              Tip: upload a file to replace the code asset, or edit/paste code above for quick inline updates.
+            </p>
+          </div>
           <label className="block text-sm text-slate-300 space-y-2">
-            Other assets (comma separated labels, excluding video + SOP)
+            Other assets (comma separated labels, excluding code + video + SOP)
             <input
               value={curriculumForm.assets}
               onChange={(e) => setCurriculumForm((f) => ({ ...f, assets: e.target.value }))}
@@ -3527,7 +3629,9 @@ export default function AdminPage() {
                       .map((a) => a.trim())
                       .filter(Boolean);
 
-                    const otherAssets = (existing.assets ?? []).filter((a) => a.type !== "doc" && a.type !== "video");
+                    const otherAssets = (existing.assets ?? []).filter(
+                      (a) => a.type !== "doc" && a.type !== "video" && a.type !== "code",
+                    );
                     const relabeledOthers =
                       assetLabels.length === 0
                         ? otherAssets
@@ -3535,6 +3639,28 @@ export default function AdminPage() {
                             ...asset,
                             label: assetLabels[idx] ?? asset.label,
                           }));
+
+                    let updatedCode = (existing.assets ?? []).find((a) => a.type === "code") ?? null;
+                    if (codeFile) {
+                      const url = await uploadFileToBucket({
+                        bucket: "curriculum-assets",
+                        file: codeFile,
+                        pathPrefix: `code/${currentUserId ?? "admin"}`,
+                      });
+                      updatedCode = {
+                        type: "code" as const,
+                        url,
+                        label: curriculumForm.codeLabel.trim() || codeFile.name || "Python code",
+                      };
+                    } else if (curriculumForm.codeSnippet.trim()) {
+                      updatedCode = {
+                        type: "code" as const,
+                        url: `data:text/plain;base64,${encodeToBase64(curriculumForm.codeSnippet)}`,
+                        label: curriculumForm.codeLabel.trim() || updatedCode?.label || "Python code",
+                      };
+                    } else if (curriculumForm.codeLabel.trim() && updatedCode) {
+                      updatedCode = { ...updatedCode, label: curriculumForm.codeLabel.trim() };
+                    }
 
                     let updatedVideo = (existing.assets ?? []).find((a) => a.type === "video") ?? null;
                     if (videoFile) {
@@ -3560,7 +3686,12 @@ export default function AdminPage() {
                       updatedDoc = { ...updatedDoc, label: curriculumForm.sopLabel.trim() };
                     }
 
-                    nextAssets = [...relabeledOthers, ...(updatedVideo ? [updatedVideo] : []), ...(updatedDoc ? [updatedDoc] : [])];
+                    nextAssets = [
+                      ...relabeledOthers,
+                      ...(updatedCode ? [updatedCode] : []),
+                      ...(updatedVideo ? [updatedVideo] : []),
+                      ...(updatedDoc ? [updatedDoc] : []),
+                    ];
 
                     updatePayload = {
                       title: curriculumForm.title,
@@ -3612,9 +3743,12 @@ export default function AdminPage() {
                     assets: "",
                     videoLabel: "",
                     sopLabel: "",
+                    codeLabel: "",
+                    codeSnippet: "",
                   });
                   setSopFile(null);
                   setVideoFile(null);
+                  setCodeFile(null);
                   setDataStatus(null);
                 } catch (err) {
                   const message = err instanceof Error ? err.message : "Unknown error";
@@ -3630,6 +3764,7 @@ export default function AdminPage() {
                 setEditingCurriculumId(null);
                 setSopFile(null);
                 setVideoFile(null);
+                setCodeFile(null);
               }}
             >
               Cancel
