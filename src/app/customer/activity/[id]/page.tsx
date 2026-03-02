@@ -393,6 +393,43 @@ const triggerDownload = (url: string, fileName: string) => {
   anchor.remove();
 };
 
+const OFFICE_PREVIEW_EXTENSIONS = new Set(["doc", "docx", "ppt", "pptx", "xls", "xlsx"]);
+
+const getFileExtension = (value?: string | null) => {
+  if (!value) return "";
+  const withoutQuery = value.split("#")[0]?.split("?")[0] ?? value;
+  const lastSegment = withoutQuery.split("/").pop() ?? withoutQuery;
+  const parts = lastSegment.split(".");
+  if (parts.length < 2) return "";
+  return (parts.pop() ?? "").trim().toLowerCase();
+};
+
+const toAbsoluteAssetUrl = (rawUrl?: string | null) => {
+  const value = (rawUrl ?? "").trim();
+  if (!value) return "";
+  if (/^(https?:|data:|blob:)/i.test(value)) return value;
+
+  const base = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").replace(/\/+$/, "");
+  if (!base) return value;
+
+  if (value.startsWith("/storage/v1/object/public/")) return `${base}${value}`;
+  if (value.startsWith("storage/v1/object/public/")) return `${base}/${value}`;
+  if (value.startsWith("curriculum-assets/")) return `${base}/storage/v1/object/public/${value}`;
+  return value;
+};
+
+const buildSopPreviewUrl = (rawUrl?: string | null, label?: string | null) => {
+  const assetUrl = toAbsoluteAssetUrl(rawUrl);
+  if (!assetUrl) return "";
+
+  const ext = getFileExtension(label) || getFileExtension(assetUrl);
+  if (OFFICE_PREVIEW_EXTENSIONS.has(ext)) {
+    return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(assetUrl)}`;
+  }
+
+  return assetUrl;
+};
+
 export default function ActivityPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
@@ -446,6 +483,9 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
   );
   const isDesignTech = useMemo(() => (module?.subject ?? "").toLowerCase().includes("design"), [module?.subject]);
   const stlAssets = useMemo(() => (module?.assets ?? []).filter((a) => a.type === "stl"), [module]);
+  const sopAsset = useMemo(() => (module?.assets ?? []).find((a) => a.type === "doc") ?? null, [module]);
+  const sopPreviewUrl = useMemo(() => buildSopPreviewUrl(sopAsset?.url, sopAsset?.label), [sopAsset?.label, sopAsset?.url]);
+  const sopDownloadUrl = useMemo(() => toAbsoluteAssetUrl(sopAsset?.url), [sopAsset?.url]);
   const activityTourSteps = useMemo<GuidedTourStep[]>(() => {
     if (!module) return [];
 
@@ -1522,10 +1562,14 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
 
   const openDocInViewer = async () => {
     if (!module) return;
-    const docAsset = module.assets.find((a) => a.type === "doc");
-    if (docAsset?.url) {
+    if (sopAsset?.url) {
       const nav = navigator as Navigator & { msSaveOrOpenBlob?: (blob: Blob, defaultName?: string) => boolean };
-      const fileName = (docAsset.label || "document").trim() || "document";
+      const fileName = (sopAsset.label || "document").trim() || "document";
+      const docUrl = sopDownloadUrl;
+      if (!docUrl) {
+        console.warn("No SOP file URL available to open.");
+        return;
+      }
       const triggerDownload = (url: string, name: string) => {
         const anchor = document.createElement("a");
         anchor.href = url;
@@ -1537,7 +1581,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
         anchor.remove();
       };
       try {
-        const res = await fetch(docAsset.url);
+        const res = await fetch(docUrl);
         if (!res.ok) throw new Error("Failed to fetch doc file.");
         const blob = await res.blob();
         if (nav?.msSaveOrOpenBlob) {
@@ -1549,7 +1593,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
         setTimeout(() => URL.revokeObjectURL(url), 30000);
       } catch (err) {
         console.warn("Unable to fetch doc blob; downloading file directly.", err);
-        triggerDownload(docAsset.url, fileName);
+        triggerDownload(docUrl, fileName);
       }
     } else {
       console.warn("No SOP file available to open.");
@@ -2148,9 +2192,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
                 <div>
                   <h3 className="text-lg font-semibold text-white">SOP</h3>
                   <p className="text-xs text-slate-400">
-                    {Array.isArray(module.assets)
-                      ? module.assets.find((a) => a.type === "doc")?.label || "Document"
-                      : "Document"}
+                    {sopAsset?.label || "Document"}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -2158,7 +2200,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
                     type="button"
                     className="px-3 py-2 rounded-lg bg-emerald-500 text-true-white text-sm font-semibold shadow-glow disabled:opacity-40 disabled:bg-emerald-500/60"
                     onClick={openDocInViewer}
-                    disabled={!Array.isArray(module.assets) || !module.assets.find((a) => a.type === "doc")}
+                    disabled={!sopDownloadUrl}
                     title="Open in your default viewer"
                   >
                     Download
@@ -2175,12 +2217,16 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
               <div
                 className={`bg-black/20 rounded-xl border border-white/10 shadow-inner overflow-hidden ${sopExpanded ? "h-[70vh]" : "h-[320px]"}`}
               >
-                {Array.isArray(module.assets) && module.assets.filter((a) => a.type === "doc").length > 0 ? (
+                {sopAsset?.url ? (
+                  sopPreviewUrl ? (
                   <iframe
-                    src={module.assets.find((a) => a.type === "doc")?.url}
-                    title={module.assets.find((a) => a.type === "doc")?.label}
+                    src={sopPreviewUrl}
+                    title={sopAsset?.label || "SOP preview"}
                     className="w-full h-full"
                   />
+                  ) : (
+                    <div className="p-4 text-sm text-slate-300">Preview unavailable for this document. Click Download to open it.</div>
+                  )
                 ) : (
                   <div className="p-4 text-sm text-slate-300">No documents available.</div>
                 )}
