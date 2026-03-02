@@ -227,6 +227,7 @@ export default function AdminPage() {
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
   const [userForm, setUserForm] = useState({ full_name: "", role: "student", grade: "", subject: "" });
   const [sopFile, setSopFile] = useState<File | null>(null);
+  const [videoFile, setVideoFile] = useState<File | null>(null);
   const [userEditStatus, setUserEditStatus] = useState<string | null>(null);
   const [userPopover, setUserPopover] = useState<{ top: number; left: number } | null>(null);
   const [editForm, setEditForm] = useState({
@@ -248,6 +249,7 @@ export default function AdminPage() {
     module: "",
     description: "",
     assets: "",
+    videoLabel: "",
     sopLabel: "",
   });
   const unreadTeacherRequestItems = useMemo(
@@ -1328,6 +1330,7 @@ export default function AdminPage() {
     if (activeAdminSection !== "drone" && editingCurriculumId) {
       setEditingCurriculumId(null);
       setSopFile(null);
+      setVideoFile(null);
     }
     if (activeAdminSection !== "users" && editingUser) {
       setEditingUser(null);
@@ -2080,10 +2083,7 @@ export default function AdminPage() {
                           <path d="m8 15 3-3 2 2 3-3" />
                         </svg>
                       </span>
-                      <div className="text-left">
-                        <p className="font-semibold">Post advertisement</p>
-                        <p className="text-xs text-slate-500">Upload, drag, zoom, and save header ad</p>
-                      </div>
+                      <p className="font-semibold">Post Adv</p>
                     </Link>
                   )}
 
@@ -2642,7 +2642,8 @@ export default function AdminPage() {
                           className="px-3 py-1 rounded-lg border border-blue-500 text-blue-400 text-xs font-semibold hover:bg-blue-500/10 transition"
                           onClick={() => {
                             const docAsset = item.assets.find((a) => a.type === "doc") || null;
-                            const otherAssets = item.assets.filter((a) => a.type !== "doc");
+                            const videoAsset = item.assets.find((a) => a.type === "video") || null;
+                            const otherAssets = item.assets.filter((a) => a.type !== "doc" && a.type !== "video");
                             setEditingCurriculumId(item.id);
                             setCurriculumForm({
                               title: item.title,
@@ -2651,9 +2652,11 @@ export default function AdminPage() {
                               module: item.module,
                               description: item.description,
                               assets: otherAssets.map((a) => a.label).join(", "),
+                              videoLabel: videoAsset?.label ?? "",
                               sopLabel: docAsset?.label ?? "",
                             });
                             setSopFile(null);
+                            setVideoFile(null);
                             requestAnimationFrame(() => {
                               curriculumEditRef.current?.scrollIntoView({ behavior: "smooth" });
                             });
@@ -3340,6 +3343,7 @@ export default function AdminPage() {
               onClick={() => {
                 setEditingCurriculumId(null);
                 setSopFile(null);
+                setVideoFile(null);
               }}
             >
               Cancel
@@ -3406,6 +3410,27 @@ export default function AdminPage() {
           </label>
           {(() => {
             if (!editingCurriculumId) return null;
+            const video =
+              curriculumRows
+                .find((c) => c.id === editingCurriculumId)
+                ?.assets.find((a) => a.type === "video") ?? null;
+            if (!video) return null;
+            return (
+              <p className="text-xs text-slate-400">
+                Current video:{" "}
+                <a
+                  href={video.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-accent underline underline-offset-4"
+                >
+                  {video.label || "Open video"}
+                </a>
+              </p>
+            );
+          })()}
+          {(() => {
+            if (!editingCurriculumId) return null;
             const doc =
               curriculumRows
                 .find((c) => c.id === editingCurriculumId)
@@ -3425,6 +3450,27 @@ export default function AdminPage() {
               </p>
             );
           })()}
+          <label className="block text-sm text-slate-300 space-y-2">
+            Video label
+            <input
+              value={curriculumForm.videoLabel ?? ""}
+              onChange={(e) => setCurriculumForm((f) => ({ ...f, videoLabel: e.target.value }))}
+              className="w-full rounded-xl border border-slate-400/60 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none"
+              disabled={!isAdmin}
+              placeholder="e.g., Flight demo video"
+            />
+          </label>
+          <label className="block text-sm text-slate-300 space-y-2">
+            Upload video (MP4)
+            <input
+              type="file"
+              accept="video/mp4"
+              onChange={(e) => setVideoFile(e.target.files?.[0] ?? null)}
+              className="w-full rounded-xl border border-slate-400/60 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none file-accent"
+              disabled={!isAdmin}
+            />
+            {videoFile?.name && <p className="text-xs text-slate-400">Selected: {videoFile.name}</p>}
+          </label>
           <label className="block text-sm text-slate-300 space-y-2">
             SOP label
             <input
@@ -3447,7 +3493,7 @@ export default function AdminPage() {
             {sopFile?.name && <p className="text-xs text-slate-400">Selected: {sopFile.name}</p>}
           </label>
           <label className="block text-sm text-slate-300 space-y-2">
-            Other assets (comma separated labels)
+            Other assets (comma separated labels, excluding video + SOP)
             <input
               value={curriculumForm.assets}
               onChange={(e) => setCurriculumForm((f) => ({ ...f, assets: e.target.value }))}
@@ -3481,7 +3527,7 @@ export default function AdminPage() {
                       .map((a) => a.trim())
                       .filter(Boolean);
 
-                    const otherAssets = (existing.assets ?? []).filter((a) => a.type !== "doc");
+                    const otherAssets = (existing.assets ?? []).filter((a) => a.type !== "doc" && a.type !== "video");
                     const relabeledOthers =
                       assetLabels.length === 0
                         ? otherAssets
@@ -3489,6 +3535,18 @@ export default function AdminPage() {
                             ...asset,
                             label: assetLabels[idx] ?? asset.label,
                           }));
+
+                    let updatedVideo = (existing.assets ?? []).find((a) => a.type === "video") ?? null;
+                    if (videoFile) {
+                      const url = await uploadFileToBucket({
+                        bucket: "curriculum-assets",
+                        file: videoFile,
+                        pathPrefix: `videos/${currentUserId ?? "admin"}`,
+                      });
+                      updatedVideo = { type: "video" as const, url, label: curriculumForm.videoLabel || videoFile.name };
+                    } else if (curriculumForm.videoLabel.trim() && updatedVideo) {
+                      updatedVideo = { ...updatedVideo, label: curriculumForm.videoLabel.trim() };
+                    }
 
                     let updatedDoc = (existing.assets ?? []).find((a) => a.type === "doc") ?? null;
                     if (sopFile) {
@@ -3502,7 +3560,7 @@ export default function AdminPage() {
                       updatedDoc = { ...updatedDoc, label: curriculumForm.sopLabel.trim() };
                     }
 
-                    nextAssets = [...relabeledOthers, ...(updatedDoc ? [updatedDoc] : [])];
+                    nextAssets = [...relabeledOthers, ...(updatedVideo ? [updatedVideo] : []), ...(updatedDoc ? [updatedDoc] : [])];
 
                     updatePayload = {
                       title: curriculumForm.title,
@@ -3552,9 +3610,11 @@ export default function AdminPage() {
                     module: "",
                     description: "",
                     assets: "",
+                    videoLabel: "",
                     sopLabel: "",
                   });
                   setSopFile(null);
+                  setVideoFile(null);
                   setDataStatus(null);
                 } catch (err) {
                   const message = err instanceof Error ? err.message : "Unknown error";
@@ -3566,7 +3626,11 @@ export default function AdminPage() {
             </button>
             <button
               className="px-4 py-2 rounded-xl border border-white/10 text-white hover:border-accent-strong"
-              onClick={() => setEditingCurriculumId(null)}
+              onClick={() => {
+                setEditingCurriculumId(null);
+                setSopFile(null);
+                setVideoFile(null);
+              }}
             >
               Cancel
             </button>
