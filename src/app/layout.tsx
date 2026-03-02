@@ -13,7 +13,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Curriculum Dashboard | Drones | Experiential Learning | Design Technology",
+  title: "Indus Trust | STEAM-H Dashboard",
   description:
     "Launch drone, experiential learning, and design technology programs with Supabase-powered dashboards for schools and educators.",
 };
