@@ -483,6 +483,8 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
   );
   const isDesignTech = useMemo(() => (module?.subject ?? "").toLowerCase().includes("design"), [module?.subject]);
   const stlAssets = useMemo(() => (module?.assets ?? []).filter((a) => a.type === "stl"), [module]);
+  const videoAsset = useMemo(() => (module?.assets ?? []).find((a) => a.type === "video") ?? null, [module]);
+  const videoUrl = useMemo(() => toAbsoluteAssetUrl(videoAsset?.url), [videoAsset?.url]);
   const sopAsset = useMemo(() => (module?.assets ?? []).find((a) => a.type === "doc") ?? null, [module]);
   const sopPreviewUrl = useMemo(() => buildSopPreviewUrl(sopAsset?.url, sopAsset?.label), [sopAsset?.label, sopAsset?.url]);
   const sopDownloadUrl = useMemo(() => toAbsoluteAssetUrl(sopAsset?.url), [sopAsset?.url]);
@@ -2233,6 +2235,30 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
               </div>
             </div>
           </div>
+
+          {videoUrl && (
+            <div className="glass-panel rounded-2xl p-4 border border-white/10 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Video Demo</h3>
+                  <p className="text-xs text-slate-400">{videoAsset?.label || "Activity video"}</p>
+                </div>
+                <button
+                  type="button"
+                  className="px-3 py-2 rounded-lg bg-emerald-500 text-true-white text-sm font-semibold shadow-glow disabled:opacity-40 disabled:bg-emerald-500/60"
+                  onClick={() => triggerDownload(videoUrl, videoAsset?.label || "activity-video.mp4")}
+                  disabled={!videoUrl}
+                >
+                  Download
+                </button>
+              </div>
+              <div className="bg-black/30 rounded-xl border border-white/10 p-2">
+                <video className="w-full rounded-lg max-h-[420px] bg-black" controls preload="metadata" src={videoUrl}>
+                  Your browser does not support HTML5 video. Use download instead.
+                </video>
+              </div>
+            </div>
+          )}
 
         <div className="glass-panel rounded-2xl p-4 border border-white/10 space-y-3" data-tour="activity-moodai-panel">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
