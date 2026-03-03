@@ -24,6 +24,7 @@ import {
 } from "@/lib/supabaseData";
 import { UploadCurriculumView } from "@/components/admin/UploadCurriculumView";
 import { AdminQuestionsView } from "@/components/admin/AdminQuestionsView";
+import { SimulationLibraryView } from "@/components/admin/SimulationLibraryView";
 import { logActivity } from "@/lib/activityLogger";
 import { GuidedTour, type GuidedTourStep } from "@/components/GuidedTour";
 import { playUiClickTone } from "@/lib/uiTone";
@@ -186,7 +187,16 @@ const mapTeacherModuleRow = (row: TeacherModuleApiRow): CurriculumModule => {
   };
 };
 
-type AdminRibbonSection = "drone" | "vrModules" | "upload" | "questions" | "products" | "sentiment" | "users" | "orders";
+type AdminRibbonSection =
+  | "drone"
+  | "vrModules"
+  | "simulations"
+  | "upload"
+  | "questions"
+  | "products"
+  | "sentiment"
+  | "users"
+  | "orders";
 
 export default function AdminPage() {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -357,6 +367,7 @@ export default function AdminPage() {
   const ribbonSections: Array<{ id: AdminRibbonSection; label: string; adminOnly?: boolean }> = [
     { id: "drone", label: "Drone Activity" },
     { id: "vrModules", label: "VR Modules", adminOnly: true },
+    { id: "simulations", label: "Simulations", adminOnly: true },
     { id: "upload", label: "Upload Content", adminOnly: true },
     { id: "questions", label: "Manage Questions" },
     { id: "sentiment", label: "Sentiment Summaries" },
@@ -397,6 +408,15 @@ export default function AdminPage() {
             <path d="M12 16V4" />
             <path d="m7 9 5-5 5 5" />
             <path d="M4 20h16" />
+          </svg>
+        );
+      case "simulations":
+        return (
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-4 w-4">
+            <path d="M7 4h10" />
+            <path d="M9 4v3l-4.5 8a3 3 0 0 0 2.6 4.5h10.8a3 3 0 0 0 2.6-4.5L16 7V4" />
+            <path d="M8 13h8" />
+            <path d="M10 16h4" />
           </svg>
         );
       case "questions":
@@ -2851,6 +2871,10 @@ export default function AdminPage() {
             }}
           />
         </div>
+      )}
+
+      {activeAdminSection === "simulations" && (
+        <SimulationLibraryView />
       )}
 
       {activeAdminSection === "questions" && (
