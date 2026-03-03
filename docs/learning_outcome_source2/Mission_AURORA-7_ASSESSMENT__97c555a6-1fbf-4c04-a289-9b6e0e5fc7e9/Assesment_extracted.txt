@@ -1,0 +1,14 @@
+Mission: Rescue AURORA-7
+A research rover named AURORA-7, built by ISRO scientists, was exploring the rocky surface of Planet X.During its final survey, a sudden dust storm damaged its systems.
+Before shutting down, the rover sent a short distress message to Mission Control:
+“Signal weak… Signal weak…Distance from base: 13 m…        [Hint: Displacement magnitude] Direction: 22.62° from X-axis…Altitude: 4 m above ground…LPower low… please respond…powering off”
+That was the last signal received.
+Now, you the Indus-ISRO Student Rescue Team, must locate and reach AURORA-7 before it loses all power.
+Your rescue drone stationed at base camp has limited battery, just like real ISRO landers.Every extra movement drains energy, so your success depends on finding the shortest, most direct vector path from the base to the rover.
+Plan carefully, fly precisely, and conserve power, because in this mission:
+Every meter matters.                                                                                                                                                                                                                       Maximum Path Efficiency = Mission Success
+Instructions:                                                                                                                                                                                                                                         
+1. Base Station at (0, 0) your drone’s take-off point.       
+2. Decode the rover’s (AURORA-7) coordinates using x = r cos θ & y = r sin θ, where r is displacement magnitude.
+3. Mark the Location of Rover AURORA-7 on Graph.  Use 1 square = 1 meter scale.                                                                                           
+Fly the Drone manually, follow the path that takes you to Maximum Efficient path.

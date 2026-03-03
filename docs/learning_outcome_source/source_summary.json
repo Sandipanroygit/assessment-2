@@ -1,0 +1,59 @@
+[
+  {
+    "id": "97c555a6-1fbf-4c04-a289-9b6e0e5fc7e9",
+    "title": "Mission AURORA-7 [ASSESSMENT]",
+    "description": "Based on the conceptual understanding developed in the previous activity on displacement and vector resolution, this assessment requires students to independently apply those principles to a mission-based problem. Students will interpret the rover?s final dist",
+    "assets": [
+      {
+        "type": "code",
+        "label": "drone_grid_manual_v4 (1).py",
+        "source": "data:text/plain;base64,IyA9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0KIyBEUk9ORSBHUklEIE5BVklHQVRPUiDigJQgUFVSRSBNQU5VQUwgKEFTRFcgPSAxIHVuaXQgcGVyIHRhcCkKIyDinIUgRlVMTC1TQ1JFRU4gSFVECiMg4pyFIFJFQUwgVEVMTE8gTU9ERSAoREpJVEVMTE9QWSkKIyDinIUgUGF0aCB0cmFjZSBkcmF3biBvbiBncmlkIChibHVlIHBvbHlsaW5lICsgc3RlcCBkb3RzKQojIOKchSBEaXNwbGFjZW1lbnQgdmVjdG9yIGRyYXduIGluIFJFRCAob3JpZ2luIC0+IGN1cnJlbnQpCiMg4pyFIFBhdGggRWZmaWNpZW5jeSBzaG93biBCSUcgKyBsaXZlIGZvcm11bGEgKyBsaXZlIHRlcm1zCiMg4pyFIE1pc3Npb246IHJlYWNoICg1LDEyKSAtPiBTVE9QIFRJTUVSICsgQ2VudGVyIG92ZXJsYXkgKyBob2xkIDE1cyB0aGVuIHNhdmUvcXVpdAojCiMgUGF0aCBFZmZpY2llbmN5IChQRSk6CiMgICBQRSA9IERpc3BsYWNlbWVudCAvIERpc3RhbmNlCiMgICBEaXNwbGFjZW1lbnQgPSBzcXJ0KHheMiArIHleMikKIyAgIERpc3RhbmNlID0gbnVtYmVyX29mX3N0ZXBzIChlYWNoIGtleXByZXNzIGFkZHMgKzEgdW5pdCkKIyA9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0KCmltcG9ydCBvcywgY3N2LCB0aW1lLCBtYXRoLCB0cmFjZWJhY2sKZnJvbSBkYXRldGltZSBpbXBvcnQgZGF0ZXRpbWUKZnJvbSBkYXRhY2xhc3NlcyBpbXBvcnQgZGF0YWNsYXNzLCBmaWVsZApmcm9tIGNvbGxlY3Rpb25zIGltcG9ydCBkZXF1ZQoKaW1wb3J0IHB5Z2FtZQoKaW1wb3J0IG1hdHBsb3RsaWIKbWF0cGxvdGxpYi51c2UoIkFnZyIpCmltcG9ydCBtYXRwbG90bGliLnB5cGxvdCBhcyBwbHQKZnJvbSBtcGxfdG9vbGtpdHMubXBsb3QzZCBpbXBvcnQgQXhlczNEICAjIG5vcWE6IEY0MDEKaW1wb3J0IHBhbmRhcyBhcyBwZAoKZnJvbSBkaml0ZWxsb3B5IGltcG9ydCBUZWxsbwoKIyAtLS0tLS0tLS0tLS0tLS0tLS0tLSBNT0RFIC0tLS0tLS0tLS0tLS0tLS0tLS0tClVTRV9TSU0gPSBGYWxzZSAgIyDinIUgUkVBTCBEUk9ORQoKIyAtLS0tLS0tLS0tLS0tLS0tLS0tLSBDT05GSUcgLS0tLS0tLS0tLS0tLS0tLS0tLS0KU1RFUF9DTSA9IDEwMApDUlVJU0VfQUxUX0NNID0gMTAwCkxPV19CQVRUX0FVVE9MQU5EID0gMTUKRlBTID0gMzAKTU9WRV9DT09MRE9XTl9TID0gMC4yMAoKVEFSR0VUX1gsIFRBUkdFVF9ZID0gNSwgMTIKVEFSR0VUX1RJVExFID0gIk1JU1NJT04gU1VDQ0VTUyIKVEFSR0VUX0xBQkVMID0gIkFVUk9SQS0wNyBGb3VuZCIKTUlTU0lPTl9IT0xEX1MgPSAxNQoKR1JJRF9DRUxMX1BYID0gMzAKCk1BUkdJTiA9IDE4ClRPUEJBUl9IID0gNTIKRk9PVEVSX0ggPSAzNApSSUdIVF9QQU5FTF9XID0gMzYwCgpUUkFDRV9NQVhfUE9JTlRTID0gMjAwMAoK#truncated",
+        "error": "Invalid base64-encoded string: number of data characters (1929) cannot be 1 more than a multiple of 4"
+      },
+      {
+        "type": "video",
+        "label": "New project.mp4",
+        "source": "https://doosnktiqxrvhpwmbrnu.supabase.co/storage/v1/object/public/curriculum-assets/videos/64501027-6f19-40bd-9dab-aeceee68c280/1772465102954-WhatsApp-Video-2026-03-02-at-7.33.26-PM.mp4",
+        "error": "<urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"
+      },
+      {
+        "type": "doc",
+        "label": "Assesment.docx",
+        "source": "https://doosnktiqxrvhpwmbrnu.supabase.co/storage/v1/object/public/curriculum-assets/docs/64501027-6f19-40bd-9dab-aeceee68c280/1768890214057-Assesment.docx",
+        "error": "<urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"
+      }
+    ]
+  },
+  {
+    "id": "22e1e638-9e93-4d01-817d-9dc0a861fabd",
+    "title": "Understanding Scalar, vector and Motion Using a Drone",
+    "description": "In this activity, students study how a drone moves by flying it in different directions and patterns. Each movement of the drone is recorded step by step to observe how motion happens in real life.",
+    "assets": [
+      {
+        "type": "code",
+        "label": "4.0.py",
+        "source": "https://doosnktiqxrvhpwmbrnu.supabase.co/storage/v1/object/public/curriculum-assets/code/64501027-6f19-40bd-9dab-aeceee68c280/1768799364832-4.0.py",
+        "error": "<urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"
+      }
+    ]
+  },
+  {
+    "id": "04585d05-df33-4b66-9bc2-9e398c0f9b9b",
+    "title": "Understanding Distance, Displacement, and Path Efficiency [SIMULATION]",
+    "description": "In this activity, students simulate a drone flight to study motion in 2D and 3D space without using a real drone.",
+    "assets": [
+      {
+        "type": "code",
+        "label": "sim.py",
+        "source": "https://doosnktiqxrvhpwmbrnu.supabase.co/storage/v1/object/public/curriculum-assets/code/64501027-6f19-40bd-9dab-aeceee68c280/1768976048064-sim.py",
+        "error": "<urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"
+      },
+      {
+        "type": "doc",
+        "label": "1768818284755-vector-scalar-Sim.pdf",
+        "source": "https://doosnktiqxrvhpwmbrnu.supabase.co/storage/v1/object/public/curriculum-assets/docs/64501027-6f19-40bd-9dab-aeceee68c280/1768976048496-1768818284755-vector-scalar-Sim.pdf",
+        "error": "<urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"
+      }
+    ]
+  }
+]

@@ -482,7 +482,33 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
     [role],
   );
   const isDesignTech = useMemo(() => (module?.subject ?? "").toLowerCase().includes("design"), [module?.subject]);
+  const isAuroraActivity = useMemo(() => (module?.title ?? "").toLowerCase().includes("aurora"), [module?.title]);
   const stlAssets = useMemo(() => (module?.assets ?? []).filter((a) => a.type === "stl"), [module]);
+  const stlModels = useMemo(
+    () =>
+      stlAssets
+        .map((asset, idx) => {
+          const name = asset.label || `Model ${idx + 1}`;
+          const fileName = name.toLowerCase().endsWith(".stl") ? name : `${name}.stl`;
+          return { name, fileName, url: toAbsoluteAssetUrl(asset.url) };
+        })
+        .filter((asset) => Boolean(asset.url)),
+    [stlAssets],
+  );
+  const [selectedStlUrl, setSelectedStlUrl] = useState("");
+  const selectedStlModel = useMemo(
+    () => stlModels.find((asset) => asset.url === selectedStlUrl) ?? stlModels[0] ?? null,
+    [selectedStlUrl, stlModels],
+  );
+  useEffect(() => {
+    if (!stlModels.length) {
+      if (selectedStlUrl) setSelectedStlUrl("");
+      return;
+    }
+    if (!selectedStlUrl || !stlModels.some((asset) => asset.url === selectedStlUrl)) {
+      setSelectedStlUrl(stlModels[0]?.url ?? "");
+    }
+  }, [selectedStlUrl, stlModels]);
   const videoAsset = useMemo(() => (module?.assets ?? []).find((a) => a.type === "video") ?? null, [module]);
   const videoUrl = useMemo(() => toAbsoluteAssetUrl(videoAsset?.url), [videoAsset?.url]);
   const sopAsset = useMemo(() => (module?.assets ?? []).find((a) => a.type === "doc") ?? null, [module]);
@@ -592,17 +618,21 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
               scrollBlock: "center" as const,
               adjacentOnly: true,
             },
-            {
-              id: "activity-upload-plot-file",
-              target: '[data-tour="activity-upload-plot-file"]',
-              title: "Upload Plot File",
-              description: "Then upload your plot image/PDF file.",
-              placement: "bottom" as GuidedTourPlacement,
-              padding: 160,
-              forcePageTop: false,
-              scrollBlock: "center" as const,
-              adjacentOnly: true,
-            },
+            ...(isAuroraActivity
+              ? []
+              : [
+                  {
+                    id: "activity-upload-plot-file",
+                    target: '[data-tour="activity-upload-plot-file"]',
+                    title: "Upload Plot File",
+                    description: "Then upload your plot image/PDF file.",
+                    placement: "bottom" as GuidedTourPlacement,
+                    padding: 160,
+                    forcePageTop: false,
+                    scrollBlock: "center" as const,
+                    adjacentOnly: true,
+                  },
+                ]),
           ]),
       {
         id: "activity-save-button",
@@ -629,8 +659,8 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
       {
         id: "activity-report-panel",
         target: '[data-tour="activity-report-panel"]',
-        title: "Pressure vs Altitude Analysis",
-        description: "Review the Pressure vs Altitude overlay and AI metrics, then download the report from here.",
+        title: "Submission Analysis",
+        description: "Review student vs expected overlay and AI metrics, then download the report from here.",
         placement: "bottom",
         forcePageTop: false,
         scrollBlock: "center",
@@ -650,7 +680,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
     );
 
     return steps;
-  }, [isDesignTech, module]);
+  }, [isAuroraActivity, isDesignTech, module]);
 
   const activityTourCurrentStepIndex = useMemo(() => {
     if (!activityTourActiveStepId) return 0;
@@ -903,6 +933,126 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
     setQuizStatus(null);
     return true;
   };
+
+  const activityContextText = useMemo(
+    () => `${module?.title ?? ""} ${module?.description ?? ""} ${module?.judgingLogic ?? ""}`.toLowerCase(),
+    [module?.description, module?.judgingLogic, module?.title],
+  );
+
+  const resolveOverlayAxes = useCallback((codeText: string, plotType: string, activityText: string) => {
+    const normalizedPlotType = plotType.toLowerCase();
+    const normalizedCode = codeText.toLowerCase();
+    const normalizedActivity = activityText.toLowerCase();
+    const axisLabelMap: Record<string, string> = {
+      altitude: "Altitude (m)",
+      distance: "Distance (m)",
+      height: "Height (m)",
+      pressure: "Pressure",
+      temperature: "Temperature",
+      time: "Time",
+      x: "X Position (m)",
+      y: "Y Position (m)",
+    };
+    const cleanToken = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const baseToken = (value: string) => cleanToken(value).split(" ")[0] ?? "";
+    const formatAxisLabel = (value: string) => {
+      const key = baseToken(value);
+      if (axisLabelMap[key]) return axisLabelMap[key];
+      const cleaned = cleanToken(value);
+      if (!cleaned) return "Value";
+      return cleaned
+        .split(" ")
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+    };
+
+    const isAuroraMission =
+      normalizedActivity.includes("aurora") ||
+      normalizedCode.includes("target_x") ||
+      normalizedCode.includes("target y") ||
+      (normalizedCode.includes("vector") && normalizedCode.includes("path efficiency"));
+    if (isAuroraMission) {
+      return { xKey: "x", yKey: "y", xLabel: "X Position (m)", yLabel: "Y Position (m)" };
+    }
+
+    if (normalizedPlotType.includes("vs")) {
+      const parts = normalizedPlotType.split("vs").map((part) => part.trim()).filter(Boolean);
+      if (parts.length >= 2) {
+        const yToken = baseToken(parts[0]) || "y";
+        const xToken = baseToken(parts[1]) || "x";
+        return {
+          xKey: xToken,
+          yKey: yToken,
+          xLabel: formatAxisLabel(parts[1]),
+          yLabel: formatAxisLabel(parts[0]),
+        };
+      }
+    }
+
+    if (normalizedCode.includes("pressure") && (normalizedCode.includes("height") || normalizedCode.includes("altitude"))) {
+      const xKey = normalizedCode.includes("altitude") ? "altitude" : "height";
+      return {
+        xKey,
+        yKey: "pressure",
+        xLabel: formatAxisLabel(xKey),
+        yLabel: formatAxisLabel("pressure"),
+      };
+    }
+
+    if (normalizedCode.includes("time") && normalizedCode.includes("pressure")) {
+      return { xKey: "time", yKey: "pressure", xLabel: formatAxisLabel("time"), yLabel: formatAxisLabel("pressure") };
+    }
+
+    if (normalizedCode.includes("time") && normalizedCode.includes("temperature")) {
+      return { xKey: "time", yKey: "temperature", xLabel: formatAxisLabel("time"), yLabel: formatAxisLabel("temperature") };
+    }
+
+    return { xKey: "x", yKey: "y", xLabel: "X-axis", yLabel: "Y-axis" };
+  }, []);
+
+  const isAuroraMission = useMemo(() => {
+    return (
+      activityContextText.includes("aurora") ||
+      codeDisplay.toLowerCase().includes("target_x") ||
+      codeDisplay.toLowerCase().includes("mission success")
+    );
+  }, [activityContextText, codeDisplay]);
+
+  const auroraTarget = useMemo(() => {
+    const combined = `${codeDisplay}\n${module?.description ?? ""}\n${module?.judgingLogic ?? ""}\n${module?.title ?? ""}`;
+    const patterns = [
+      /target_x\s*,\s*target_y\s*=\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/i,
+      /target_x\s*=\s*(-?\d+(?:\.\d+)?)[\s\S]{0,180}?target_y\s*=\s*(-?\d+(?:\.\d+)?)/i,
+      /reach\s*\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)/i,
+    ];
+
+    for (const pattern of patterns) {
+      const match = pattern.exec(combined);
+      if (!match) continue;
+      const x = Number.parseFloat(match[1]);
+      const y = Number.parseFloat(match[2]);
+      if (Number.isFinite(x) && Number.isFinite(y)) {
+        return { x, y };
+      }
+    }
+    return null;
+  }, [codeDisplay, module?.description, module?.judgingLogic, module?.title]);
+
+  const activePlotHint = useMemo(() => {
+    return (
+      storedUploads?.plotFile?.type ||
+      storedUploads?.plotFile?.name ||
+      plotFile?.type ||
+      plotFile?.name ||
+      ""
+    );
+  }, [plotFile?.name, plotFile?.type, storedUploads?.plotFile?.name, storedUploads?.plotFile?.type]);
+
+  const overlayAxes = useMemo(
+    () => resolveOverlayAxes(codeDisplay, activePlotHint, activityContextText),
+    [activityContextText, activePlotHint, codeDisplay, resolveOverlayAxes],
+  );
 
   const computeAccuracy = (points: PlotPoint[]) => {
     if (points.length < 2) return null;
@@ -1204,30 +1354,22 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
     }
   }, []);
 
-  const parseLogPoints = useCallback((text: string, codeText: string, plotType: string) => {
+  const parseLogPoints = useCallback((text: string, codeText: string, plotType: string, activityText: string) => {
     const points: PlotPoint[] = [];
     const lines = text.split(/\r?\n/);
-    const normalizedPlotType = plotType.toLowerCase();
-    const normalizedCode = codeText.toLowerCase();
-    const findAxisLabels = () => {
-      if (normalizedPlotType.includes("vs")) {
-        const parts = normalizedPlotType.split("vs").map((part) => part.trim());
-        if (parts.length >= 2) {
-          return { x: parts[1], y: parts[0] };
-        }
-      }
-      if (normalizedCode.includes("pressure") && (normalizedCode.includes("height") || normalizedCode.includes("altitude"))) {
-        return { x: normalizedCode.includes("altitude") ? "altitude" : "height", y: "pressure" };
-      }
-      if (normalizedCode.includes("time") && normalizedCode.includes("pressure")) {
-        return { x: "time", y: "pressure" };
-      }
-      if (normalizedCode.includes("time") && normalizedCode.includes("temperature")) {
-        return { x: "time", y: "temperature" };
-      }
-      return null;
+    const axisLabels = resolveOverlayAxes(codeText, plotType, activityText);
+    const normalizeToken = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const axisAliases = (key: string) => {
+      const normalized = normalizeToken(key);
+      if (normalized === "x") return ["x", "xm", "xpos", "xcoordinate", "xcoord"];
+      if (normalized === "y") return ["y", "ym", "ypos", "ycoordinate", "ycoord"];
+      if (normalized === "height") return ["height", "heightm", "heightcm", "altitude", "z", "zm"];
+      if (normalized === "altitude") return ["altitude", "height", "z", "zm"];
+      if (normalized === "pressure") return ["pressure", "press", "pressurekpa"];
+      if (normalized === "temperature") return ["temperature", "temp", "temperaturec"];
+      if (normalized === "time") return ["time", "elapsed", "elapseds", "timestamp"];
+      return [normalized];
     };
-    const axisLabels = findAxisLabels();
     const headerLine = lines.find((line) => {
       const trimmed = line.trim();
       return trimmed && /[a-zA-Z]/.test(trimmed) && !/^-?\d/.test(trimmed);
@@ -1241,10 +1383,22 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
     }
     const findColumnIndex = (label: string) => {
       if (!headerColumns) return -1;
-      return headerColumns.findIndex((col) => col.includes(label));
+      const candidates = axisAliases(label);
+      return headerColumns.findIndex((col) => {
+        const normalizedCol = normalizeToken(col);
+        return candidates.some((candidate) => normalizedCol === candidate || normalizedCol.includes(candidate));
+      });
     };
-    const xIndex = axisLabels?.x ? findColumnIndex(axisLabels.x) : -1;
-    const yIndex = axisLabels?.y ? findColumnIndex(axisLabels.y) : -1;
+    const pickMapValue = (map: Record<string, number>, axisKey: string) => {
+      for (const candidate of axisAliases(axisKey)) {
+        if (map[candidate] !== undefined) {
+          return map[candidate];
+        }
+      }
+      return undefined;
+    };
+    const xIndex = findColumnIndex(axisLabels.xKey);
+    const yIndex = findColumnIndex(axisLabels.yKey);
     lines.forEach((line) => {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith("#")) return;
@@ -1256,11 +1410,13 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
           if (!key || value === undefined) return;
           const parsed = Number.parseFloat(value);
           if (Number.isFinite(parsed)) {
-            map[key.trim().toLowerCase()] = parsed;
+            map[normalizeToken(key.trim().toLowerCase())] = parsed;
           }
         });
-        if (axisLabels?.x && axisLabels?.y && map[axisLabels.x] !== undefined && map[axisLabels.y] !== undefined) {
-          points.push({ x: map[axisLabels.x], y: map[axisLabels.y] });
+        const xValue = pickMapValue(map, axisLabels.xKey);
+        const yValue = pickMapValue(map, axisLabels.yKey);
+        if (xValue !== undefined && yValue !== undefined) {
+          points.push({ x: xValue, y: yValue });
         }
         return;
       }
@@ -1282,7 +1438,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
       points.push({ x: values[0], y: values[1] });
     });
     return points;
-  }, []);
+  }, [resolveOverlayAxes]);
 
   useEffect(() => {
     if (!authChecked || !isAuthenticated) return;
@@ -1644,24 +1800,34 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
       try {
         const res = await fetch(active.logUrl);
         const text = await res.text();
-        const parsedPoints = parseLogPoints(text, codeDisplay, active.plotType || active.plotName || "");
+        const parsedPoints = parseLogPoints(
+          text,
+          codeDisplay,
+          active.plotType || active.plotName || "",
+          activityContextText,
+        );
         setLogPlotPoints(parsedPoints);
       } catch {
         setLogPlotPoints([]);
       }
     };
     loadLog();
-  }, [selectedSubmissionId, submissions, parseLogPoints, codeDisplay]);
+  }, [selectedSubmissionId, submissions, parseLogPoints, codeDisplay, activityContextText]);
 
   const generateReport = useCallback(
-    async (source: { log: File; plot: File }) => {
+    async (source: { log: File; plot?: File | null }) => {
       if (!module) return null;
       let nextReport: AiReport | null = null;
       setReportLoading(true);
       setReportStatus("Generating AI report...");
       try {
         const logText = await source.log.text();
-        const parsedPoints = parseLogPoints(logText, codeDisplay, source.plot.type || source.plot.name || "");
+        const parsedPoints = parseLogPoints(
+          logText,
+          codeDisplay,
+          source.plot?.type || source.plot?.name || "",
+          activityContextText,
+        );
         const accuracyHint = computeAccuracy(parsedPoints);
         setLogPlotPoints(parsedPoints);
         const sopAsset = module.assets.find((a) => a.type === "doc");
@@ -1677,7 +1843,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
             codeText: codeDisplay,
             sopUrl: sopAsset?.url,
             logText,
-            plotType: source.plot.type || source.plot.name,
+            plotType: source.plot?.type || source.plot?.name || "",
             parsedPoints: parsedPoints.slice(0, 500),
             accuracyHint: typeof accuracyHint === "number" ? accuracyHint : undefined,
           }),
@@ -1709,7 +1875,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
       }
       return nextReport;
     },
-    [module, codeDisplay, parseLogPoints],
+    [module, codeDisplay, parseLogPoints, activityContextText],
   );
 
   const downloadReportPdf = useCallback(async () => {
@@ -1942,21 +2108,27 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
       return;
     }
 
-    // Other subjects: require log + plot
-    if (!logFile || !plotFile) {
-      setUploadStatus("Add both the log file and plots to mark this activity as done.");
+    const requiresPlotUpload = !isAuroraActivity;
+    if (!logFile || (requiresPlotUpload && !plotFile)) {
+      setUploadStatus(
+        requiresPlotUpload
+          ? "Add both the log file and plots to mark this activity as done."
+          : "Add your log file to mark this activity as done.",
+      );
       return;
     }
+
+    const selectedPlot = requiresPlotUpload ? plotFile : null;
     setSavingUploads(true);
     setUploadStatus("Generating AI report...");
-    const reportResult = await generateReport({ log: logFile, plot: plotFile });
-    setUploadStatus("Uploading files...");
+    const reportResult = await generateReport({ log: logFile, plot: selectedPlot });
+    setUploadStatus(requiresPlotUpload ? "Uploading files..." : "Uploading log...");
     try {
       const pathPrefix = `${submissionPathPrefix}/${userId}/${module.id}`;
-      const [logUrl, plotUrl] = await Promise.all([
-        uploadFileToBucket({ bucket: submissionsBucket, file: logFile, pathPrefix }),
-        uploadFileToBucket({ bucket: submissionsBucket, file: plotFile, pathPrefix }),
-      ]);
+      const logUrl = await uploadFileToBucket({ bucket: submissionsBucket, file: logFile, pathPrefix });
+      const plotUrl = selectedPlot
+        ? await uploadFileToBucket({ bucket: submissionsBucket, file: selectedPlot, pathPrefix })
+        : "";
       const submissionNumber = nextSubmissionNumber;
       const fallbackSubmission: ActivitySubmission = {
         id: `local-${module.id}-${submissionNumber}-${Date.now()}`,
@@ -1964,8 +2136,8 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
         logUrl,
         logName: logFile.name,
         plotUrl,
-        plotName: plotFile.name,
-        plotType: plotFile.type || plotFile.name,
+        plotName: selectedPlot?.name || "",
+        plotType: selectedPlot ? selectedPlot.type || selectedPlot.name : null,
         report: reportResult,
         reportStatus: reportResult ? "Report ready" : "Report not generated",
         createdAt: new Date().toISOString(),
@@ -1979,8 +2151,8 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
           log_url: logUrl,
           log_name: logFile.name,
           plot_url: plotUrl,
-          plot_name: plotFile.name,
-          plot_type: plotFile.type || plotFile.name,
+          plot_name: selectedPlot?.name || "",
+          plot_type: selectedPlot ? selectedPlot.type || selectedPlot.name : "",
           report_json: reportResult ?? null,
           report_status: reportResult ? "Report ready" : "Report not generated",
         })
@@ -1990,7 +2162,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
       const saved = mapSubmissionRow(data as SubmissionRow, submissions.length);
       const uploads = {
         logFile: buildFileMeta(logFile),
-        plotFile: buildFileMeta(plotFile),
+        ...(selectedPlot ? { plotFile: buildFileMeta(selectedPlot) } : {}),
         uploadedAt: saved.createdAt,
       };
       setSubmissions((prev) => [...prev.filter((item) => item.id !== fallbackSubmission.id), saved]);
@@ -2019,7 +2191,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
       const submissionNumber = nextSubmissionNumber;
       const uploads = {
         logFile: buildFileMeta(logFile),
-        plotFile: buildFileMeta(plotFile),
+        ...(selectedPlot ? { plotFile: buildFileMeta(selectedPlot) } : {}),
         uploadedAt: new Date().toISOString(),
       };
       const finalReport = reportResult ?? null;
@@ -2030,8 +2202,8 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
         logUrl: "",
         logName: logFile.name,
         plotUrl: "",
-        plotName: plotFile.name,
-        plotType: plotFile.type || plotFile.name,
+        plotName: selectedPlot?.name || "",
+        plotType: selectedPlot ? selectedPlot.type || selectedPlot.name : null,
         report: finalReport,
         reportStatus: finalStatus,
         createdAt: uploads.uploadedAt,
@@ -2112,33 +2284,45 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
                   <div>
                     <h3 className="text-lg font-semibold text-white">3D Models</h3>
                     <p className="text-xs text-slate-400">
-                      {stlAssets.length ? `${stlAssets.length} STL file${stlAssets.length > 1 ? "s" : ""}` : "Upload STL files in admin panel."}
+                      {stlModels.length ? `${stlModels.length} STL file${stlModels.length > 1 ? "s" : ""}` : "Upload STL files in admin panel."}
                     </p>
                   </div>
                 </div>
-                {stlAssets.length ? (
+                {stlModels.length ? (
                   <div className="space-y-3">
-                    {stlAssets.map((asset, idx) => {
-                      const name = asset.label || `Model ${idx + 1}`;
-                      const fileName = name.toLowerCase().endsWith(".stl") ? name : `${name}.stl`;
-                      return (
-                        <div key={asset.url} className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2">
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="text-sm font-semibold text-white truncate" title={name}>
-                              {name}
-                            </p>
-                            <button
-                              type="button"
-                              className="px-3 py-1.5 rounded-lg bg-accent text-true-white text-xs font-semibold shadow-glow hover:opacity-90 border border-accent/60"
-                              onClick={() => triggerDownload(asset.url, fileName)}
-                            >
-                              Download
-                            </button>
-                          </div>
-                          <StlPreview url={asset.url} name={name} />
-                        </div>
-                      );
-                    })}
+                    <label className="block text-xs text-slate-300 space-y-2">
+                      Select model
+                      <select
+                        value={selectedStlModel?.url ?? ""}
+                        onChange={(event) => setSelectedStlUrl(event.target.value)}
+                        className="w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                      >
+                        {stlModels.map((asset) => (
+                          <option key={asset.url} value={asset.url} className="text-black">
+                            {asset.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-semibold text-white truncate" title={selectedStlModel?.name ?? ""}>
+                          {selectedStlModel?.name ?? "Selected model"}
+                        </p>
+                        <button
+                          type="button"
+                          className="px-3 py-1.5 rounded-lg bg-accent text-true-white text-xs font-semibold shadow-glow hover:opacity-90 border border-accent/60 disabled:opacity-40"
+                          onClick={() => {
+                            if (!selectedStlModel) return;
+                            triggerDownload(selectedStlModel.url, selectedStlModel.fileName);
+                          }}
+                          disabled={!selectedStlModel}
+                        >
+                          Download selected
+                        </button>
+                      </div>
+                      {selectedStlModel ? <StlPreview url={selectedStlModel.url} name={selectedStlModel.name} /> : null}
+                    </div>
                   </div>
                 ) : (
                   <div className="p-4 rounded-xl border border-dashed border-white/15 bg-white/5 text-sm text-slate-300">
@@ -2284,12 +2468,14 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
             <div>
               <p className="text-xs uppercase tracking-[0.2em] text-accent-strong">Submission</p>
               <h3 className="text-lg font-semibold text-white" data-tour="activity-submission-heading">
-                {isDesignTech ? "Upload design report" : "Upload log + plots"}
+                {isDesignTech ? "Upload design report" : isAuroraActivity ? "Upload log file" : "Upload log + plots"}
               </h3>
               <p className="text-sm text-slate-400">
                 {isDesignTech
                   ? "Upload a PDF/DOC/TXT with your design work."
-                  : "Add your activity log file and plots, then mark this activity as done."}
+                  : isAuroraActivity
+                    ? "Add your activity log file, then mark this activity as done."
+                    : "Add your activity log file and plots, then mark this activity as done."}
               </p>
             </div>
           </div>
@@ -2314,7 +2500,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
               </label>
             </div>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className={`grid gap-4 ${isAuroraActivity ? "md:grid-cols-1" : "md:grid-cols-2"}`}>
               <label className="block text-sm text-slate-300 space-y-2" data-tour="activity-upload-log-file">
                 Upload log file
                 <input
@@ -2335,26 +2521,28 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
                   <p className="text-xs text-slate-400">Previously uploaded: {storedUploads.logFile.name}</p>
                 )}
               </label>
-              <label className="block text-sm text-slate-300 space-y-2" data-tour="activity-upload-plot-file">
-                Upload plots
-                <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] ?? null;
-                    setPlotFile(file);
-                    if (file) setUploadStatus(null);
-                    setReport(null);
-                    setReportStatus(null);
-                    setLogPlotPoints([]);
-                  }}
-                  className="w-full rounded-xl border border-slate-400/60 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none file-accent"
-                />
-                {plotFile?.name && <p className="text-xs text-slate-400">Selected: {plotFile.name}</p>}
-                {!plotFile?.name && storedUploads?.plotFile?.name && (
-                  <p className="text-xs text-slate-400">Previously uploaded: {storedUploads.plotFile.name}</p>
-                )}
-              </label>
+              {!isAuroraActivity ? (
+                <label className="block text-sm text-slate-300 space-y-2" data-tour="activity-upload-plot-file">
+                  Upload plots
+                  <input
+                    type="file"
+                    accept="image/*,.pdf"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] ?? null;
+                      setPlotFile(file);
+                      if (file) setUploadStatus(null);
+                      setReport(null);
+                      setReportStatus(null);
+                      setLogPlotPoints([]);
+                    }}
+                    className="w-full rounded-xl border border-slate-400/60 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none file-accent"
+                  />
+                  {plotFile?.name && <p className="text-xs text-slate-400">Selected: {plotFile.name}</p>}
+                  {!plotFile?.name && storedUploads?.plotFile?.name && (
+                    <p className="text-xs text-slate-400">Previously uploaded: {storedUploads.plotFile.name}</p>
+                  )}
+                </label>
+              ) : null}
             </div>
           )}
 
@@ -2367,7 +2555,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
               onClick={handleMarkDone}
               disabled={
                 savingUploads ||
-                (!isDesignTech && (!logFile || !plotFile)) ||
+                (!isDesignTech && (!logFile || (!isAuroraActivity && !plotFile))) ||
                 (isDesignTech && !plotFile)
               }
             >
@@ -2391,7 +2579,13 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
               {submissionsLoading ? (
                 <div className="text-sm text-slate-300">Loading submissions...</div>
               ) : submissions.length === 0 ? (
-                <div className="text-sm text-slate-300">No submissions yet. Upload your first log and plot.</div>
+                <div className="text-sm text-slate-300">
+                  {isDesignTech
+                    ? "No submissions yet. Upload your first design report."
+                    : isAuroraActivity
+                      ? "No submissions yet. Upload your first log file."
+                      : "No submissions yet. Upload your first log and plot."}
+                </div>
               ) : (
                 <div className="space-y-2">
                   {submissions.map((submission) => {
@@ -2493,16 +2687,55 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
-                  <p className="text-sm font-semibold text-white">Plot overlay (student vs zero-error)</p>
-                  {logPlotPoints.length > 1 && report.overlay?.points?.length ? (
+                {!isAuroraActivity ? (
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+                  <p className="text-sm font-semibold text-white">Plot overlay (student vs activity standard)</p>
+                  {logPlotPoints.length > 1 ? (
                     <div className="space-y-3">
                       <div className="rounded-xl border border-white/10 bg-black/30 p-3">
                         <svg viewBox="0 0 100 100" className="w-full h-[28rem]" aria-label="Plot overlay">
                           <rect x="0" y="0" width="100" height="100" fill="#ffffff" />
                           {(() => {
-                            const xs = logPlotPoints.map((p) => p.x);
-                            const ys = logPlotPoints.map((p) => p.y);
+                            const studentXs = logPlotPoints.map((p) => p.x);
+                            const studentYs = logPlotPoints.map((p) => p.y);
+                            const minStudentX = Math.min(...studentXs);
+                            const maxStudentX = Math.max(...studentXs);
+                            const minStudentY = Math.min(...studentYs);
+                            const maxStudentY = Math.max(...studentYs);
+                            const studentSpanX = maxStudentX - minStudentX || 1;
+                            const studentSpanY = maxStudentY - minStudentY || 1;
+                            const reportOverlayPoints = (report.overlay?.points ?? [])
+                              .filter(
+                                (point) =>
+                                  Number.isFinite(point.x) &&
+                                  Number.isFinite(point.y) &&
+                                  point.x >= 0 &&
+                                  point.x <= 1 &&
+                                  point.y >= 0 &&
+                                  point.y <= 1,
+                              )
+                              .sort((a, b) => a.x - b.x)
+                              .map((point) => ({
+                                x: minStudentX + point.x * studentSpanX,
+                                y: minStudentY + point.y * studentSpanY,
+                              }));
+                            const expectedPoints: PlotPoint[] =
+                              isAuroraMission && auroraTarget
+                                ? [
+                                    { x: 0, y: 0 },
+                                    { x: auroraTarget.x, y: auroraTarget.y },
+                                  ]
+                                : reportOverlayPoints.length > 1
+                                  ? reportOverlayPoints
+                                  : (() => {
+                                      const sortedByX = [...logPlotPoints].sort((a, b) => a.x - b.x);
+                                      const startPoint = sortedByX[0];
+                                      const endPoint = sortedByX[sortedByX.length - 1];
+                                      return startPoint && endPoint ? [startPoint, endPoint] : [];
+                                    })();
+                            const allPoints = [...logPlotPoints, ...expectedPoints];
+                            const xs = allPoints.map((p) => p.x);
+                            const ys = allPoints.map((p) => p.y);
                             const minX = Math.min(...xs);
                             const maxX = Math.max(...xs);
                             const minY = Math.min(...ys);
@@ -2516,6 +2749,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
                             const plotHeight = 78;
                             const plotRight = plotLeft + plotWidth;
                             const plotBottom = plotTop + plotHeight;
+                            const expectedLabel = isAuroraMission ? "Ideal path (Mission AURORA)" : "Expected path (activity)";
                             const formatTick = (value: number, span: number) => {
                               if (span >= 50) return Math.round(value).toString();
                               if (span >= 10) return value.toFixed(1);
@@ -2527,26 +2761,19 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
                               return `${x},${y}`;
                             };
                             const studentPath = logPlotPoints.map(toSvg).join(" ");
-                            const sortedByX = [...logPlotPoints].sort((a, b) => a.x - b.x);
-                            const startPoint = sortedByX[0];
-                            const endPoint = sortedByX[sortedByX.length - 1];
-                            const expectedPath = startPoint && endPoint
-                              ? [startPoint, endPoint].map(toSvg).join(" ")
-                              : "";
-                            const pointMarkers = logPlotPoints
-                              .slice(0, 300)
-                              .map((point, idx) => {
-                                const coords = toSvg(point).split(",");
-                                return (
-                                  <circle
-                                    key={`pt-${idx}`}
-                                    cx={Number.parseFloat(coords[0])}
-                                    cy={Number.parseFloat(coords[1])}
-                                    r="0.8"
-                                    fill="#93c5fd"
-                                  />
-                                );
-                              });
+                            const expectedPath = expectedPoints.length > 1 ? expectedPoints.map(toSvg).join(" ") : "";
+                            const pointMarkers = logPlotPoints.slice(0, 300).map((point, idx) => {
+                              const coords = toSvg(point).split(",");
+                              return (
+                                <circle
+                                  key={`pt-${idx}`}
+                                  cx={Number.parseFloat(coords[0])}
+                                  cy={Number.parseFloat(coords[1])}
+                                  r="0.8"
+                                  fill="#93c5fd"
+                                />
+                              );
+                            });
                             return (
                               <>
                                 {ticks.map((t) => {
@@ -2561,7 +2788,9 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
                                 })}
                                 <polyline points={studentPath} fill="none" stroke="#2563eb" strokeWidth="1.2" />
                                 {pointMarkers}
-                                <polyline points={expectedPath} fill="none" stroke="#dc2626" strokeWidth="1.2" strokeDasharray="2 2" />
+                                {expectedPath ? (
+                                  <polyline points={expectedPath} fill="none" stroke="#dc2626" strokeWidth="1.2" strokeDasharray="2 2" />
+                                ) : null}
                                 {ticks.map((t) => {
                                   const valueX = minX + (t / 4) * spanX;
                                   const valueY = maxY - (t / 4) * spanY;
@@ -2589,7 +2818,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
                                   );
                                 })}
                                 <text x={(plotLeft + plotRight) / 2} y="99" textAnchor="middle" fill="rgba(15,23,42,0.9)" fontSize="3">
-                                  Height (cm)
+                                  {overlayAxes.xLabel}
                                 </text>
                                 <text
                                   x="3.5"
@@ -2599,14 +2828,14 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
                                   fontSize="2.8"
                                   transform="rotate(-90 3.5 50)"
                                 >
-                                  Pressure (kPa)
+                                  {overlayAxes.yLabel}
                                 </text>
                                 <g>
-                                  <rect x="64" y="10" width="26" height="12" rx="2" fill="rgba(255,255,255,0.9)" stroke="none" />
-                                  <line x1="66" y1="14" x2="72" y2="14" stroke="#2563eb" strokeWidth="1.2" />
-                                  <text x="74" y="15.2" fill="rgba(15,23,42,0.9)" fontSize="2.4">Student log</text>
-                                  <line x1="66" y1="19" x2="72" y2="19" stroke="#dc2626" strokeWidth="1.2" strokeDasharray="2 2" />
-                                  <text x="74" y="20.2" fill="#dc2626" fontSize="2.4">Standard (ISA)</text>
+                                  <rect x="57" y="10" width="33" height="12" rx="2" fill="rgba(255,255,255,0.9)" stroke="none" />
+                                  <line x1="59" y1="14" x2="65" y2="14" stroke="#2563eb" strokeWidth="1.2" />
+                                  <text x="67" y="15.2" fill="rgba(15,23,42,0.9)" fontSize="2.4">Student log</text>
+                                  <line x1="59" y1="19" x2="65" y2="19" stroke="#dc2626" strokeWidth="1.2" strokeDasharray="2 2" />
+                                  <text x="67" y="20.2" fill="#dc2626" fontSize="2.4">{expectedLabel}</text>
                                 </g>
                               </>
                             );
@@ -2619,15 +2848,22 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
                           <span className="inline-block h-2 w-2 rounded-full bg-blue-300" /> Student (from log)
                         </span>
                         <span className="flex items-center gap-2">
-                          <span className="inline-block h-2 w-2 rounded-full bg-amber-400" /> Standard (ISA)
+                          <span className="inline-block h-2 w-2 rounded-full bg-rose-300" />
+                          {isAuroraMission ? "Ideal path to Mission target" : "Expected activity path"}
                         </span>
                       </div>
+                      {isAuroraMission && auroraTarget ? (
+                        <p className="text-xs text-slate-400">
+                          Mission standard uses straight vector path from base (0, 0) to target ({auroraTarget.x}, {auroraTarget.y}).
+                        </p>
+                      ) : null}
                       {report.overlay?.note && <p className="text-xs text-slate-400">{report.overlay.note}</p>}
                     </div>
                   ) : (
                     <p className="text-sm text-slate-300">Upload a log with at least two numeric columns to view the overlay.</p>
                   )}
-                </div>
+                  </div>
+                ) : null}
 
                 <div className="grid gap-3 md:grid-cols-2">
                   <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-2">
