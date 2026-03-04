@@ -6,6 +6,10 @@
   --base-font-size: 80%;
 }
 
+html {
+  font-size: var(--base-font-size);
+}
+
 :root,
 :root[data-theme="green"] {
   --background: #f4f1ea;
@@ -60,7 +64,7 @@ body {
     radial-gradient(circle at 40% 86%, var(--bg-layer-3), transparent 34%),
     linear-gradient(160deg, var(--background), var(--background-2) 50%, var(--background-3));
   font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
-  font-size: var(--base-font-size);
+  font-size: 1rem;
   transition: background 0.6s ease, color 0.3s ease;
 }
 

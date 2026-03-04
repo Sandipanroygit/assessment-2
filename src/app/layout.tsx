@@ -2,6 +2,7 @@
 import { Inter } from "next/font/google";
 import SessionAutoLogout from "@/components/SessionAutoLogout";
 import ActivityTracker from "@/components/ActivityTracker";
+import AutoFullscreen from "@/components/AutoFullscreen";
 import { Analytics } from "@vercel/analytics/next";
 import { Suspense } from "react";
 import "./globals.css";
@@ -28,6 +29,7 @@ export default function RootLayout({
       <body
         className={`${inter.variable} antialiased bg-surface text-slate-900 dynamic-bg`}
       >
+        <AutoFullscreen />
         <Suspense fallback={null}>
           <ActivityTracker />
         </Suspense>
