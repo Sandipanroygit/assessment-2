@@ -60,6 +60,7 @@ function LoginPageContent() {
   const [subject, setSubject] = useState<string>(subjectOptions[0]);
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const modeParam = searchParams.get("mode");
   const isEmailNotConfirmed = (status ?? "").toLowerCase().includes("email not confirmed");
   const statusClassName = isEmailNotConfirmed
     ? "rounded-xl border border-rose-300/70 bg-rose-50/90 px-3 py-2 text-sm font-medium text-rose-700"
@@ -80,6 +81,12 @@ function LoginPageContent() {
   useEffect(() => {
     setStatus(null);
   }, [mode]);
+
+  useEffect(() => {
+    if (modeParam === "login" || modeParam === "signup" || modeParam === "reset") {
+      setMode(modeParam);
+    }
+  }, [modeParam]);
 
   const ensureProfile = useCallback(
     async (user: User): Promise<Profile | null> => {
