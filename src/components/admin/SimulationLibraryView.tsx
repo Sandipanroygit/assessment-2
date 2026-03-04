@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 
 type GradeLevel = 9 | 10 | 11 | 12;
 
@@ -15,6 +15,22 @@ type SimulationLink = {
 type SubjectSimulationGroup = {
   subject: string;
   simulations: SimulationLink[];
+};
+
+type AssignSimulationPayload = {
+  subject: string;
+  simulation: SimulationLink;
+};
+
+type SimulationLibraryViewProps = {
+  enableTeacherAssign?: boolean;
+  onAssignSimulation?: (payload: AssignSimulationPayload) => void;
+  studentAssignedButton?: {
+    label: string;
+    onClick: () => void;
+    count?: number;
+    ring?: boolean;
+  } | null;
 };
 
 const ALL_GRADES: GradeLevel[] = [9, 10, 11, 12];
@@ -1147,7 +1163,103 @@ const SUBJECT_FILTERS: Array<{ value: string; label: string }> = [
   ...SIMULATION_LIBRARY.map((group) => ({ value: group.subject, label: group.subject })),
 ];
 
-export function SimulationLibraryView() {
+type SubjectTheme = {
+  accent: string;
+  border: string;
+  surface: string;
+  badgeBackground: string;
+  badgeText: string;
+};
+
+const DEFAULT_SUBJECT_THEME: SubjectTheme = {
+  accent: "#0f766e",
+  border: "#a7f3d0",
+  surface: "#ecfdf5",
+  badgeBackground: "#d1fae5",
+  badgeText: "#065f46",
+};
+
+const SUBJECT_THEMES: Record<string, SubjectTheme> = {
+  Physics: {
+    accent: "#1d4ed8",
+    border: "#bfdbfe",
+    surface: "#eff6ff",
+    badgeBackground: "#dbeafe",
+    badgeText: "#1e3a8a",
+  },
+  Chemistry: {
+    accent: "#c2410c",
+    border: "#fed7aa",
+    surface: "#fff7ed",
+    badgeBackground: "#ffedd5",
+    badgeText: "#9a3412",
+  },
+  Biology: {
+    accent: "#15803d",
+    border: "#bbf7d0",
+    surface: "#f0fdf4",
+    badgeBackground: "#dcfce7",
+    badgeText: "#166534",
+  },
+  Mathematics: {
+    accent: "#0f766e",
+    border: "#99f6e4",
+    surface: "#f0fdfa",
+    badgeBackground: "#ccfbf1",
+    badgeText: "#115e59",
+  },
+  "Computer Science": {
+    accent: "#334155",
+    border: "#cbd5e1",
+    surface: "#f8fafc",
+    badgeBackground: "#e2e8f0",
+    badgeText: "#1e293b",
+  },
+  "Design Technology": {
+    accent: "#be123c",
+    border: "#fecdd3",
+    surface: "#fff1f2",
+    badgeBackground: "#ffe4e6",
+    badgeText: "#9f1239",
+  },
+  "Environmental Systems and Society (ESS)": {
+    accent: "#0e7490",
+    border: "#bae6fd",
+    surface: "#f0f9ff",
+    badgeBackground: "#e0f2fe",
+    badgeText: "#155e75",
+  },
+  Geography: {
+    accent: "#92400e",
+    border: "#fde68a",
+    surface: "#fffbeb",
+    badgeBackground: "#fef3c7",
+    badgeText: "#78350f",
+  },
+  "Economics and Business Studies": {
+    accent: "#4338ca",
+    border: "#c7d2fe",
+    surface: "#eef2ff",
+    badgeBackground: "#e0e7ff",
+    badgeText: "#312e81",
+  },
+  "Astronomy and Space Science": {
+    accent: "#1e3a8a",
+    border: "#bfdbfe",
+    surface: "#eff6ff",
+    badgeBackground: "#dbeafe",
+    badgeText: "#1e3a8a",
+  },
+};
+
+const getSubjectTheme = (subject: string): SubjectTheme =>
+  SUBJECT_THEMES[subject] ?? DEFAULT_SUBJECT_THEME;
+
+export function SimulationLibraryView({
+  enableTeacherAssign = false,
+  onAssignSimulation,
+  studentAssignedButton = null,
+}: SimulationLibraryViewProps) {
   const [gradeFilter, setGradeFilter] = useState<"all" | GradeLevel>("all");
   const [subjectFilter, setSubjectFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
@@ -1190,14 +1302,36 @@ export function SimulationLibraryView() {
               <h2 className="text-xl font-semibold leading-none text-slate-900">Simulation Library</h2>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2 sm:justify-end">
-            <span className="rounded-full bg-emerald-700 px-3 py-1.5 text-sm font-semibold text-true-white">
-              {filteredLibrary.length} subjects visible
-            </span>
-            <span className="rounded-full bg-emerald-700 px-3 py-1.5 text-sm font-semibold text-true-white">
-              {totalLinks} Simulations
-            </span>
-          </div>
+          {studentAssignedButton ? (
+            <button
+              type="button"
+              onClick={studentAssignedButton.onClick}
+              className="inline-flex items-center gap-1 rounded-full bg-emerald-700 pl-2.5 pr-3.5 py-2 text-sm font-semibold text-true-white hover:bg-emerald-600 transition"
+              aria-label="Open assigned simulations"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="#facc15"
+                stroke="#facc15"
+                strokeWidth="1.8"
+                className={`h-6 w-6 shrink-0 ${studentAssignedButton.ring ? "customer-bell-ring" : ""}`}
+              >
+                <path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.172V11a6 6 0 1 0-12 0v3.172a2 2 0 0 1-.6 1.428L4 17h5" />
+                <path d="M9 17a3 3 0 0 0 6 0" />
+              </svg>
+              <span>{studentAssignedButton.label}</span>
+            </button>
+          ) : (
+            <div className="flex flex-wrap gap-2 sm:justify-end">
+              <span className="rounded-full bg-emerald-700 px-3 py-1.5 text-sm font-semibold text-true-white">
+                {filteredLibrary.length} subjects visible
+              </span>
+              <span className="rounded-full bg-emerald-700 px-3 py-1.5 text-sm font-semibold text-true-white">
+                {totalLinks} Simulations
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1274,52 +1408,124 @@ export function SimulationLibraryView() {
         </div>
       ) : (
         <div className="space-y-4">
-          {filteredLibrary.map((group) => (
-            <article key={group.subject} className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3">
-                <h3 className="text-base font-semibold text-slate-900">{group.subject}</h3>
-                <span className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-700">
-                  {group.simulations.length} Simulations
-                </span>
-              </div>
-              <div className="overflow-auto">
-                <table className="table-v1">
-                  <thead>
-                    <tr className="text-left text-slate-700 border-b border-slate-200">
-                      <th className="py-2 pr-3">Simulation</th>
-                      <th className="py-2 pr-3">Focus</th>
-                      <th className="py-2 pr-3">Grades</th>
-                      <th className="py-2 pr-3 whitespace-nowrap">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {group.simulations.map((simulation, index) => (
-                      <tr
-                        key={`${group.subject}-${simulation.url}-${simulation.title}-${index}`}
-                        className={`border-b border-slate-200 transition-colors hover:bg-slate-100 ${
-                          index % 2 === 0 ? "bg-white" : "bg-slate-50/50"
-                        }`}
-                      >
-                        <td className="py-2 pr-3 font-semibold text-slate-900">{simulation.title}</td>
-                        <td className="py-2 pr-3 text-slate-700">{simulation.focus}</td>
-                        <td className="py-2 pr-3 text-slate-700">{simulation.grades.join(", ")}</td>
-                        <td className="py-2 pr-3">
-                          <a
-                            href={simulation.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center justify-center rounded-lg border border-emerald-900 bg-emerald-800 px-3 py-1.5 text-xs font-semibold text-true-white hover:bg-emerald-700 transition whitespace-nowrap"
-                          >
-                            Open
-                          </a>
-                        </td>
+          {filteredLibrary.map((group) => {
+            const theme = getSubjectTheme(group.subject);
+            const rowOddColor = `color-mix(in srgb, ${theme.accent} 10%, white)`;
+            const rowEvenColor = `color-mix(in srgb, ${theme.accent} 4%, white)`;
+            const rowHoverColor = `color-mix(in srgb, ${theme.accent} 16%, white)`;
+            const articleStyle = {
+              borderColor: theme.border,
+              ["--accent" as string]: theme.accent,
+              ["--table-grid-border" as string]: `color-mix(in srgb, ${theme.accent} 24%, transparent)`,
+              backgroundImage: `linear-gradient(160deg, ${theme.surface} 0%, #ffffff 56%, ${theme.badgeBackground} 100%)`,
+            } as CSSProperties;
+
+            return (
+              <article
+                key={group.subject}
+                className="rounded-2xl border overflow-hidden shadow-[0_8px_24px_rgba(15,23,42,0.08)]"
+                style={articleStyle}
+              >
+                <div
+                  className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3"
+                  style={{
+                    borderColor: theme.border,
+                    backgroundImage: `linear-gradient(90deg, ${theme.surface} 0%, #ffffff 62%, ${theme.badgeBackground} 100%)`,
+                  }}
+                >
+                  <h3 className="text-base font-semibold text-slate-900">{group.subject}</h3>
+                  <span
+                    className="rounded-full border px-2.5 py-1 text-xs font-semibold"
+                    style={{
+                      borderColor: theme.border,
+                      backgroundColor: theme.badgeBackground,
+                      color: theme.badgeText,
+                    }}
+                  >
+                    {group.simulations.length} Simulations
+                  </span>
+                </div>
+                <div
+                  className="overflow-auto"
+                  style={{
+                    backgroundImage: `linear-gradient(180deg, ${theme.surface} 0%, #ffffff 70%)`,
+                  }}
+                >
+                  <table className="table-v1 table-fixed">
+                    <colgroup>
+                      <col className="w-[30%]" />
+                      <col className="w-[36%]" />
+                      <col className="w-[16%]" />
+                      <col className="w-[18%]" />
+                    </colgroup>
+                    <thead>
+                      <tr className="text-left text-slate-700 border-b border-slate-200">
+                        <th className="py-2 pr-3">Simulation</th>
+                        <th className="py-2 pr-3">Focus</th>
+                        <th className="py-2 pr-3">Grades</th>
+                        <th className="py-2 pr-3 whitespace-nowrap">Action</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </article>
-          ))}
+                    </thead>
+                    <tbody>
+                      {group.simulations.map((simulation, index) => {
+                        const rowStyle = {
+                          borderColor: theme.border,
+                          background: index % 2 === 0 ? rowOddColor : rowEvenColor,
+                          ["--row-hover" as string]: rowHoverColor,
+                        } as CSSProperties;
+                        return (
+                        <tr
+                          key={`${group.subject}-${simulation.url}-${simulation.title}-${index}`}
+                          className="border-b transition-colors hover:bg-[var(--row-hover)]"
+                          style={rowStyle}
+                        >
+                          <td className="py-2 pr-3 align-top font-semibold text-slate-900">{simulation.title}</td>
+                          <td className="py-2 pr-3 align-top text-slate-700">{simulation.focus}</td>
+                          <td className="py-2 pr-3 align-top whitespace-nowrap text-slate-700">{simulation.grades.join(", ")}</td>
+                          <td className="py-2 pr-3 align-top whitespace-nowrap">
+                            <div className="flex flex-wrap gap-1.5">
+                              <a
+                                href={simulation.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center justify-center rounded-lg border px-3 py-1.5 text-xs font-semibold text-true-white transition whitespace-nowrap"
+                                style={{
+                                  borderColor: theme.accent,
+                                  backgroundImage: `linear-gradient(135deg, ${theme.accent} 0%, ${theme.badgeText} 100%)`,
+                                }}
+                              >
+                                Open
+                              </a>
+                              {enableTeacherAssign && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    onAssignSimulation?.({
+                                      subject: group.subject,
+                                      simulation,
+                                    })
+                                  }
+                                  className="inline-flex items-center justify-center rounded-lg border px-3 py-1.5 text-xs font-semibold transition whitespace-nowrap"
+                                  style={{
+                                    borderColor: theme.accent,
+                                    color: theme.badgeText,
+                                    background: "white",
+                                  }}
+                                >
+                                  Assign
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </article>
+            );
+          })}
         </div>
       )}
     </section>
