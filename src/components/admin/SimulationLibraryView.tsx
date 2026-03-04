@@ -136,191 +136,6 @@ const CK12_CHEMISTRY_SIMULATIONS: SimulationLink[] = [
   "what-is-air",
 ].map((slug) => buildCk12Simulation("chemistry", slug, "CK-12 chemistry simulation and interactive modeling"));
 
-const ADDITIONAL_FREE_SIMULATION_PLATFORMS: SimulationLink[] = [
-  {
-    title: "Concord STEM Resource Finder",
-    provider: "Concord Consortium",
-    url: "https://learn.concord.org/",
-    grades: [9, 10, 11, 12],
-    focus: "Cross-subject STEM interactives and model-based lessons",
-  },
-  {
-    title: "Go-Lab Portal",
-    provider: "Go-Lab",
-    url: "https://www.golabz.eu/",
-    grades: [9, 10, 11, 12],
-    focus: "Online labs and inquiry-learning spaces across subjects",
-  },
-  {
-    title: "LabXchange Virtual Labs Collection",
-    provider: "LabXchange",
-    url: "https://about.labxchange.org/types/virtual-lab-simulations",
-    grades: [9, 10, 11, 12],
-    focus: "Biology and life-science virtual lab pathways",
-  },
-  {
-    title: "GeoGebra Resources Library",
-    provider: "GeoGebra",
-    url: "https://www.geogebra.org/materials",
-    grades: [9, 10, 11, 12],
-    focus: "Math and science interactive applets by topic",
-  },
-  {
-    title: "NetLogo Models Library",
-    provider: "Northwestern University",
-    url: "https://ccl.northwestern.edu/netlogo/models/",
-    grades: [10, 11, 12],
-    focus: "Agent-based models for ecosystems, epidemics, and complex systems",
-  },
-  {
-    title: "Open Source Physics Collection",
-    provider: "ComPADRE",
-    url: "https://www.compadre.org/osp/",
-    grades: [10, 11, 12],
-    focus: "Classical and modern physics simulations and curricular resources",
-  },
-  {
-    title: "The Physics Classroom Interactives",
-    provider: "The Physics Classroom",
-    url: "https://www.physicsclassroom.com/Physics-Interactives",
-    grades: [9, 10, 11, 12],
-    focus: "Curriculum-aligned mechanics, waves, electricity, and optics interactives",
-  },
-  {
-    title: "oPhysics Simulations",
-    provider: "oPhysics",
-    url: "https://ophysics.com/",
-    grades: [10, 11, 12],
-    focus: "Quick visual simulations for force, field, and wave concepts",
-  },
-  {
-    title: "Wolfram Demonstrations Project",
-    provider: "Wolfram",
-    url: "https://demonstrations.wolfram.com/",
-    grades: [10, 11, 12],
-    focus: "Interactive visualizations in math, physics, chemistry, and engineering",
-  },
-  {
-    title: "Shodor Interactivate",
-    provider: "Shodor",
-    url: "https://www.shodor.org/interactivate/",
-    grades: [9, 10, 11, 12],
-    focus: "Math and modeling interactives with classroom-ready activities",
-  },
-  {
-    title: "ChemCollective Activities",
-    provider: "ChemCollective",
-    url: "https://chemcollective.org/activities",
-    grades: [10, 11, 12],
-    focus: "Scenario-based chemistry practice with simulations and assessments",
-  },
-  {
-    title: "Ptable Interactive Periodic Table",
-    provider: "Ptable",
-    url: "https://ptable.com/",
-    grades: [9, 10, 11, 12],
-    focus: "Periodic trends, isotopes, and element data exploration",
-  },
-  {
-    title: "Cell Collective Modeling Platform",
-    provider: "Cell Collective",
-    url: "https://cellcollective.org/",
-    grades: [11, 12],
-    focus: "Dynamic systems-biology network simulations",
-  },
-  {
-    title: "Learn.Genetics Interactives",
-    provider: "University of Utah",
-    url: "https://learn.genetics.utah.edu/",
-    grades: [9, 10, 11, 12],
-    focus: "Genetics and biotechnology simulations and explainers",
-  },
-  {
-    title: "Code.org App Lab",
-    provider: "Code.org",
-    url: "https://studio.code.org/projects/applab",
-    grades: [9, 10, 11, 12],
-    focus: "Web-app prototyping with block/text coding",
-  },
-  {
-    title: "Code.org Game Lab",
-    provider: "Code.org",
-    url: "https://studio.code.org/projects/gamelab",
-    grades: [9, 10, 11, 12],
-    focus: "2D game development with animation and events",
-  },
-  {
-    title: "Microsoft MakeCode Arcade",
-    provider: "Microsoft",
-    url: "https://arcade.makecode.com/",
-    grades: [9, 10, 11, 12],
-    focus: "Game-building and coding simulation environment",
-  },
-  {
-    title: "Microsoft MakeCode micro:bit",
-    provider: "Microsoft",
-    url: "https://makecode.microbit.org/",
-    grades: [9, 10, 11, 12],
-    focus: "Virtual microcontroller coding and hardware logic simulation",
-  },
-  {
-    title: "Algodoo Physics Sandbox",
-    provider: "Algodoo",
-    url: "https://www.algodoo.com/",
-    grades: [9, 10, 11, 12],
-    focus: "2D physics sandbox for force, motion, and collision investigations",
-  },
-  {
-    title: "NOVA Labs",
-    provider: "PBS NOVA",
-    url: "https://www.pbs.org/wgbh/nova/labs/",
-    grades: [9, 10, 11, 12],
-    focus: "Interactive science labs with challenge-based progression",
-  },
-  {
-    title: "GlowScript VPython",
-    provider: "GlowScript",
-    url: "https://www.glowscript.org/",
-    grades: [11, 12],
-    focus: "3D computational modeling for physics and engineering scenarios",
-  },
-  {
-    title: "ExploreLearning Gizmos Catalog",
-    provider: "ExploreLearning",
-    url: "https://gizmos.explorelearning.com/",
-    grades: [9, 10, 11, 12],
-    focus: "Large K-12 simulation catalog (timed guest access for many sims)",
-  },
-  {
-    title: "Tinkercad Learn Projects",
-    provider: "Tinkercad",
-    url: "https://www.tinkercad.com/learn",
-    grades: [9, 10, 11, 12],
-    focus: "Guided design, circuits, and coding simulations",
-  },
-  {
-    title: "NASA Climate Interactives",
-    provider: "NASA",
-    url: "https://climate.nasa.gov/interactives/",
-    grades: [9, 10, 11, 12],
-    focus: "Climate system interactives and scenario exploration",
-  },
-  {
-    title: "NASA Eyes on Earth",
-    provider: "NASA",
-    url: "https://eyes.nasa.gov/apps/earth/",
-    grades: [9, 10, 11, 12],
-    focus: "Earth system visualization with mission and data overlays",
-  },
-  {
-    title: "OpenProcessing",
-    provider: "OpenProcessing",
-    url: "https://openprocessing.org/",
-    grades: [9, 10, 11, 12],
-    focus: "Interactive coding sketches and simulation showcases",
-  },
-];
-
 const SIMULATION_LIBRARY: SubjectSimulationGroup[] = [
   {
     subject: "Physics",
@@ -672,6 +487,69 @@ const SIMULATION_LIBRARY: SubjectSimulationGroup[] = [
         url: "https://gizmos.explorelearning.com/find-gizmos/launch-gizmo?resourceId=662",
         grades: [9, 10, 11, 12],
         focus: "Human body systems (free list / timed guest)",
+      },
+      {
+        title: "Gene Machine: The Lac Operon",
+        provider: "PhET",
+        url: "https://phet.colorado.edu/en/simulation/gene-machine-lac-operon",
+        grades: [10, 11, 12],
+        focus: "Gene regulation and protein synthesis concepts",
+      },
+      {
+        title: "BioMan Biology Virtual Labs",
+        provider: "BioMan Biology",
+        url: "https://biomanbio.com/",
+        grades: [9, 10, 11, 12],
+        focus: "Topic-wise virtual labs across cells, ecology, genetics, and physiology",
+      },
+      {
+        title: "Virtual Biology Lab",
+        provider: "Virtual Biology Lab",
+        url: "https://virtualbiologylab.org/",
+        grades: [10, 11, 12],
+        focus: "Population, ecology, and evolutionary simulation experiments",
+      },
+      {
+        title: "Geniventure",
+        provider: "Concord Consortium",
+        url: "https://concord.org/teaching-genetics/dragons/",
+        grades: [9, 10, 11, 12],
+        focus: "Interactive heredity and meiosis with genetics modeling",
+      },
+      {
+        title: "Learn.Genetics Virtual Labs",
+        provider: "University of Utah",
+        url: "https://learn.genetics.utah.edu/",
+        grades: [9, 10, 11, 12],
+        focus: "Free genetics, cell biology, evolution, and health interactives",
+      },
+      {
+        title: "LabXchange Enzyme Activity Lab",
+        provider: "LabXchange",
+        url: "https://about.labxchange.org/sim-landing-page/enzyme-activity-lab",
+        grades: [9, 10, 11, 12],
+        focus: "Virtual enzyme experiment with pH and reaction-rate analysis",
+      },
+      {
+        title: "NetLogo Wolf Sheep Predation",
+        provider: "NetLogo",
+        url: "https://ccl.northwestern.edu/netlogo/models/WolfSheepPredation",
+        grades: [10, 11, 12],
+        focus: "Predator-prey population dynamics and ecosystem stability",
+      },
+      {
+        title: "The Biology Project",
+        provider: "University of Arizona",
+        url: "https://biology.arizona.edu/the_biology_project/the_biology_project.html",
+        grades: [9, 10, 11, 12],
+        focus: "Interactive biology modules and concept practice sets",
+      },
+      {
+        title: "Cell Collective",
+        provider: "Cell Collective",
+        url: "https://cellcollective.org/",
+        grades: [11, 12],
+        focus: "Systems-biology pathway and network behavior simulations",
       },
     ],
   },
@@ -1109,108 +987,82 @@ const SIMULATION_LIBRARY: SubjectSimulationGroup[] = [
         grades: [10, 11, 12],
         focus: "Economic and development indicators",
       },
-    ],
-  },
-  {
-    subject: "Virtual Lab Networks",
-    simulations: [
       {
-        title: "CBSE E-Resources (DIKSHA Gateway)",
-        provider: "CBSE",
-        url: "https://www.cbse.gov.in/cbsenew/e-resources.html",
-        grades: [9, 10, 11, 12],
-        focus: "Official CBSE gateway for free DIKSHA resources",
+        title: "The Fiscal Ship",
+        provider: "Wilson Center / Brookings",
+        url: "https://teach.fiscalship.org/",
+        grades: [10, 11, 12],
+        focus: "Budget trade-off simulator for deficit and public-policy choices",
       },
       {
-        title: "CBSE Circular: OLabs Free Access",
-        provider: "CBSE Academic",
-        url: "https://cbseacademic.nic.in/web_material/Circulars/2013/15_Olabs.pdf",
+        title: "Econ Lowdown Online Learning",
+        provider: "Federal Reserve Bank of St. Louis",
+        url: "https://www.stlouisfed.org/education/econ-lowdown-online-learning",
         grades: [9, 10, 11, 12],
-        focus: "CBSE circular recommending free OLabs usage",
+        focus: "Free macro, micro, and finance interactives for classrooms",
       },
       {
-        title: "CBSE Circular: Virtual Labs on DIKSHA",
-        provider: "CBSE Academic",
-        url: "https://cbseacademic.nic.in/web_material/Circulars/2022/160_Circular_2022.pdf",
-        grades: [9, 10, 11, 12],
-        focus: "CBSE notice for DIKSHA virtual-lab usage",
+        title: "World Bank DataBank",
+        provider: "World Bank",
+        url: "https://databank.worldbank.org/",
+        grades: [10, 11, 12],
+        focus: "Interactive chart, table, and map exploration for global economic datasets",
       },
       {
-        title: "DIKSHA Virtual Labs",
-        provider: "NCERT / DIKSHA",
-        url: "https://diksha.gov.in/virtuallabs.html",
-        grades: [9, 10, 11, 12],
-        focus: "Simulation catalog for classes 6-12",
-      },
-      {
-        title: "DIKSHA Physics Collection",
-        provider: "NCERT / DIKSHA",
-        url: "https://diksha.gov.in/play/collection/do_3135615477169192961994?contentType=TextBook",
+        title: "WITS Trade Data Platform",
+        provider: "World Bank",
+        url: "https://wits.worldbank.org/",
         grades: [11, 12],
-        focus: "Higher-secondary physics virtual labs",
+        focus: "Global trade, tariff, and competitiveness analysis tools",
       },
       {
-        title: "DIKSHA Chemistry Collection",
-        provider: "NCERT / DIKSHA",
-        url: "https://diksha.gov.in/play/collection/do_3135615460891770881992?contentType=TextBook",
+        title: "WITS Simulation Tools",
+        provider: "World Bank",
+        url: "https://wits.worldbank.org/simulationtool.html",
         grades: [11, 12],
-        focus: "Higher-secondary chemistry virtual labs",
+        focus: "Tariff-cut and trade-outcome simulation modules",
       },
       {
-        title: "DIKSHA Biology Collection",
-        provider: "NCERT / DIKSHA",
-        url: "https://diksha.gov.in/play/collection/do_31356154520482611211123?contentType=TextBook",
+        title: "OECD Data Explorer",
+        provider: "OECD",
+        url: "https://www.oecd.org/en/data/datasets/oecd-DE.html",
+        grades: [10, 11, 12],
+        focus: "Cross-country economic indicators with interactive comparisons",
+      },
+      {
+        title: "IMF Data Portal",
+        provider: "IMF",
+        url: "https://www.imf.org/data",
         grades: [11, 12],
-        focus: "Higher-secondary biology virtual labs",
+        focus: "Macroeconomic indicators and DataMapper-style visual exploration",
       },
       {
-        title: "DIKSHA Computer Science Collection",
-        provider: "NCERT / DIKSHA",
-        url: "https://diksha.gov.in/play/collection/do_3135891166921113601400?contentType=TextBook",
-        grades: [11, 12],
-        focus: "Higher-secondary computer science virtual labs",
+        title: "UNCTAD Data Hub",
+        provider: "UNCTAD",
+        url: "https://unctadstat.unctad.org/",
+        grades: [10, 11, 12],
+        focus: "Trade, development, and macroeconomic data visual analytics",
       },
       {
-        title: "NROER Repository",
-        provider: "CIET-NCERT",
-        url: "https://nroer.gov.in/welcome",
+        title: "Experiencing Economics",
+        provider: "CORE Econ",
+        url: "https://www.core-econ.org/project/experiencing-economics/",
+        grades: [10, 11, 12],
+        focus: "Classroom economics experiments and game-based interactive activities",
+      },
+      {
+        title: "Doing Economics",
+        provider: "CORE Econ",
+        url: "https://www.core-econ.org/project/doing-economics/",
+        grades: [10, 11, 12],
+        focus: "Data-driven economics projects with interactive analytical workflows",
+      },
+      {
+        title: "Imagine Economics",
+        provider: "Imagine Economics",
+        url: "https://imagineeconomics.org/",
         grades: [9, 10, 11, 12],
-        focus: "Open repository with interactive resources",
-      },
-      {
-        title: "Concord - Diffusion",
-        provider: "Concord Consortium",
-        url: "https://learn.concord.org/diffusion",
-        grades: [9, 10, 11, 12],
-        focus: "Particle diffusion simulations",
-      },
-      {
-        title: "Concord - Molecular Workbench",
-        provider: "Concord Consortium",
-        url: "https://learn.concord.org/nextgen-molecular-workbench",
-        grades: [9, 10, 11, 12],
-        focus: "Molecular and chemistry interactive models",
-      },
-      {
-        title: "Concord - SageModeler",
-        provider: "Concord Consortium",
-        url: "https://learn.concord.org/building-models",
-        grades: [9, 10, 11, 12],
-        focus: "System modeling and simulation builder",
-      },
-      {
-        title: "CK-12 Simulations",
-        provider: "CK-12",
-        url: "https://www.ck12.org/sims/",
-        grades: [9, 10, 11, 12],
-        focus: "Physics and chemistry simulation library",
-      },
-      {
-        title: "CK-12 PLIX",
-        provider: "CK-12",
-        url: "https://www.ck12.org/plix/",
-        grades: [9, 10, 11, 12],
-        focus: "Play-Learn-Interact-Explore activities",
+        focus: "Interactive economic models for markets, behavior, and policy intuition",
       },
     ],
   },
@@ -1268,11 +1120,12 @@ const SIMULATION_LIBRARY: SubjectSimulationGroup[] = [
       },
     ],
   },
-  {
-    subject: "Additional Free Simulation Platforms",
-    simulations: ADDITIONAL_FREE_SIMULATION_PLATFORMS,
-  },
 ];
+
+export const SIMULATION_LIBRARY_TOTAL = SIMULATION_LIBRARY.reduce(
+  (sum, group) => sum + group.simulations.length,
+  0,
+);
 
 const GRADE_FILTERS: Array<{ value: "all" | GradeLevel; label: string }> = [
   { value: "all", label: "All (9-12)" },
@@ -1282,13 +1135,21 @@ const GRADE_FILTERS: Array<{ value: "all" | GradeLevel; label: string }> = [
   { value: 12, label: "Grade 12" },
 ];
 
+const SUBJECT_FILTERS: Array<{ value: string; label: string }> = [
+  { value: "all", label: "All subjects" },
+  ...SIMULATION_LIBRARY.map((group) => ({ value: group.subject, label: group.subject })),
+];
+
 export function SimulationLibraryView() {
   const [gradeFilter, setGradeFilter] = useState<"all" | GradeLevel>("all");
+  const [subjectFilter, setSubjectFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
 
   const filteredLibrary = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
-    return SIMULATION_LIBRARY.map((group) => {
+    return SIMULATION_LIBRARY
+      .filter((group) => subjectFilter === "all" || group.subject === subjectFilter)
+      .map((group) => {
       const simulations = group.simulations.filter((simulation) => {
         const matchesGrade = gradeFilter === "all" || simulation.grades.includes(gradeFilter);
         if (!matchesGrade) return false;
@@ -1298,7 +1159,7 @@ export function SimulationLibraryView() {
       });
       return { ...group, simulations };
     }).filter((group) => group.simulations.length > 0);
-  }, [gradeFilter, searchTerm]);
+  }, [gradeFilter, searchTerm, subjectFilter]);
 
   const totalLinks = useMemo(
     () => filteredLibrary.reduce((sum, group) => sum + group.simulations.length, 0),
@@ -1308,8 +1169,8 @@ export function SimulationLibraryView() {
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-6 space-y-5 shadow-[0_12px_30px_rgba(15,23,42,0.08)]" data-tour="admin-simulations-section">
       <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-        <div className="flex flex-col gap-3">
-          <div className="flex items-start gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
             <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-5 w-5">
                 <path d="M7 4h10" />
@@ -1318,22 +1179,16 @@ export function SimulationLibraryView() {
                 <path d="M10 16h4" />
               </svg>
             </div>
-            <div className="space-y-1">
-              <h2 className="text-lg font-semibold text-slate-900">Simulation Library</h2>
-              <p className="text-sm text-slate-700">
-                Free, one-click simulation links for Grades 9-12, organized by subject.
-              </p>
+            <div>
+              <h2 className="text-xl font-semibold leading-none text-slate-900">Simulation Library</h2>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <span className="rounded-full border border-emerald-300 bg-white px-3 py-1 text-xs font-semibold text-emerald-800">
+          <div className="flex flex-wrap gap-2 sm:justify-end">
+            <span className="rounded-full bg-emerald-700 px-3 py-1.5 text-sm font-semibold text-true-white">
               {filteredLibrary.length} subjects visible
             </span>
-            <span className="rounded-full border border-emerald-300 bg-white px-3 py-1 text-xs font-semibold text-emerald-800">
-              {totalLinks} simulation links
-            </span>
-            <span className="rounded-full border border-emerald-300 bg-white px-3 py-1 text-xs font-semibold text-emerald-800">
-              {gradeFilter === "all" ? "All grades" : `Grade ${gradeFilter}`}
+            <span className="rounded-full bg-emerald-700 px-3 py-1.5 text-sm font-semibold text-true-white">
+              {totalLinks} Simulations
             </span>
           </div>
         </div>
@@ -1341,27 +1196,44 @@ export function SimulationLibraryView() {
 
       <div className="rounded-2xl border border-emerald-300 bg-emerald-100 p-4">
         <div className="flex flex-col gap-3">
-          <label className="space-y-2 text-sm text-slate-800">
-            <span className="text-[11px] uppercase tracking-[0.14em] text-emerald-800">Grade Filter</span>
-            <select
-              value={String(gradeFilter)}
-              onChange={(event) => {
-                const value = event.target.value;
-                if (value === "all") {
-                  setGradeFilter("all");
-                  return;
-                }
-                setGradeFilter(Number(value) as GradeLevel);
-              }}
-              className="w-full rounded-lg border border-emerald-300 bg-white px-3 py-2 text-slate-900 focus:border-emerald-500 focus:outline-none"
-            >
-              {GRADE_FILTERS.map((grade) => (
-                <option key={String(grade.value)} value={String(grade.value)} className="text-black">
-                  {grade.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="space-y-2 text-sm text-slate-800">
+              <span className="text-[11px] uppercase tracking-[0.14em] text-emerald-800">Grade Filter</span>
+              <select
+                value={String(gradeFilter)}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  if (value === "all") {
+                    setGradeFilter("all");
+                    return;
+                  }
+                  setGradeFilter(Number(value) as GradeLevel);
+                }}
+                className="w-full rounded-lg border border-emerald-300 bg-white px-3 py-2 text-slate-900 focus:border-emerald-500 focus:outline-none"
+              >
+                {GRADE_FILTERS.map((grade) => (
+                  <option key={String(grade.value)} value={String(grade.value)} className="text-black">
+                    {grade.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="space-y-2 text-sm text-slate-800">
+              <span className="text-[11px] uppercase tracking-[0.14em] text-emerald-800">Select Subject</span>
+              <select
+                value={subjectFilter}
+                onChange={(event) => setSubjectFilter(event.target.value)}
+                className="w-full rounded-lg border border-emerald-300 bg-white px-3 py-2 text-slate-900 focus:border-emerald-500 focus:outline-none"
+              >
+                {SUBJECT_FILTERS.map((subject) => (
+                  <option key={subject.value} value={subject.value} className="text-black">
+                    {subject.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
 
           <label className="space-y-2 text-sm text-slate-800">
             <span className="text-[11px] uppercase tracking-[0.14em] text-emerald-800">Search By Topic</span>
@@ -1378,6 +1250,7 @@ export function SimulationLibraryView() {
               type="button"
               onClick={() => {
                 setGradeFilter("all");
+                setSubjectFilter("all");
                 setSearchTerm("");
               }}
               className="rounded-lg border border-emerald-700 bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-true-white hover:bg-emerald-600 transition"
@@ -1399,7 +1272,7 @@ export function SimulationLibraryView() {
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3">
                 <h3 className="text-base font-semibold text-slate-900">{group.subject}</h3>
                 <span className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-700">
-                  {group.simulations.length} links
+                  {group.simulations.length} Simulations
                 </span>
               </div>
               <div className="overflow-auto">

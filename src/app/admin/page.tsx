@@ -24,7 +24,7 @@ import {
 } from "@/lib/supabaseData";
 import { UploadCurriculumView } from "@/components/admin/UploadCurriculumView";
 import { AdminQuestionsView } from "@/components/admin/AdminQuestionsView";
-import { SimulationLibraryView } from "@/components/admin/SimulationLibraryView";
+import { SIMULATION_LIBRARY_TOTAL, SimulationLibraryView } from "@/components/admin/SimulationLibraryView";
 import { logActivity } from "@/lib/activityLogger";
 import { GuidedTour, type GuidedTourStep } from "@/components/GuidedTour";
 import { playUiClickTone } from "@/lib/uiTone";
@@ -831,7 +831,7 @@ export default function AdminPage() {
             { label: "VR", value: String(vrModuleRows.length) },
           ],
         },
-        { label: "Products live", value: String(productRows.length), delta: "Ready in shop" },
+        { label: "SIMULATIONS LIVE", value: String(SIMULATION_LIBRARY_TOTAL), delta: "" },
         { label: "STEAM-H Project", value: "97", delta: "Student showcase entries" },
         {
           label: "Registered users",
@@ -844,7 +844,7 @@ export default function AdminPage() {
         },
       ];
     },
-    [curriculumRows.length, vrModuleRows.length, productRows.length, userRows],
+    [curriculumRows.length, vrModuleRows.length, userRows],
   );
 
   const userLookup = useMemo(() => {
