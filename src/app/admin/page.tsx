@@ -111,6 +111,25 @@ const mapRoleLabel = (role?: string | null) => {
   return "Student";
 };
 const shortId = (id: string) => (id.length <= 8 ? id : `${id.slice(0, 6)}...${id.slice(-4)}`);
+const getTeacherRequestTypeMeta = (requestType?: string | null) => {
+  const normalized = (requestType ?? "").trim().toLowerCase();
+  if (!normalized || normalized.includes("vr") || normalized.includes("simulation")) {
+    return {
+      label: "VR",
+      badgeClass: "bg-sky-600/80 border-sky-300 text-white",
+    };
+  }
+  if (normalized.includes("drone")) {
+    return {
+      label: "Drone Activity",
+      badgeClass: "bg-amber-600/80 border-amber-300 text-white",
+    };
+  }
+  return {
+    label: requestType?.replace(/[_-]+/g, " ").trim() || "Unknown",
+    badgeClass: "bg-slate-600/80 border-slate-300 text-white",
+  };
+};
 
 type SentimentFile = {
   moduleId: string;
@@ -297,15 +316,18 @@ export default function AdminPage() {
   const unreadTeacherRequests = unreadTeacherRequestItems.length;
   const unreadSalesInquiries = unreadSalesInquiryItems.length;
   const unreadNotifications = useMemo(() => {
-    const teacherItems = unreadTeacherRequestItems.map((req) => ({
-      key: `teacher-${req.id}`,
-      kind: "teacher_request" as const,
-      title: req.teacher_name ? `Teacher request from ${req.teacher_name}` : "Teacher request",
-      detail: [req.subject, req.needed_by ? `Needed by ${formatJoinedDate(req.needed_by)}` : null]
-        .filter(Boolean)
-        .join(" | "),
-      createdAt: req.created_at ?? null,
-    }));
+    const teacherItems = unreadTeacherRequestItems.map((req) => {
+      const typeMeta = getTeacherRequestTypeMeta(req.request_type);
+      return {
+        key: `teacher-${req.id}`,
+        kind: "teacher_request" as const,
+        title: req.teacher_name ? `Teacher request from ${req.teacher_name}` : "Teacher request",
+        detail: [typeMeta.label, req.subject, req.needed_by ? `Needed by ${formatJoinedDate(req.needed_by)}` : null]
+          .filter(Boolean)
+          .join(" | "),
+        createdAt: req.created_at ?? null,
+      };
+    });
     const salesItems = unreadSalesInquiryItems.map((item) => ({
       key: `sales-${item.id}`,
       kind: "sales_query" as const,
@@ -2403,7 +2425,7 @@ export default function AdminPage() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.16em] text-accent-strong">Teacher requests</p>
-                <h2 className="text-lg font-semibold text-white">VR simulations and add-ons</h2>
+                <h2 className="text-lg font-semibold text-white">VR and Drone requests</h2>
               </div>
               <div className="flex gap-2">
                 <button
@@ -2433,6 +2455,7 @@ export default function AdminPage() {
                   <tr className="text-left text-slate-400 border-b border-white/10">
                     <th className="py-2 pr-3">Teacher</th>
                     <th className="py-2 pr-3">Subject</th>
+                    <th className="py-2 pr-3">Type</th>
                     <th className="py-2 pr-3">Requested items</th>
                     <th className="py-2 pr-3">Needed by</th>
                     <th className="py-2 pr-3">Status</th>
@@ -2443,12 +2466,14 @@ export default function AdminPage() {
                 <tbody>
                   {teacherRequests.length === 0 ? (
                     <tr className="border-b border-white/5">
-                      <td className="py-4 pr-3 text-slate-300 text-center" colSpan={7}>
+                      <td className="py-4 pr-3 text-slate-300 text-center" colSpan={8}>
                         No teacher requests yet.
                       </td>
                     </tr>
                   ) : (
-                    teacherRequests.map((req) => (
+                    teacherRequests.map((req) => {
+                      const typeMeta = getTeacherRequestTypeMeta(req.request_type);
+                      return (
                       <tr key={req.id} className="border-b border-white/5">
                         <td className="py-2 pr-3">
                           <div className="font-semibold text-white">{req.teacher_name ?? "Teacher"}</div>
@@ -2457,6 +2482,11 @@ export default function AdminPage() {
                           )}
                         </td>
                         <td className="py-2 pr-3 text-slate-300">{req.subject ?? "-"}</td>
+                        <td className="py-2 pr-3">
+                          <span className={`px-2 py-1 rounded-full text-xs font-semibold border ${typeMeta.badgeClass}`}>
+                            {typeMeta.label}
+                          </span>
+                        </td>
                         <td className="py-2 pr-3 text-slate-300">
                           <div className="space-y-1">
                             {(req.items ?? []).slice(0, 3).map((item) => (
@@ -2489,7 +2519,11 @@ export default function AdminPage() {
                         <td className="py-2 pr-3">
                           <div className="flex gap-2">
                             <button
-                              className="px-3 py-1 rounded-lg bg-white/10 border border-white/15 text-white text-xs hover:border-accent-strong disabled:opacity-50"
+                              className={`px-3 py-1 rounded-lg text-white text-xs font-semibold border outline outline-1 transition disabled:opacity-50 ${
+                                (req.status ?? "pending") === "done"
+                                  ? "bg-amber-600/20 border-amber-300 outline-amber-300/60 hover:bg-amber-600/30"
+                                  : "bg-emerald-600/20 border-emerald-300 outline-emerald-300/60 hover:bg-emerald-600/30"
+                              }`}
                               onClick={() => void updateTeacherRequestStatus(req.id, req.status === "done" ? "pending" : "done")}
                               disabled={updatingRequestId === req.id}
                             >
@@ -2502,7 +2536,8 @@ export default function AdminPage() {
                           </div>
                         </td>
                       </tr>
-                    ))
+                      );
+                    })
                   )}
                 </tbody>
               </table>

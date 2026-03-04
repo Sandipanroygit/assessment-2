@@ -64,12 +64,9 @@ const ANY_OTHER_OPTION = "Any other";
 const TEACHER_TOUR_STORAGE_KEY = "teacher_feature_tour_v2";
 const TEACHER_PROGRESS_TOUR_FORCE_KEY = "teacher_progress_tour_force_once_v2";
 const TEACHER_PROGRESS_TOUR_CHAIN_KEY = "teacher_progress_tour_chain_meta_v2";
-const TEACHER_STUDENTS_TOUR_FORCE_KEY = "teacher_students_tour_force_once_v2";
-const TEACHER_STUDENTS_TOUR_CHAIN_KEY = "teacher_students_tour_chain_meta_v2";
 const TEACHER_DASHBOARD_TOUR_RESUME_KEY = "teacher_dashboard_tour_resume_v2";
 const TEACHER_TOUR_AUTOSTART_KEY = "teacher_dashboard_tour_autostart_v1";
 const TEACHER_PROGRESS_TOUR_STEP_COUNT = 7;
-const TEACHER_STUDENTS_TOUR_STEP_COUNT = 5;
 const STUDENT_TOUR_STORAGE_KEY = "student_feature_tour_v2";
 const STUDENT_ACTIVITY_TOUR_AUTOSTART_KEY = "student_activity_tour_autostart_v2";
 const STUDENT_ACTIVITY_TOUR_CHAIN_KEY = "student_activity_tour_chain_meta_v2";
@@ -1344,14 +1341,6 @@ export default function CustomerPage() {
         placement: "top",
       },
       {
-        id: "menu-students",
-        target: '[data-tour="teacher-menu-students"]',
-        title: "Registered Students Page",
-        description: "Click Next from this step to open Registered Students and continue the walkthrough there.",
-        placement: "left",
-        forcePageTop: true,
-      },
-      {
         id: "menu-signout",
         target: '[data-tour="teacher-menu-signout"]',
         title: "Sign Out Safely",
@@ -1383,8 +1372,6 @@ export default function CustomerPage() {
       window.localStorage.removeItem(TEACHER_DASHBOARD_TOUR_RESUME_KEY);
       window.localStorage.removeItem(TEACHER_PROGRESS_TOUR_FORCE_KEY);
       window.localStorage.removeItem(TEACHER_PROGRESS_TOUR_CHAIN_KEY);
-      window.localStorage.removeItem(TEACHER_STUDENTS_TOUR_FORCE_KEY);
-      window.localStorage.removeItem(TEACHER_STUDENTS_TOUR_CHAIN_KEY);
     }
   }, [teacherTourComputedSteps]);
 
@@ -1405,15 +1392,11 @@ export default function CustomerPage() {
       window.localStorage.removeItem(TEACHER_DASHBOARD_TOUR_RESUME_KEY);
       window.localStorage.removeItem(TEACHER_PROGRESS_TOUR_FORCE_KEY);
       window.localStorage.removeItem(TEACHER_PROGRESS_TOUR_CHAIN_KEY);
-      window.localStorage.removeItem(TEACHER_STUDENTS_TOUR_FORCE_KEY);
-      window.localStorage.removeItem(TEACHER_STUDENTS_TOUR_CHAIN_KEY);
     }
   }, []);
 
   const teacherTourDisplayTotal = useMemo(
-    () =>
-      teacherTourDisplayTotalOverride ??
-      (teacherTourSteps.length + TEACHER_PROGRESS_TOUR_STEP_COUNT + TEACHER_STUDENTS_TOUR_STEP_COUNT),
+    () => teacherTourDisplayTotalOverride ?? (teacherTourSteps.length + TEACHER_PROGRESS_TOUR_STEP_COUNT),
     [teacherTourDisplayTotalOverride, teacherTourSteps.length],
   );
 
@@ -1458,34 +1441,6 @@ export default function CustomerPage() {
         return;
       }
 
-      if (currentStepId === "menu-students" && isAdvancing) {
-        setTeacherTourResumeMeta(null);
-        setTeacherTourRun(false);
-        setTeacherTourActiveStepId(null);
-        setTeacherTourLockedSteps(null);
-        setTeacherTourDisplayOffset(0);
-        setTeacherTourDisplayTotalOverride(null);
-        setNotificationsOpen(false);
-        setTeacherMenuOpen(false);
-        setRequestOpen(false);
-        setTeacherQueriesOpen(false);
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem(TEACHER_TOUR_STORAGE_KEY, "done");
-          window.localStorage.setItem(TEACHER_STUDENTS_TOUR_FORCE_KEY, "1");
-          window.localStorage.setItem(
-            TEACHER_STUDENTS_TOUR_CHAIN_KEY,
-            JSON.stringify({
-              offset: shownCurrentStepNumber,
-              returnToDashboard: true,
-              resumeStepId: "menu-signout",
-              total: teacherTourDisplayTotal,
-            }),
-          );
-        }
-        router.push("/teacher/students");
-        return;
-      }
-
       if (nextStepIndex >= teacherTourSteps.length) {
         closeTeacherTour(true);
         return;
@@ -1518,7 +1473,6 @@ export default function CustomerPage() {
       "menu-panel",
       "menu-raise-request",
       "menu-progress",
-      "menu-students",
       "menu-queries",
       "menu-signout",
     ]);
@@ -2991,6 +2945,31 @@ export default function CustomerPage() {
                         <p className="text-xs text-slate-500">Customer dashboard</p>
                       </div>
                     </Link>
+                    <Link
+                      href="/simulations"
+                      onClick={() => setTeacherMenuOpen(false)}
+                      className="flex items-center gap-3 rounded-xl px-3 py-2.5 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300/60 text-sm text-slate-800 transition"
+                    >
+                      <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600 border border-emerald-400 text-true-white shadow-glow">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.9"
+                          className="h-5 w-5"
+                        >
+                          <path d="M7 4h10" />
+                          <path d="M9 4v3l-4.5 8a3 3 0 0 0 2.6 4.5h10.8a3 3 0 0 0 2.6-4.5L16 7V4" />
+                          <path d="M8 13h8" />
+                          <path d="M10 16h4" />
+                        </svg>
+                      </span>
+                      <div className="text-left">
+                        <p className="font-semibold">Simulations</p>
+                        <p className="text-xs text-slate-500">Open full simulation library</p>
+                      </div>
+                    </Link>
                     <button
                       data-tour="teacher-menu-raise-request"
                       className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300/60 text-sm text-slate-800 transition"
@@ -3105,30 +3084,6 @@ export default function CustomerPage() {
                       <div className="text-left">
                         <p className="font-semibold">STEAM-H Task</p>
                         <p className="text-xs text-slate-500">Create STEAM-H work for students</p>
-                      </div>
-                    </Link>
-                    <Link
-                      href="/teacher/students"
-                      data-tour="teacher-menu-students"
-                      onClick={() => setTeacherMenuOpen(false)}
-                      className="flex items-center gap-3 rounded-xl px-3 py-2.5 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300/60 text-sm text-slate-800 transition"
-                    >
-                      <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500 border border-emerald-300 text-true-white shadow-glow">
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.8"
-                          className="h-5 w-5"
-                        >
-                          <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z" />
-                          <path d="M5 20a7 7 0 0 1 14 0" />
-                        </svg>
-                      </span>
-                      <div className="text-left">
-                        <p className="font-semibold">Registered student</p>
-                        <p className="text-xs text-slate-500">View subject-matched list</p>
                       </div>
                     </Link>
                     <button
@@ -3307,6 +3262,31 @@ export default function CustomerPage() {
                         <div className="text-left">
                           <p className="font-semibold">Back to Home</p>
                           <p className="text-xs text-slate-500">Customer dashboard</p>
+                        </div>
+                      </Link>
+                      <Link
+                        href="/simulations"
+                        onClick={() => setTeacherMenuOpen(false)}
+                        className="flex items-center gap-3 rounded-xl px-3 py-2.5 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300/60 text-sm text-slate-800 transition"
+                      >
+                        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600 border border-emerald-400 text-true-white shadow-glow">
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.9"
+                            className="h-5 w-5"
+                          >
+                            <path d="M7 4h10" />
+                            <path d="M9 4v3l-4.5 8a3 3 0 0 0 2.6 4.5h10.8a3 3 0 0 0 2.6-4.5L16 7V4" />
+                            <path d="M8 13h8" />
+                            <path d="M10 16h4" />
+                          </svg>
+                        </span>
+                        <div className="text-left">
+                          <p className="font-semibold">Simulations</p>
+                          <p className="text-xs text-slate-500">Open full simulation library</p>
                         </div>
                       </Link>
                       <button

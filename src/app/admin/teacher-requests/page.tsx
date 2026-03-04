@@ -21,6 +21,25 @@ type TeacherRequest = {
 
 const formatJoinedDate = (value?: string | null) => (value ? new Date(value).toLocaleDateString() : "-");
 const shortId = (id: string) => (id.length <= 8 ? id : `${id.slice(0, 6)}...${id.slice(-4)}`);
+const getTeacherRequestTypeMeta = (requestType?: string | null) => {
+  const normalized = (requestType ?? "").trim().toLowerCase();
+  if (!normalized || normalized.includes("vr") || normalized.includes("simulation")) {
+    return {
+      label: "VR",
+      badgeClass: "bg-sky-600/80 border-sky-300 text-white",
+    };
+  }
+  if (normalized.includes("drone")) {
+    return {
+      label: "Drone Activity",
+      badgeClass: "bg-amber-600/80 border-amber-300 text-white",
+    };
+  }
+  return {
+    label: requestType?.replace(/[_-]+/g, " ").trim() || "Unknown",
+    badgeClass: "bg-slate-600/80 border-slate-300 text-white",
+  };
+};
 
 export default function AdminTeacherRequestsPage() {
   const router = useRouter();
@@ -148,7 +167,7 @@ export default function AdminTeacherRequestsPage() {
           <p className="text-accent-strong uppercase text-xs tracking-[0.2em]">Admin</p>
           <h1 className="text-3xl font-semibold text-white">Teacher Requests</h1>
           <p className="text-slate-300 text-sm mt-2">
-            Review and action teacher VR simulation requests without leaving the control room.
+            Review and action teacher VR and Drone requests without leaving the control room.
           </p>
         </div>
         <div className="flex gap-3">
@@ -179,7 +198,7 @@ export default function AdminTeacherRequestsPage() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-[0.16em] text-accent-strong">Teacher requests</p>
-              <h2 className="text-lg font-semibold text-white">VR simulations and add-ons</h2>
+              <h2 className="text-lg font-semibold text-white">VR and Drone requests</h2>
             </div>
           </div>
 
@@ -195,6 +214,7 @@ export default function AdminTeacherRequestsPage() {
                 <tr className="text-left text-slate-400 border-b border-white/10">
                   <th className="py-2 pr-3">Teacher</th>
                   <th className="py-2 pr-3">Subject</th>
+                  <th className="py-2 pr-3">Type</th>
                   <th className="py-2 pr-3">Requested items</th>
                   <th className="py-2 pr-3">Needed by</th>
                   <th className="py-2 pr-3">Status</th>
@@ -205,18 +225,25 @@ export default function AdminTeacherRequestsPage() {
               <tbody>
                 {teacherRequests.length === 0 ? (
                   <tr className="border-b border-white/5">
-                    <td className="py-2 pr-3 text-slate-300" colSpan={7}>
+                    <td className="py-2 pr-3 text-slate-300" colSpan={8}>
                       No teacher requests yet.
                     </td>
                   </tr>
                 ) : (
-                  teacherRequests.map((req) => (
+                  teacherRequests.map((req) => {
+                    const typeMeta = getTeacherRequestTypeMeta(req.request_type);
+                    return (
                     <tr key={req.id} className="border-b border-white/5">
                       <td className="py-2 pr-3">
                         <div className="font-semibold text-white">{req.teacher_name ?? "Teacher"}</div>
                         {req.teacher_id && <div className="text-xs text-slate-400">{shortId(req.teacher_id)}</div>}
                       </td>
                       <td className="py-2 pr-3 text-slate-300">{req.subject ?? "-"}</td>
+                      <td className="py-2 pr-3">
+                        <span className={`px-2 py-1 rounded-full text-xs font-semibold border ${typeMeta.badgeClass}`}>
+                          {typeMeta.label}
+                        </span>
+                      </td>
                       <td className="py-2 pr-3 text-slate-300">
                         <div className="space-y-1">
                           {(req.items ?? []).slice(0, 3).map((item) => (
@@ -245,7 +272,11 @@ export default function AdminTeacherRequestsPage() {
                       <td className="py-2 pr-3">
                         <div className="flex gap-2">
                           <button
-                            className="px-3 py-1 rounded-lg bg-white/10 border border-white/15 text-white text-xs hover:border-accent-strong disabled:opacity-50"
+                            className={`px-3 py-1 rounded-lg text-white text-xs font-semibold border outline outline-1 transition disabled:opacity-50 ${
+                              (req.status ?? "pending") === "done"
+                                ? "bg-amber-600/20 border-amber-300 outline-amber-300/60 hover:bg-amber-600/30"
+                                : "bg-emerald-600/20 border-emerald-300 outline-emerald-300/60 hover:bg-emerald-600/30"
+                            }`}
                             onClick={() => void updateTeacherRequestStatus(req.id, req.status === "done" ? "pending" : "done")}
                             disabled={updatingRequestId === req.id}
                           >
@@ -254,7 +285,8 @@ export default function AdminTeacherRequestsPage() {
                         </div>
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>
