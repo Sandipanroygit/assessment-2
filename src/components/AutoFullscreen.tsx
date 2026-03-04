@@ -61,6 +61,91 @@ export default function AutoFullscreen() {
   const [showScrollPrompt, setShowScrollPrompt] = useState(false);
   const needsGestureRef = useRef(false);
   const gestureFailureCountRef = useRef(0);
+  const scrollLockYRef = useRef(0);
+  const scrollLockedRef = useRef(false);
+  const bodyStyleSnapshotRef = useRef<{
+    position: string;
+    top: string;
+    left: string;
+    right: string;
+    width: string;
+    overflow: string;
+    touchAction: string;
+  } | null>(null);
+  const htmlOverscrollSnapshotRef = useRef<string | null>(null);
+
+  const lockScroll = useCallback((y: number) => {
+    if (typeof document === "undefined" || scrollLockedRef.current) {
+      return;
+    }
+
+    const body = document.body;
+    const html = document.documentElement;
+    bodyStyleSnapshotRef.current = {
+      position: body.style.position,
+      top: body.style.top,
+      left: body.style.left,
+      right: body.style.right,
+      width: body.style.width,
+      overflow: body.style.overflow,
+      touchAction: body.style.touchAction,
+    };
+    htmlOverscrollSnapshotRef.current = html.style.overscrollBehavior;
+
+    scrollLockYRef.current = y;
+    body.style.position = "fixed";
+    body.style.top = `-${y}px`;
+    body.style.left = "0";
+    body.style.right = "0";
+    body.style.width = "100%";
+    body.style.overflow = "hidden";
+    body.style.touchAction = "none";
+    html.style.overscrollBehavior = "none";
+    scrollLockedRef.current = true;
+  }, []);
+
+  const unlockScroll = useCallback(() => {
+    if (typeof document === "undefined" || !scrollLockedRef.current) {
+      return;
+    }
+
+    const body = document.body;
+    const html = document.documentElement;
+    const snapshot = bodyStyleSnapshotRef.current;
+    if (snapshot) {
+      body.style.position = snapshot.position;
+      body.style.top = snapshot.top;
+      body.style.left = snapshot.left;
+      body.style.right = snapshot.right;
+      body.style.width = snapshot.width;
+      body.style.overflow = snapshot.overflow;
+      body.style.touchAction = snapshot.touchAction;
+    } else {
+      body.style.position = "";
+      body.style.top = "";
+      body.style.left = "";
+      body.style.right = "";
+      body.style.width = "";
+      body.style.overflow = "";
+      body.style.touchAction = "";
+    }
+
+    html.style.overscrollBehavior = htmlOverscrollSnapshotRef.current ?? "";
+    window.scrollTo(0, scrollLockYRef.current);
+
+    bodyStyleSnapshotRef.current = null;
+    htmlOverscrollSnapshotRef.current = null;
+    scrollLockedRef.current = false;
+  }, []);
+
+  const showPromptWithoutScroll = useCallback(() => {
+    const currentY = window.scrollY;
+    setShowScrollPrompt(true);
+    lockScroll(currentY);
+    requestAnimationFrame(() => {
+      window.scrollTo(0, currentY);
+    });
+  }, [lockScroll]);
 
   const attemptFullscreen = useCallback(async (isUserGesture: boolean) => {
     if (typeof document === "undefined" || !needsGestureRef.current) {
@@ -105,6 +190,7 @@ export default function AutoFullscreen() {
       needsGestureRef.current = !fullscreenActive;
       if (fullscreenActive) {
         setShowScrollPrompt(false);
+        unlockScroll();
       }
     };
 
@@ -126,7 +212,7 @@ export default function AutoFullscreen() {
 
       if (SCROLL_KEYS.has(event.key)) {
         event.preventDefault();
-        setShowScrollPrompt(true);
+        showPromptWithoutScroll();
         return;
       }
 
@@ -138,8 +224,10 @@ export default function AutoFullscreen() {
         return;
       }
 
-      event.preventDefault();
-      setShowScrollPrompt(true);
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+      showPromptWithoutScroll();
     };
 
     const onTouchMove = (event: TouchEvent) => {
@@ -147,8 +235,10 @@ export default function AutoFullscreen() {
         return;
       }
 
-      event.preventDefault();
-      setShowScrollPrompt(true);
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+      showPromptWithoutScroll();
     };
 
     const onFullscreenChange = () => {
@@ -174,7 +264,15 @@ export default function AutoFullscreen() {
       doc.removeEventListener("webkitfullscreenchange", onFullscreenChange as EventListener);
       doc.removeEventListener("MSFullscreenChange", onFullscreenChange as EventListener);
     };
-  }, [attemptFullscreen]);
+  }, [attemptFullscreen, showPromptWithoutScroll, unlockScroll]);
+
+  useEffect(() => {
+    if (showScrollPrompt) {
+      lockScroll(window.scrollY);
+      return;
+    }
+    unlockScroll();
+  }, [lockScroll, showScrollPrompt, unlockScroll]);
 
   const handleChoice = useCallback(
     (choice: "auth" | "skip") => {
