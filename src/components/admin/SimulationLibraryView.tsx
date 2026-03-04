@@ -30,17 +30,24 @@ const titleFromSlug = (slug: string) =>
     })
     .join(" ");
 
+const ck12FocusFromSlug = (stream: "physics" | "chemistry", slug: string) => {
+  const moduleTitle = titleFromSlug(slug);
+  if (stream === "physics") {
+    return `${moduleTitle} module for core physics concepts`;
+  }
+  return `${moduleTitle} module for core chemistry concepts`;
+};
+
 const buildCk12Simulation = (
   stream: "physics" | "chemistry",
   slug: string,
-  focus: string,
   grades: GradeLevel[] = ALL_GRADES,
 ): SimulationLink => ({
   title: titleFromSlug(slug),
   provider: "CK-12 Simulations",
   url: `https://interactives.ck12.org/simulations/${stream}/${slug}/app/index.html`,
   grades,
-  focus,
+  focus: ck12FocusFromSlug(stream, slug),
 });
 
 const CK12_PHYSICS_SIMULATIONS: SimulationLink[] = [
@@ -110,7 +117,7 @@ const CK12_PHYSICS_SIMULATIONS: SimulationLink[] = [
   "touch-screen",
   "unicycle",
   "yo-yo",
-].map((slug) => buildCk12Simulation("physics", slug, "CK-12 physics concept exploration"));
+].map((slug) => buildCk12Simulation("physics", slug));
 
 const CK12_CHEMISTRY_SIMULATIONS: SimulationLink[] = [
   "atom-builder",
@@ -134,7 +141,7 @@ const CK12_CHEMISTRY_SIMULATIONS: SimulationLink[] = [
   "solubility",
   "states-of-matter",
   "what-is-air",
-].map((slug) => buildCk12Simulation("chemistry", slug, "CK-12 chemistry simulation and interactive modeling"));
+].map((slug) => buildCk12Simulation("chemistry", slug));
 
 const SIMULATION_LIBRARY: SubjectSimulationGroup[] = [
   {
