@@ -17,6 +17,8 @@ import { playUiClickTone } from "@/lib/uiTone";
 
 const normalizeSubject = (subject: string) =>
   subject?.toLowerCase() === "maths" ? "Mathematics" : subject;
+const normalizeStatusValue = (value: unknown) => (typeof value === "string" ? value.trim().toLowerCase() : "");
+const normalizeTextValue = (value: unknown) => (typeof value === "string" ? value.trim().toLowerCase() : "");
 
 type NotificationRow = {
   id: string;
@@ -102,16 +104,17 @@ export default function CustomerPage() {
   const [notificationStatus, setNotificationStatus] = useState<string | null>(null);
   const [markingId, setMarkingId] = useState<string | null>(null);
   const unreadCount = useMemo(
-    () => notifications.filter((n) => n.status === "unread").length,
+    () => notifications.filter((n) => normalizeStatusValue(n.status) === "unread").length,
     [notifications],
   );
   const hasUnreadSimulationAssignment = useMemo(
     () =>
       notifications.some(
-        (n) =>
-          n.status === "unread" &&
-          ((n.title ?? "").toLowerCase().includes("simulation assigned") ||
-            (n.message ?? "").toLowerCase().includes("assigned a simulation")),
+        (n) => {
+          if (normalizeStatusValue(n.status) !== "unread") return false;
+          const combinedText = `${normalizeTextValue(n.title)} ${normalizeTextValue(n.message)} ${normalizeTextValue(n.subject)}`;
+          return combinedText.includes("simulation") && combinedText.includes("assign");
+        },
       ),
     [notifications],
   );
@@ -3150,6 +3153,7 @@ export default function CustomerPage() {
                     viewBox="0 0 24 24"
                     fill={hasUnreadSimulationAssignment ? "#dc2626" : "#facc15"}
                     stroke={hasUnreadSimulationAssignment ? "#fbbf24" : "#111827"}
+                    style={hasUnreadSimulationAssignment ? { fill: "#dc2626", stroke: "#fbbf24" } : undefined}
                     strokeWidth="1.8"
                     strokeLinecap="round"
                     strokeLinejoin="round"
