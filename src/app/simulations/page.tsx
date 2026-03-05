@@ -161,6 +161,17 @@ export default function SimulationsPage() {
     };
   }, [loadStudentAssignments, loadTeacherGrades]);
 
+  useEffect(() => {
+    if (!isStudent || !studentAssignmentsOpen || !sessionToken) return;
+
+    void loadStudentAssignments(sessionToken);
+    const intervalId = window.setInterval(() => {
+      void loadStudentAssignments(sessionToken);
+    }, 15000);
+
+    return () => window.clearInterval(intervalId);
+  }, [isStudent, loadStudentAssignments, sessionToken, studentAssignmentsOpen]);
+
   const openAssignModal = useCallback((payload: { subject: string; simulation: { title: string; url: string; provider: string; focus: string } }) => {
     if (!isTeacher) return;
     setSelectedSimulation({

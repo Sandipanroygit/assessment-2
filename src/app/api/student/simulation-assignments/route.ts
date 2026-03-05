@@ -54,23 +54,26 @@ export async function GET(req: Request) {
     }
 
     const student = userData.user;
-    const role = normalizeRole(student.user_metadata?.role);
+    const roleFromMeta = normalizeRole(student.user_metadata?.role);
+
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from("profiles")
+      .select("role,grade")
+      .eq("id", student.id)
+      .maybeSingle();
+    if (profileError) {
+      return NextResponse.json({ error: profileError.message }, { status: 500 });
+    }
+
+    const roleFromProfile = normalizeRole(profile?.role);
+    const role = roleFromMeta || roleFromProfile;
     if (!isStudentLikeRole(role)) {
       return NextResponse.json({ error: "Only students can view assigned simulations" }, { status: 403 });
     }
 
-    let grade = (student.user_metadata?.grade as string | undefined)?.trim() ?? "";
-    if (!grade) {
-      const { data: profile, error: profileError } = await supabaseAdmin
-        .from("profiles")
-        .select("grade")
-        .eq("id", student.id)
-        .maybeSingle();
-      if (profileError) {
-        return NextResponse.json({ error: profileError.message }, { status: 500 });
-      }
-      grade = (profile?.grade ?? "").trim();
-    }
+    const gradeFromMeta = (student.user_metadata?.grade as string | undefined)?.trim() ?? "";
+    const gradeFromProfile = (profile?.grade ?? "").trim();
+    const grade = gradeFromProfile || gradeFromMeta;
 
     const gradeKey = normalizeGradeKey(grade);
     if (!gradeKey) {
