@@ -2785,10 +2785,13 @@ export default function CustomerPage() {
       )}
 
       <div
-        className="sticky top-0 z-30 rounded-2xl border border-white/10 bg-surface/65 p-3 shadow-[0_10px_30px_rgba(0,0,0,0.2)] backdrop-blur-xl"
-        data-tour={role === "teacher" ? "teacher-header" : "student-header"}
+        className="sticky top-0 z-30 isolate -mx-[clamp(1.25rem,4vw,4rem)] -mt-[clamp(2rem,4vw,3.5rem)] space-y-3 overflow-visible rounded-none border border-white/35 bg-white/30 supports-[backdrop-filter]:bg-white/16 px-3 pb-3 pt-[clamp(2rem,4vw,3.5rem)] shadow-[0_26px_56px_rgba(15,23,42,0.24)] backdrop-blur-3xl backdrop-saturate-150"
       >
-        <div className="flex flex-wrap items-start justify-between gap-4">
+        <div
+          className="relative z-20 rounded-none border border-white/28 bg-white/35 supports-[backdrop-filter]:bg-white/20 p-3 shadow-[0_10px_24px_rgba(15,23,42,0.16)] backdrop-blur-2xl"
+          data-tour={role === "teacher" ? "teacher-header" : "student-header"}
+        >
+          <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-1">
             <p className="text-xs uppercase tracking-[0.2em] text-accent-strong">{roleDisplayLabel}</p>
             <h1 className="text-3xl font-semibold text-white leading-tight">Hi {fullName}</h1>
@@ -3305,11 +3308,11 @@ export default function CustomerPage() {
               </div>
             </div>
           )}
+          </div>
         </div>
-      </div>
 
       {role === "teacher" && (
-        <section className="relative rounded-3xl border border-accent/35 bg-gradient-to-r from-white/45 via-white/20 to-white/45 supports-[backdrop-filter]:bg-white/10 p-2.5 shadow-[0_14px_36px_rgba(0,0,0,0.14)] backdrop-blur-2xl backdrop-saturate-150">
+        <section className="relative z-10 rounded-none border border-white/28 bg-white/35 supports-[backdrop-filter]:bg-white/20 p-2.5 shadow-[0_12px_26px_rgba(15,23,42,0.14)] backdrop-blur-2xl">
           <div className="flex flex-wrap gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <a
               href="#curriculum"
@@ -3398,7 +3401,7 @@ export default function CustomerPage() {
       )}
 
       {role !== "teacher" && (
-        <section className="relative rounded-3xl border border-stone-300/75 bg-gradient-to-r from-stone-100 via-amber-50/80 to-zinc-100/95 p-2.5 ring-1 ring-white/70 shadow-[0_20px_38px_rgba(120,113,108,0.22),inset_0_2px_0_rgba(255,255,255,0.88)]">
+        <section className="relative z-10 rounded-none border border-white/28 bg-white/35 supports-[backdrop-filter]:bg-white/20 p-2.5 shadow-[0_12px_26px_rgba(15,23,42,0.14)] backdrop-blur-2xl">
           <div className="flex flex-wrap gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {studentDroneActivityHref ? (
               <Link
@@ -3408,9 +3411,9 @@ export default function CustomerPage() {
                     markModuleSeen(studentTourTargetModuleId);
                   }
                 }}
-                className="group relative shrink-0 inline-flex items-center gap-2 rounded-2xl border ring-1 ring-inset px-4 py-2.5 text-sm font-semibold transition-all bg-amber-100 text-slate-900 border-amber-300 shadow-[0_8px_18px_rgba(120,113,108,0.18)] ring-black/20"
+                className="group relative shrink-0 inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition-all bg-accent text-true-white border-accent-strong/40 shadow-glow hover:-translate-y-0.5"
               >
-                <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg border bg-amber-200/70 border-amber-300 text-amber-900">
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-accent-strong/90 text-true-white">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-4 w-4">
                     <path d="M12 10v4" />
                     <path d="M10 12h4" />
@@ -3429,9 +3432,9 @@ export default function CustomerPage() {
             ) : (
               <a
                 href="#curriculum"
-                className="group relative shrink-0 inline-flex items-center gap-2 rounded-2xl border ring-1 ring-inset px-4 py-2.5 text-sm font-semibold transition-all bg-amber-100 text-slate-900 border-amber-300 shadow-[0_8px_18px_rgba(120,113,108,0.18)] ring-black/20"
+                className="group relative shrink-0 inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition-all bg-accent text-true-white border-accent-strong/40 shadow-glow hover:-translate-y-0.5"
               >
-                <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg border bg-amber-200/70 border-amber-300 text-amber-900">
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-accent-strong/90 text-true-white">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-4 w-4">
                     <path d="M12 10v4" />
                     <path d="M10 12h4" />
@@ -3450,9 +3453,9 @@ export default function CustomerPage() {
             )}
             <Link
               href="/simulations"
-              className="group relative shrink-0 inline-flex items-center gap-2 rounded-2xl border ring-1 ring-inset px-4 py-2.5 text-sm font-semibold transition-all bg-white/85 text-slate-700 border-stone-200 ring-black/10 hover:border-stone-400 hover:bg-white hover:ring-black/20"
+              className="group relative shrink-0 inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition-all bg-white/85 text-foreground border-accent/25 hover:border-accent-strong hover:bg-white"
             >
-              <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg border bg-stone-100 border-stone-300/80 text-slate-700 group-hover:bg-stone-200">
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-accent/25 bg-white text-accent-strong group-hover:bg-accent/10">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-4 w-4">
                   <path d="M7 4h10" />
                   <path d="M9 4v3l-4.5 8a3 3 0 0 0 2.6 4.5h10.8a3 3 0 0 0 2.6-4.5L16 7V4" />
@@ -3462,9 +3465,23 @@ export default function CustomerPage() {
               </span>
               Simulations
             </Link>
+            <Link
+              href="/student/steamh-projects"
+              className="group relative shrink-0 inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition-all bg-white/85 text-foreground border-accent/25 hover:border-accent-strong hover:bg-white"
+            >
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-accent/25 bg-white text-accent-strong group-hover:bg-accent/10">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-4 w-4">
+                  <path d="M12 19V5" />
+                  <path d="m5 12 7-7 7 7" />
+                  <path d="M5 19h14" />
+                </svg>
+              </span>
+              STEAM-H Project
+            </Link>
           </div>
         </section>
       )}
+      </div>
 
       <section className="space-y-3" data-tour={role === "teacher" ? undefined : "student-system-requirements"}>
         <h2
