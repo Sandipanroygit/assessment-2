@@ -283,6 +283,7 @@ export default function SimulationsPage() {
 
       <SimulationLibraryView
         enableTeacherAssign={isTeacher}
+        studentOnlyView={isStudent}
         onAssignSimulation={openAssignModal}
         studentAssignedButton={
           isStudent
@@ -400,9 +401,6 @@ export default function SimulationsPage() {
                   <article key={assignment.id} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 space-y-2">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-sm font-semibold text-slate-900">{assignment.simulation_title}</p>
-                      <span className="rounded-full border border-slate-300 bg-white px-2.5 py-0.5 text-[11px] font-semibold text-slate-700">
-                        {assignment.target_grade}
-                      </span>
                     </div>
                     <p className="text-xs text-slate-600">
                       Teacher: {assignment.teacher_name}

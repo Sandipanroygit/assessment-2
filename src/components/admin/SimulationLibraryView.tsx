@@ -25,6 +25,7 @@ type AssignSimulationPayload = {
 type SimulationLibraryViewProps = {
   enableTeacherAssign?: boolean;
   onAssignSimulation?: (payload: AssignSimulationPayload) => void;
+  studentOnlyView?: boolean;
   studentAssignedButton?: {
     label: string;
     onClick: () => void;
@@ -1258,11 +1259,13 @@ const getSubjectTheme = (subject: string): SubjectTheme =>
 export function SimulationLibraryView({
   enableTeacherAssign = false,
   onAssignSimulation,
+  studentOnlyView = false,
   studentAssignedButton = null,
 }: SimulationLibraryViewProps) {
   const [gradeFilter, setGradeFilter] = useState<"all" | GradeLevel>("all");
   const [subjectFilter, setSubjectFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
+  const showGradeDetails = !studentOnlyView;
 
   const filteredLibrary = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
@@ -1270,7 +1273,8 @@ export function SimulationLibraryView({
       .filter((group) => subjectFilter === "all" || group.subject === subjectFilter)
       .map((group) => {
       const simulations = group.simulations.filter((simulation) => {
-        const matchesGrade = gradeFilter === "all" || simulation.grades.includes(gradeFilter);
+        const matchesGrade =
+          !showGradeDetails || gradeFilter === "all" || simulation.grades.includes(gradeFilter);
         if (!matchesGrade) return false;
         if (!normalizedSearch) return true;
         const haystack = `${group.subject} ${simulation.title} ${simulation.focus}`.toLowerCase();
@@ -1278,7 +1282,7 @@ export function SimulationLibraryView({
       });
       return { ...group, simulations };
     }).filter((group) => group.simulations.length > 0);
-  }, [gradeFilter, searchTerm, subjectFilter]);
+  }, [gradeFilter, searchTerm, showGradeDetails, subjectFilter]);
 
   const totalLinks = useMemo(
     () => filteredLibrary.reduce((sum, group) => sum + group.simulations.length, 0),
@@ -1337,28 +1341,30 @@ export function SimulationLibraryView({
 
       <div className="rounded-2xl border border-emerald-300 bg-emerald-100 p-4">
         <div className="flex flex-col gap-3">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="space-y-2 text-sm text-slate-800">
-              <span className="text-[11px] uppercase tracking-[0.14em] text-emerald-800">Grade Filter</span>
-              <select
-                value={String(gradeFilter)}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  if (value === "all") {
-                    setGradeFilter("all");
-                    return;
-                  }
-                  setGradeFilter(Number(value) as GradeLevel);
-                }}
-                className="w-full rounded-lg border border-emerald-300 bg-white px-3 py-2 text-slate-900 focus:border-emerald-500 focus:outline-none"
-              >
-                {GRADE_FILTERS.map((grade) => (
-                  <option key={String(grade.value)} value={String(grade.value)} className="text-black">
-                    {grade.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+          <div className={`grid gap-3 ${showGradeDetails ? "sm:grid-cols-2" : "sm:grid-cols-1"}`}>
+            {showGradeDetails && (
+              <label className="space-y-2 text-sm text-slate-800">
+                <span className="text-[11px] uppercase tracking-[0.14em] text-emerald-800">Grade Filter</span>
+                <select
+                  value={String(gradeFilter)}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    if (value === "all") {
+                      setGradeFilter("all");
+                      return;
+                    }
+                    setGradeFilter(Number(value) as GradeLevel);
+                  }}
+                  className="w-full rounded-lg border border-emerald-300 bg-white px-3 py-2 text-slate-900 focus:border-emerald-500 focus:outline-none"
+                >
+                  {GRADE_FILTERS.map((grade) => (
+                    <option key={String(grade.value)} value={String(grade.value)} className="text-black">
+                      {grade.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
 
             <label className="space-y-2 text-sm text-slate-800">
               <span className="text-[11px] uppercase tracking-[0.14em] text-emerald-800">Select Subject</span>
@@ -1453,16 +1459,16 @@ export function SimulationLibraryView({
                 >
                   <table className="table-v1 table-fixed">
                     <colgroup>
-                      <col className="w-[30%]" />
-                      <col className="w-[36%]" />
-                      <col className="w-[16%]" />
-                      <col className="w-[18%]" />
+                      <col className={showGradeDetails ? "w-[30%]" : "w-[34%]"} />
+                      <col className={showGradeDetails ? "w-[36%]" : "w-[46%]"} />
+                      {showGradeDetails && <col className="w-[16%]" />}
+                      <col className={showGradeDetails ? "w-[18%]" : "w-[20%]"} />
                     </colgroup>
                     <thead>
                       <tr className="text-left text-slate-700 border-b border-slate-200">
                         <th className="py-2 pr-3">Simulation</th>
                         <th className="py-2 pr-3">Focus</th>
-                        <th className="py-2 pr-3">Grades</th>
+                        {showGradeDetails && <th className="py-2 pr-3">Grades</th>}
                         <th className="py-2 pr-3 whitespace-nowrap">Action</th>
                       </tr>
                     </thead>
@@ -1481,7 +1487,9 @@ export function SimulationLibraryView({
                         >
                           <td className="py-2 pr-3 align-top font-semibold text-slate-900">{simulation.title}</td>
                           <td className="py-2 pr-3 align-top text-slate-700">{simulation.focus}</td>
-                          <td className="py-2 pr-3 align-top whitespace-nowrap text-slate-700">{simulation.grades.join(", ")}</td>
+                          {showGradeDetails && (
+                            <td className="py-2 pr-3 align-top whitespace-nowrap text-slate-700">{simulation.grades.join(", ")}</td>
+                          )}
                           <td className="py-2 pr-3 align-top whitespace-nowrap">
                             <div className="flex flex-wrap gap-1.5">
                               <a
