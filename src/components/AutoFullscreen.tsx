@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
 
 type FullscreenElement = HTMLElement & {
   webkitRequestFullscreen?: () => Promise<void> | void;
@@ -59,6 +60,7 @@ async function requestDocumentFullscreen() {
 export default function AutoFullscreen() {
   const router = useRouter();
   const [showScrollPrompt, setShowScrollPrompt] = useState(false);
+  const isAuthenticatedRef = useRef(false);
   const needsGestureRef = useRef(false);
   const gestureFailureCountRef = useRef(0);
   const scrollLockYRef = useRef(0);
@@ -139,6 +141,9 @@ export default function AutoFullscreen() {
   }, []);
 
   const showPromptWithoutScroll = useCallback(() => {
+    if (isAuthenticatedRef.current) {
+      return;
+    }
     const currentY = window.scrollY;
     setShowScrollPrompt(true);
     lockScroll(currentY);
@@ -168,11 +173,49 @@ export default function AutoFullscreen() {
     }
 
     gestureFailureCountRef.current += 1;
+    if (isAuthenticatedRef.current) {
+      // Signed-in users should keep getting fullscreen attempts on interactions.
+      return;
+    }
     if (gestureFailureCountRef.current >= 2) {
       // Avoid trapping users on browsers that reject fullscreen.
       needsGestureRef.current = false;
       setShowScrollPrompt(false);
     }
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const syncSession = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!mounted) return;
+
+      const isAuthenticated = Boolean(data.session?.user);
+      isAuthenticatedRef.current = isAuthenticated;
+      if (isAuthenticated) {
+        const doc = document as FullscreenDocument;
+        needsGestureRef.current = !Boolean(getFullscreenElement(doc));
+        setShowScrollPrompt(false);
+      }
+    };
+
+    void syncSession();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      const isAuthenticated = Boolean(session?.user);
+      isAuthenticatedRef.current = isAuthenticated;
+      if (isAuthenticated) {
+        const doc = document as FullscreenDocument;
+        needsGestureRef.current = !Boolean(getFullscreenElement(doc));
+        setShowScrollPrompt(false);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      authListener.subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -212,6 +255,10 @@ export default function AutoFullscreen() {
 
       if (SCROLL_KEYS.has(event.key)) {
         event.preventDefault();
+        if (isAuthenticatedRef.current) {
+          void attemptFullscreen(true);
+          return;
+        }
         showPromptWithoutScroll();
         return;
       }
@@ -227,6 +274,10 @@ export default function AutoFullscreen() {
       if (event.cancelable) {
         event.preventDefault();
       }
+      if (isAuthenticatedRef.current) {
+        void attemptFullscreen(true);
+        return;
+      }
       showPromptWithoutScroll();
     };
 
@@ -238,6 +289,10 @@ export default function AutoFullscreen() {
       if (event.cancelable) {
         event.preventDefault();
       }
+      if (isAuthenticatedRef.current) {
+        void attemptFullscreen(true);
+        return;
+      }
       showPromptWithoutScroll();
     };
 
@@ -245,14 +300,29 @@ export default function AutoFullscreen() {
       syncFullscreenState();
     };
 
+    const onVisibilityChange = () => {
+      if (doc.visibilityState === "visible") {
+        void attemptFullscreen(false);
+      }
+    };
+
+    const onScroll = () => {
+      if (!needsGestureRef.current || !isAuthenticatedRef.current) {
+        return;
+      }
+      void attemptFullscreen(true);
+    };
+
     window.addEventListener("pointerdown", onPointerDown, true);
     window.addEventListener("touchstart", onTouchStart, { passive: true, capture: true });
     window.addEventListener("keydown", onKeyDown, true);
     window.addEventListener("wheel", onWheel, { passive: false, capture: true });
     window.addEventListener("touchmove", onTouchMove, { passive: false, capture: true });
+    window.addEventListener("scroll", onScroll, { passive: true, capture: true });
     doc.addEventListener("fullscreenchange", onFullscreenChange);
     doc.addEventListener("webkitfullscreenchange", onFullscreenChange as EventListener);
     doc.addEventListener("MSFullscreenChange", onFullscreenChange as EventListener);
+    doc.addEventListener("visibilitychange", onVisibilityChange);
 
     return () => {
       window.removeEventListener("pointerdown", onPointerDown, true);
@@ -260,9 +330,11 @@ export default function AutoFullscreen() {
       window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("wheel", onWheel, true);
       window.removeEventListener("touchmove", onTouchMove, true);
+      window.removeEventListener("scroll", onScroll, true);
       doc.removeEventListener("fullscreenchange", onFullscreenChange);
       doc.removeEventListener("webkitfullscreenchange", onFullscreenChange as EventListener);
       doc.removeEventListener("MSFullscreenChange", onFullscreenChange as EventListener);
+      doc.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [attemptFullscreen, showPromptWithoutScroll, unlockScroll]);
 
