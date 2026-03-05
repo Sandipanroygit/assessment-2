@@ -105,6 +105,16 @@ export default function CustomerPage() {
     () => notifications.filter((n) => n.status === "unread").length,
     [notifications],
   );
+  const hasUnreadSimulationAssignment = useMemo(
+    () =>
+      notifications.some(
+        (n) =>
+          n.status === "unread" &&
+          ((n.title ?? "").toLowerCase().includes("simulation assigned") ||
+            (n.message ?? "").toLowerCase().includes("assigned a simulation")),
+      ),
+    [notifications],
+  );
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const notificationsRef = useRef<HTMLDivElement | null>(null);
   const [teacherMenuOpen, setTeacherMenuOpen] = useState(false);
@@ -3138,8 +3148,8 @@ export default function CustomerPage() {
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     viewBox="0 0 24 24"
-                    fill="#facc15"
-                    stroke="#111827"
+                    fill={hasUnreadSimulationAssignment ? "#dc2626" : "#facc15"}
+                    stroke={hasUnreadSimulationAssignment ? "#fbbf24" : "#111827"}
                     strokeWidth="1.8"
                     strokeLinecap="round"
                     strokeLinejoin="round"
