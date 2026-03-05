@@ -2940,7 +2940,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
                 </button>
               </div>
             </div>
-            {quizStatus && <div className="text-sm text-slate-300">{quizStatus}</div>}
+            {quizStatus && <div className="text-sm text-slate-600">{quizStatus}</div>}
           </div>
 
           {quizPanelOpen && (
@@ -2975,21 +2975,21 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-white/10 bg-slate-900 p-4 space-y-3">
-                  {quizStatus && <div className="text-sm text-slate-300">{quizStatus}</div>}
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                  {quizStatus && <div className="text-sm text-slate-700">{quizStatus}</div>}
 
                   {quizQuestions.length === 0 ? (
-                    <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-5 text-sm text-slate-300">
+                    <div className="rounded-xl border border-slate-200 bg-white px-4 py-5 text-sm text-slate-700">
                       {generatingQuiz ? "Preparing quiz..." : "Click Regenerate to fetch questions for this activity."}
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      <div className="flex items-center justify-between text-sm text-slate-200">
+                      <div className="flex items-center justify-between text-sm text-slate-700">
                         <div className="flex gap-2 flex-wrap">
-                          <span className="px-2 py-1 rounded-md bg-black/30 border border-white/10">
+                          <span className="px-2 py-1 rounded-md bg-white border border-slate-200 text-slate-700">
                             Time left: {Math.floor(timeLeft / 60)}:{`${timeLeft % 60}`.padStart(2, "0")}
                           </span>
-                          <span className="px-2 py-1 rounded-md bg-black/30 border border-white/10">
+                          <span className="px-2 py-1 rounded-md bg-white border border-slate-200 text-slate-700">
                             Answered: {answeredCount}/{quizQuestions.length}
                           </span>
                         </div>
@@ -3004,7 +3004,9 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
                             key={idx}
                             type="button"
                             className={`w-10 h-10 rounded-full border text-sm font-semibold ${
-                              idx === currentQuestion ? "border-accent text-accent-strong bg-accent/10" : "border-white/15 text-white bg-white/5"
+                              idx === currentQuestion
+                                ? "border-accent text-accent-strong bg-accent/10"
+                                : "border-slate-300 text-slate-700 bg-white"
                             }`}
                             onClick={() => setCurrentQuestion(idx)}
                           >
@@ -3015,9 +3017,9 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
 
                       {!quizComplete && (
                         <div className="space-y-3">
-                          <p className="text-sm text-slate-200 font-semibold">Question {currentQuestion + 1} of {quizQuestions.length}</p>
-                          <div className="rounded-xl border border-accent/30 bg-white/5 p-4 space-y-3 shadow-glow">
-                            <p className="text-white text-base leading-relaxed font-semibold">{quizQuestions[currentQuestion].question}</p>
+                          <p className="text-sm text-slate-700 font-semibold">Question {currentQuestion + 1} of {quizQuestions.length}</p>
+                          <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3 shadow-sm">
+                            <p className="text-slate-900 text-base leading-relaxed font-semibold">{quizQuestions[currentQuestion].question}</p>
                             <div className="space-y-2">
                               {quizQuestions[currentQuestion].options.map((opt) => {
                                 const selected = selections[currentQuestion] === opt.label;
@@ -3026,7 +3028,9 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
                                     key={opt.label}
                                     type="button"
                                     className={`w-full text-left px-3 py-2 rounded-lg border ${
-                                      selected ? "border-accent bg-accent/20 text-white" : "border-white/15 bg-white/5 text-slate-100"
+                                      selected
+                                        ? "border-accent bg-accent/10 text-slate-900"
+                                        : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50"
                                     }`}
                                     onClick={() => setSelections((prev) => ({ ...prev, [currentQuestion]: opt.label }))}
                                   >
@@ -3039,7 +3043,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
                             <div className="flex gap-2 justify-between">
                               <button
                                 type="button"
-                                className="h-10 px-4 rounded-lg border border-white/15 bg-white/5 text-white font-semibold disabled:opacity-40"
+                                className="h-10 px-4 rounded-lg border border-slate-300 bg-white text-slate-700 font-semibold hover:bg-slate-50 disabled:opacity-40"
                                 disabled={currentQuestion === 0}
                                 onClick={() => setCurrentQuestion((idx) => Math.max(0, idx - 1))}
                               >
@@ -3047,7 +3051,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
                               </button>
                               <button
                                 type="button"
-                                className="h-10 px-4 rounded-lg border border-white/15 bg-white/5 text-white font-semibold disabled:opacity-40"
+                                className="h-10 px-4 rounded-lg border border-slate-300 bg-white text-slate-700 font-semibold hover:bg-slate-50 disabled:opacity-40"
                                 disabled={currentQuestion === quizQuestions.length - 1}
                                 onClick={() => setCurrentQuestion((idx) => Math.min(quizQuestions.length - 1, idx + 1))}
                               >
@@ -3067,7 +3071,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
                       )}
 
                       {quizComplete && score !== null && (
-                        <div className="rounded-xl border border-accent/30 bg-accent/10 p-3 text-white space-y-3">
+                        <div className="rounded-xl border border-accent/30 bg-white p-3 text-slate-900 space-y-3">
                           <p className="text-lg font-semibold">Assessment complete</p>
                           <p className="text-sm">Score: {score}/{quizQuestions.length}</p>
                           {quizQuestions[currentQuestion] && (() => {
@@ -3077,23 +3081,23 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
                             const correctOption = q.options.find((opt) => opt.label === q.answer);
                             const isCorrect = selected === q.answer;
                             return (
-                              <div className="rounded-lg border border-white/10 bg-black/20 p-5 space-y-3">
-                                <p className="text-lg font-semibold text-white">
+                              <div className="rounded-lg border border-slate-200 bg-slate-50 p-5 space-y-3">
+                                <p className="text-lg font-semibold text-slate-900">
                                   Q{currentQuestion + 1}. {q.question}
                                 </p>
                                 <p
                                   className={`text-base font-semibold ${
                                     isCorrect
-                                      ? "text-emerald-200"
+                                      ? "text-emerald-700"
                                       : "text-rose-400 bg-rose-500/15 border border-rose-400/30 px-2 py-1 rounded-md inline-block"
                                   }`}
                                 >
                                   Your answer: {selected ? `${selected}) ${selectedOption?.text ?? ""}` : "Not answered"}
                                 </p>
-                                <p className="text-base text-slate-100">
+                                <p className="text-base text-slate-700">
                                   Correct answer: {q.answer}) {correctOption?.text ?? ""}
                                 </p>
-                                {q.explanation && <p className="text-base text-slate-200">Explanation: {q.explanation}</p>}
+                                {q.explanation && <p className="text-base text-slate-700">Explanation: {q.explanation}</p>}
                               </div>
                             );
                           })()}
