@@ -24,6 +24,7 @@ type AssignedSimulation = {
   simulation_url: string;
   notes?: string | null;
   created_at?: string | null;
+  is_unread?: boolean;
 };
 
 type TeacherStudentRow = {
@@ -119,6 +120,27 @@ export default function SimulationsPage() {
     }
   }, []);
 
+  const markAssignmentAsRead = useCallback(
+    async (assignment: AssignedSimulation) => {
+      if (!assignment.is_unread) return;
+
+      setStudentAssignments((prev) =>
+        prev.map((item) => (item.id === assignment.id ? { ...item, is_unread: false } : item)),
+      );
+
+      const notificationTitle = `Simulation assigned: ${assignment.simulation_title}`;
+      const { error } = await supabase
+        .from("notifications")
+        .update({ status: "read" })
+        .eq("title", notificationTitle)
+        .eq("status", "unread");
+      if (error) {
+        setStudentAssignmentsStatus(error.message);
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     let mounted = true;
 
@@ -171,6 +193,20 @@ export default function SimulationsPage() {
 
     return () => window.clearInterval(intervalId);
   }, [isStudent, loadStudentAssignments, sessionToken, studentAssignmentsOpen]);
+
+  useEffect(() => {
+    if (!assignModalOpen && !studentAssignmentsOpen) return;
+
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    };
+  }, [assignModalOpen, studentAssignmentsOpen]);
 
   const openAssignModal = useCallback((payload: { subject: string; simulation: { title: string; url: string; provider: string; focus: string } }) => {
     if (!isTeacher) return;
@@ -290,7 +326,7 @@ export default function SimulationsPage() {
             ? {
                 label: "Assigned Simulation",
                 onClick: () => setStudentAssignmentsOpen(true),
-                ring: studentAssignments.length > 0,
+                ring: studentAssignments.some((assignment) => assignment.is_unread),
               }
             : null
         }
@@ -376,7 +412,7 @@ export default function SimulationsPage() {
                   <button
                     type="button"
                     onClick={() => void loadStudentAssignments(sessionToken)}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    className="rounded-lg border border-emerald-700 bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-true-white hover:bg-emerald-600 transition"
                   >
                     Refresh
                   </button>
@@ -384,21 +420,28 @@ export default function SimulationsPage() {
                 <button
                   type="button"
                   onClick={() => setStudentAssignmentsOpen(false)}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  className="rounded-lg border border-rose-700 bg-rose-700 px-3 py-1.5 text-xs font-semibold text-true-white hover:bg-rose-600 transition"
                 >
                   Close
                 </button>
               </div>
             </div>
 
-            <div className="overflow-auto space-y-3 pr-1 max-h-[66vh]">
+            <div className="overflow-y-auto space-y-3 pr-1 max-h-[28rem]">
               {studentAssignments.length === 0 ? (
                 <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
                   No assigned simulations yet.
                 </div>
               ) : (
                 studentAssignments.map((assignment) => (
-                  <article key={assignment.id} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 space-y-2">
+                  <article
+                    key={assignment.id}
+                    className={`rounded-xl border px-4 py-3 space-y-2 ${
+                      assignment.is_unread
+                        ? "border-amber-300 bg-amber-50"
+                        : "border-slate-200 bg-slate-50"
+                    }`}
+                  >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-sm font-semibold text-slate-900">{assignment.simulation_title}</p>
                     </div>
@@ -412,6 +455,7 @@ export default function SimulationsPage() {
                         href={assignment.simulation_url}
                         target="_blank"
                         rel="noreferrer"
+                        onClick={() => void markAssignmentAsRead(assignment)}
                         className="inline-flex items-center rounded-lg border border-emerald-700 bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-true-white hover:bg-emerald-600 transition"
                       >
                         Open simulation

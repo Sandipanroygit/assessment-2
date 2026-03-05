@@ -1313,17 +1313,22 @@ export function SimulationLibraryView({
               className="inline-flex items-center gap-1 rounded-full bg-emerald-700 pl-2.5 pr-3.5 py-2 text-sm font-semibold text-true-white hover:bg-emerald-600 transition"
               aria-label="Open assigned simulations"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="#facc15"
-                stroke="#facc15"
-                strokeWidth="1.8"
-                className={`h-6 w-6 shrink-0 ${studentAssignedButton.ring ? "customer-bell-ring" : ""}`}
-              >
-                <path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.172V11a6 6 0 1 0-12 0v3.172a2 2 0 0 1-.6 1.428L4 17h5" />
-                <path d="M9 17a3 3 0 0 0 6 0" />
-              </svg>
+              <span className="relative inline-flex h-6 w-6 shrink-0 items-center justify-center">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="#facc15"
+                  stroke="#facc15"
+                  strokeWidth="1.8"
+                  className={`h-6 w-6 ${studentAssignedButton.ring ? "customer-bell-ring" : ""}`}
+                >
+                  <path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.172V11a6 6 0 1 0-12 0v3.172a2 2 0 0 1-.6 1.428L4 17h5" />
+                  <path d="M9 17a3 3 0 0 0 6 0" />
+                </svg>
+                {studentAssignedButton.ring && (
+                  <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-rose-500 ring-1 ring-emerald-900" />
+                )}
+              </span>
               <span>{studentAssignedButton.label}</span>
             </button>
           ) : (

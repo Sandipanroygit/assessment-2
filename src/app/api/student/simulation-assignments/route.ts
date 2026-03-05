@@ -12,6 +12,11 @@ const ASSIGNMENT_SELECT =
 
 const normalizeRole = (value: unknown) => (typeof value === "string" ? value.trim().toLowerCase() : "");
 const isStudentLikeRole = (role: string) => role === "student" || role === "customer";
+const normalizeText = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 const normalizeGradeKey = (value: string) =>
   value
     .trim()
@@ -35,6 +40,14 @@ const withTableHint = (message: string) => {
     return `${message} Apply \`supabase/simulation_assignments_patch.sql\` in Supabase SQL Editor.`;
   }
   return message;
+};
+
+const simulationTitleFromNotification = (title: string) => {
+  const prefix = "simulation assigned:";
+  const normalized = title.trim();
+  if (!normalized.toLowerCase().startsWith(prefix)) return null;
+  const extracted = normalized.slice(prefix.length).trim();
+  return extracted || null;
 };
 
 export async function GET(req: Request) {
@@ -95,9 +108,36 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: withTableHint(error.message) }, { status: 500 });
     }
 
+    const { data: unreadNotifications, error: notificationError } = await supabaseAdmin
+      .from("notifications")
+      .select("title")
+      .eq("user_id", student.id)
+      .eq("status", "unread")
+      .order("created_at", { ascending: false })
+      .limit(200);
+    if (notificationError) {
+      return NextResponse.json({ error: notificationError.message }, { status: 500 });
+    }
+
+    const unreadSimulationTitleKeys = new Set(
+      (unreadNotifications ?? [])
+        .map((note) => simulationTitleFromNotification(note.title ?? ""))
+        .filter((title): title is string => !!title)
+        .map((title) => normalizeText(title)),
+    );
+
+    const assignmentsWithReadState = (data ?? []).map((assignment) => {
+      const titleKey = normalizeText(assignment.simulation_title ?? "");
+      const isUnread = unreadSimulationTitleKeys.has(titleKey);
+      return {
+        ...assignment,
+        is_unread: isUnread,
+      };
+    });
+
     return NextResponse.json({
       grade,
-      assignments: data ?? [],
+      assignments: assignmentsWithReadState,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
