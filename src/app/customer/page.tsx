@@ -863,12 +863,6 @@ export default function CustomerPage() {
     studentDoubtOpen,
   ]);
 
-  const gradeOptions = useMemo(() => {
-    if (userGrade) return [userGrade];
-    const uniqueGrades = Array.from(new Set(modules.map((m) => m.grade)));
-    return ["all", ...uniqueGrades];
-  }, [modules, userGrade]);
-
   const filteredModules = useMemo(() => {
     return modules.filter((m) => {
       const effectiveGrade = userGrade ?? gradeFilter;
@@ -1172,8 +1166,7 @@ export default function CustomerPage() {
         id: "menu-trigger",
         target: '[data-tour="teacher-menu-trigger"]',
         title: "Teacher Menu",
-        description:
-          "Open the menu to access content requests, assignment workflow, student progress, student queries, and student registry.",
+        description: "Open the menu for home navigation, student query inbox access, and sign-out controls.",
         placement: "left",
         forcePageTop: true,
         lockTooltipPositionToPrev: true,
@@ -1182,7 +1175,7 @@ export default function CustomerPage() {
         id: "menu-panel",
         target: '[data-tour="teacher-menu-panel"]',
         title: "Teacher Action Panel",
-        description: "All teacher workflows are centralized in this panel.",
+        description: "Use this panel for quick home navigation, student query inbox, and secure sign-out.",
         placement: "left",
         forcePageTop: true,
       },
@@ -1190,7 +1183,7 @@ export default function CustomerPage() {
         id: "menu-raise-request",
         target: '[data-tour="teacher-menu-raise-request"]',
         title: "Raise a Content Request",
-        description: "Request new VR simulations or drone activities from admin.",
+        description: "Use this ribbon shortcut to request new VR simulations or drone activities from admin.",
         placement: "left",
         forcePageTop: true,
       },
@@ -1253,13 +1246,6 @@ export default function CustomerPage() {
         scrollBlock: "center",
         lockTooltipPositionToPrev: true,
       },
-      {
-        id: "filters",
-        target: '[data-tour="teacher-filters"]',
-        title: "Filter Activity List",
-        description: "Refine modules by grade and subject to focus on the right classroom scope.",
-        placement: "bottom",
-      },
     ];
 
     if (filteredModules.length > 0) {
@@ -1308,8 +1294,8 @@ export default function CustomerPage() {
       {
         id: "menu-progress",
         target: '[data-tour="teacher-menu-progress"]',
-        title: "Student Progress Page",
-        description: "Click Next from this step to open Student Progress and continue the walkthrough there.",
+        title: "Student Progress Shortcut",
+        description: "Click Next from this ribbon shortcut to open Student Progress and continue the walkthrough there.",
         placement: "left",
         forcePageTop: true,
       },
@@ -1487,8 +1473,6 @@ export default function CustomerPage() {
 
     const menuStepIds = new Set([
       "menu-panel",
-      "menu-raise-request",
-      "menu-progress",
       "menu-queries",
       "menu-signout",
     ]);
@@ -1929,6 +1913,24 @@ export default function CustomerPage() {
     setStudentTourPromptOpen(!hasStudentTourPreference);
     setStudentTourInitialized(true);
   }, [authChecked, dataStatus, isAuthenticated, role, studentTourInitialized]);
+
+  if (!authChecked) {
+    return (
+      <main className="section-padding">
+        <div className="glass-panel rounded-2xl p-5 text-sm text-slate-200">Loading dashboard...</div>
+      </main>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <main className="section-padding">
+        <div className="glass-panel rounded-2xl p-5 text-sm text-slate-200">
+          {dataStatus ?? "Redirecting to login..."}
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="section-padding space-y-8">
@@ -2954,84 +2956,6 @@ export default function CustomerPage() {
                         <p className="text-xs text-slate-500">Customer dashboard</p>
                       </div>
                     </Link>
-                    <Link
-                      href="/simulations"
-                      onClick={() => setTeacherMenuOpen(false)}
-                      className="flex items-center gap-3 rounded-xl px-3 py-2.5 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300/60 text-sm text-slate-800 transition"
-                    >
-                      <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600 border border-emerald-400 text-true-white shadow-glow">
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.9"
-                          className="h-5 w-5"
-                        >
-                          <path d="M7 4h10" />
-                          <path d="M9 4v3l-4.5 8a3 3 0 0 0 2.6 4.5h10.8a3 3 0 0 0 2.6-4.5L16 7V4" />
-                          <path d="M8 13h8" />
-                          <path d="M10 16h4" />
-                        </svg>
-                      </span>
-                      <div className="text-left">
-                        <p className="font-semibold">Simulations</p>
-                        <p className="text-xs text-slate-500">Open full simulation library</p>
-                      </div>
-                    </Link>
-                    <button
-                      data-tour="teacher-menu-raise-request"
-                      className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300/60 text-sm text-slate-800 transition"
-                      onClick={() => {
-                        setTeacherMenuOpen(false);
-                        setRequestStatus(null);
-                        setRequestOpen(true);
-                      }}
-                    >
-                      <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-700 border border-amber-500 text-true-white shadow-glow">
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.8"
-                          className="h-5 w-5"
-                        >
-                          <path d="M12 5v14" />
-                          <path d="M5 12h14" />
-                        </svg>
-                      </span>
-                      <div className="text-left">
-                        <p className="font-semibold">Raise a Request</p>
-                        <p className="text-xs text-slate-500">Ask admin for VR or drone content</p>
-                      </div>
-                    </button>
-                    <Link
-                      href="/teacher/progress"
-                      data-tour="teacher-menu-progress"
-                      onClick={() => setTeacherMenuOpen(false)}
-                      className="flex items-center gap-3 rounded-xl px-3 py-2.5 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300/60 text-sm text-slate-800 transition"
-                    >
-                      <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-sky-500 border border-sky-300 text-true-white shadow-glow">
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className="h-5 w-5"
-                        >
-                          <path d="M3 3v18h18" />
-                          <path d="m7 14 3-3 3 2 4-5" />
-                        </svg>
-                      </span>
-                      <div className="text-left">
-                        <p className="font-semibold">Student Progress</p>
-                        <p className="text-xs text-slate-500">Track submissions and attempts</p>
-                      </div>
-                    </Link>
                     <button
                       type="button"
                       data-tour="teacher-menu-student-queries"
@@ -3070,31 +2994,6 @@ export default function CustomerPage() {
                         </span>
                       )}
                     </button>
-                    <Link
-                      href="/teacher/assign-task"
-                      onClick={() => setTeacherMenuOpen(false)}
-                      className="flex items-center gap-3 rounded-xl px-3 py-2.5 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300/60 text-sm text-slate-800 transition"
-                    >
-                      <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-500 border border-indigo-300 text-true-white shadow-glow">
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.8"
-                          className="h-5 w-5"
-                        >
-                          <path d="M9 5h6" />
-                          <path d="M9 9h6" />
-                          <path d="M9 13h4" />
-                          <path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" />
-                        </svg>
-                      </span>
-                      <div className="text-left">
-                        <p className="font-semibold">STEAM-H Task</p>
-                        <p className="text-xs text-slate-500">Create STEAM-H work for students</p>
-                      </div>
-                    </Link>
                     <button
                       data-tour="teacher-menu-signout"
                       className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-sm text-rose-700 transition disabled:opacity-60"
@@ -3409,6 +3308,95 @@ export default function CustomerPage() {
         </div>
       </div>
 
+      {role === "teacher" && (
+        <section className="relative rounded-3xl border border-accent/35 bg-gradient-to-r from-white/45 via-white/20 to-white/45 supports-[backdrop-filter]:bg-white/10 p-2.5 shadow-[0_14px_36px_rgba(0,0,0,0.14)] backdrop-blur-2xl backdrop-saturate-150">
+          <div className="flex flex-wrap gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <a
+              href="#curriculum"
+              className="group relative shrink-0 inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition-all bg-accent text-true-white border-accent-strong/40 shadow-glow hover:-translate-y-0.5"
+            >
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-accent-strong/90 text-true-white">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-4 w-4">
+                    <path d="M12 10v4" />
+                    <path d="M10 12h4" />
+                    <path d="M5 5l4 4" />
+                    <path d="M19 5l-4 4" />
+                    <path d="M5 19l4-4" />
+                    <path d="M19 19l-4-4" />
+                    <circle cx="5" cy="5" r="2.5" />
+                    <circle cx="19" cy="5" r="2.5" />
+                    <circle cx="5" cy="19" r="2.5" />
+                    <circle cx="19" cy="19" r="2.5" />
+                  </svg>
+                </span>
+                Drone Activity
+              </a>
+            <Link
+              href="/simulations"
+              onClick={() => setTeacherMenuOpen(false)}
+              className="group relative shrink-0 inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition-all bg-white/85 text-foreground border-accent/25 hover:border-accent-strong hover:bg-white"
+            >
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-accent/25 bg-white text-accent-strong group-hover:bg-accent/10">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-4 w-4">
+                    <path d="M7 4h10" />
+                    <path d="M9 4v3l-4.5 8a3 3 0 0 0 2.6 4.5h10.8a3 3 0 0 0 2.6-4.5L16 7V4" />
+                    <path d="M8 13h8" />
+                    <path d="M10 16h4" />
+                  </svg>
+                </span>
+                Simulations
+              </Link>
+            <button
+              type="button"
+              data-tour="teacher-menu-raise-request"
+              className="group relative shrink-0 inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition-all bg-white/85 text-foreground border-accent/25 hover:border-accent-strong hover:bg-white"
+              onClick={() => {
+                setTeacherMenuOpen(false);
+                setRequestStatus(null);
+                setRequestOpen(true);
+              }}
+            >
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-accent/25 bg-white text-accent-strong group-hover:bg-accent/10">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+                    <path d="M12 5v14" />
+                    <path d="M5 12h14" />
+                  </svg>
+                </span>
+                Raise a Request
+              </button>
+            <Link
+              href="/teacher/progress"
+              data-tour="teacher-menu-progress"
+              onClick={() => setTeacherMenuOpen(false)}
+              className="group relative shrink-0 inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition-all bg-white/85 text-foreground border-accent/25 hover:border-accent-strong hover:bg-white"
+            >
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-accent/25 bg-white text-accent-strong group-hover:bg-accent/10">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                    <path d="M3 3v18h18" />
+                    <path d="m7 14 3-3 3 2 4-5" />
+                  </svg>
+                </span>
+                Student Progress
+              </Link>
+            <Link
+              href="/teacher/assign-task"
+              onClick={() => setTeacherMenuOpen(false)}
+              className="group relative shrink-0 inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition-all bg-white/85 text-foreground border-accent/25 hover:border-accent-strong hover:bg-white"
+            >
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-accent/25 bg-white text-accent-strong group-hover:bg-accent/10">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+                    <path d="M9 5h6" />
+                    <path d="M9 9h6" />
+                    <path d="M9 13h4" />
+                    <path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" />
+                  </svg>
+                </span>
+                STEAM-H Task
+              </Link>
+          </div>
+        </section>
+      )}
+
       {role !== "teacher" && (
         <section className="relative rounded-3xl border border-stone-300/75 bg-gradient-to-r from-stone-100 via-amber-50/80 to-zinc-100/95 p-2.5 ring-1 ring-white/70 shadow-[0_20px_38px_rgba(120,113,108,0.22),inset_0_2px_0_rgba(255,255,255,0.88)]">
           <div className="flex flex-wrap gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -3501,56 +3489,6 @@ export default function CustomerPage() {
           </div>
         </div>
       </section>
-
-      {role === "teacher" && (
-        <div className="space-y-3">
-          <h2 className="text-xl font-semibold text-white">Browse activities</h2>
-          <div className="glass-panel rounded-2xl p-4 grid sm:grid-cols-3 gap-3" data-tour="teacher-filters">
-            <label className="text-sm text-slate-200 space-y-1">
-              Grade
-              <select
-                className="w-full rounded-lg bg-white border border-slate-300 px-3 py-2 text-slate-900 focus:border-accent focus:outline-none disabled:bg-slate-100 [color-scheme:light]"
-                value={gradeFilter}
-                onChange={(e) => setGradeFilter(e.target.value)}
-                disabled={!!userGrade}
-              >
-                {gradeOptions.map((g) => (
-                  <option key={g} value={g} className="bg-white text-slate-900">
-                    {g}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="text-sm text-slate-200 space-y-1">
-              Subject
-              <select
-                className="w-full rounded-lg bg-white border border-slate-300 px-3 py-2 text-slate-900 focus:border-accent focus:outline-none disabled:bg-slate-100 [color-scheme:light]"
-                value={subjectFilter}
-                onChange={(e) => setSubjectFilter(e.target.value)}
-                disabled={!!teacherSubject}
-              >
-                {teacherSubject ? (
-                  <option value={teacherSubject} className="bg-white text-slate-900">
-                    {formatSubject(teacherSubject)}
-                  </option>
-                ) : (
-                  <>
-                    <option value="all" className="bg-white text-slate-900">
-                      All
-                    </option>
-                    {Array.from(new Set(modules.map((m) => normalizeSubject(m.subject)))).map((s) => (
-                      <option key={s} value={s} className="bg-white text-slate-900">
-                        {formatSubject(s)}
-                      </option>
-                    ))}
-                  </>
-                )}
-              </select>
-            </label>
-            <div className="flex items-end"></div>
-          </div>
-        </div>
-      )}
 
       <section id="curriculum" className="space-y-4">
         <div className="flex items-start justify-between gap-3">

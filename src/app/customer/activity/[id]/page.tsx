@@ -34,6 +34,9 @@ const submissionHideKey = "activitySubmissionHide";
 const STUDENT_ACTIVITY_TOUR_AUTOSTART_KEY = "student_activity_tour_autostart_v2";
 const STUDENT_ACTIVITY_TOUR_CHAIN_KEY = "student_activity_tour_chain_meta_v2";
 const STUDENT_DASHBOARD_TOUR_RESUME_KEY = "student_dashboard_tour_resume_v2";
+const QUIZ_QUESTION_COUNT = 15;
+const QUIZ_TIME_PER_QUESTION_SECONDS = 60;
+const QUIZ_DURATION_SECONDS = QUIZ_QUESTION_COUNT * QUIZ_TIME_PER_QUESTION_SECONDS;
 const TEACHER_TOUR_PALETTE = {
   accent: "#2563eb",
   accentStrong: "#1e3a8a",
@@ -449,7 +452,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selections, setSelections] = useState<Record<number, string>>({});
   const [quizComplete, setQuizComplete] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(300); // 5 minutes in seconds
+  const [timeLeft, setTimeLeft] = useState(QUIZ_DURATION_SECONDS);
   const quizAttemptLoggedRef = useRef(false);
   const [logFile, setLogFile] = useState<File | null>(null);
   const [plotFile, setPlotFile] = useState<File | null>(null);
@@ -929,7 +932,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
     setCurrentQuestion(0);
     setSelections({});
     setQuizComplete(false);
-    setTimeLeft(300);
+    setTimeLeft(QUIZ_DURATION_SECONDS);
     setQuizStatus(null);
     return true;
   };
@@ -1123,7 +1126,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message:
-              `Create 5 multiple-choice questions (A-D) with answers and short explanations for "${module.title}". `
+              `Create ${QUIZ_QUESTION_COUNT} multiple-choice questions (A-D) with answers and short explanations for "${module.title}". `
               + "Return in the format: Q1. question\\nA) option\\nB) option\\nC) option\\nD) option\\nAnswer: A\\nExplanation: ...",
             context: {
               title: module.title,
@@ -1211,7 +1214,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
         questions.push({ question, options: opts, answer, explanation: explanation || undefined });
       }
     });
-    return questions.slice(0, 5);
+    return questions.slice(0, QUIZ_QUESTION_COUNT);
   };
 
   const parseQuestionBankPayload = (raw: string) => {
@@ -1253,21 +1256,21 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
     try {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        return normalizeArray(parsed).slice(0, 5);
+        return normalizeArray(parsed).slice(0, QUIZ_QUESTION_COUNT);
       }
       if (parsed && typeof parsed === "object") {
         const questionsField = (parsed as { questions?: unknown }).questions;
         if (typeof questionsField === "string") {
           try {
             const nested = JSON.parse(questionsField);
-            if (Array.isArray(nested)) return normalizeArray(nested).slice(0, 5);
+            if (Array.isArray(nested)) return normalizeArray(nested).slice(0, QUIZ_QUESTION_COUNT);
           } catch {
             // fall through to parse as text
             const viaText = parseQuiz(questionsField);
             if (viaText.length) return viaText;
           }
         }
-        if (Array.isArray(questionsField)) return normalizeArray(questionsField).slice(0, 5);
+        if (Array.isArray(questionsField)) return normalizeArray(questionsField).slice(0, QUIZ_QUESTION_COUNT);
       }
     } catch {
       // not JSON, try text parsing
@@ -1278,7 +1281,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
 
   useEffect(() => {
     if (quizComplete || quizQuestions.length === 0) return;
-    setTimeLeft(300);
+    setTimeLeft(QUIZ_DURATION_SECONDS);
     const id = window.setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
