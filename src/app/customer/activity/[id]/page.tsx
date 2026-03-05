@@ -452,6 +452,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selections, setSelections] = useState<Record<number, string>>({});
   const [quizComplete, setQuizComplete] = useState(false);
+  const [quizPanelOpen, setQuizPanelOpen] = useState(false);
   const [timeLeft, setTimeLeft] = useState(QUIZ_DURATION_SECONDS);
   const quizAttemptLoggedRef = useRef(false);
   const [logFile, setLogFile] = useState<File | null>(null);
@@ -1085,6 +1086,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
 
   const generateQuiz = async () => {
     if (!module) return;
+    setQuizPanelOpen(true);
     setGeneratingQuiz(true);
     setQuizStatus("Loading questions from this activity...");
 
@@ -1294,6 +1296,19 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
     }, 1000);
     return () => clearInterval(id);
   }, [quizQuestions.length, quizComplete]);
+
+  useEffect(() => {
+    if (!quizPanelOpen) return;
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = prevBodyOverflow;
+      document.documentElement.style.overflow = prevHtmlOverflow;
+    };
+  }, [quizPanelOpen]);
 
   const answeredCount = useMemo(() => Object.keys(selections).length, [selections]);
   const score = useMemo(() => {
@@ -2905,133 +2920,191 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
                 <p className="text-xs uppercase tracking-[0.2em] text-accent-strong">AI Assessment</p>
                 <h3 className="text-lg font-semibold text-white" data-tour="activity-assessment-heading">Generate practice MCQs</h3>
               </div>
-              <button
-                type="button"
-                className="px-3 py-1.5 rounded-lg bg-accent text-true-white text-sm font-semibold disabled:opacity-50"
-                onClick={generateQuiz}
-                disabled={generatingQuiz}
-              >
-                {generatingQuiz ? "Generating..." : "Generate quiz"}
-              </button>
+              <div className="flex items-center gap-2">
+                {quizQuestions.length > 0 && (
+                  <button
+                    type="button"
+                    className="px-3 py-1.5 rounded-lg border border-white/15 bg-white/5 text-white text-sm font-semibold hover:bg-white/10"
+                    onClick={() => setQuizPanelOpen(true)}
+                  >
+                    Open quiz panel
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="px-3 py-1.5 rounded-lg bg-accent text-true-white text-sm font-semibold disabled:opacity-50"
+                  onClick={generateQuiz}
+                  disabled={generatingQuiz}
+                >
+                  {generatingQuiz ? "Generating..." : "Generate quiz"}
+                </button>
+              </div>
             </div>
             {quizStatus && <div className="text-sm text-slate-300">{quizStatus}</div>}
-            {quizQuestions.length > 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between text-sm text-slate-200">
-                  <div className="flex gap-2 flex-wrap">
-                    <span className="px-2 py-1 rounded-md bg-black/30 border border-white/10">
-                      Time left: {Math.floor(timeLeft / 60)}:{`${timeLeft % 60}`.padStart(2, "0")}
-                    </span>
-                    <span className="px-2 py-1 rounded-md bg-black/30 border border-white/10">
-                      Answered: {answeredCount}/{quizQuestions.length}
-                    </span>
+          </div>
+
+          {quizPanelOpen && (
+            <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto px-4 pb-10 pt-12 md:pt-16 bg-slate-900/70 backdrop-blur-sm">
+              <div className="w-full max-w-4xl rounded-2xl bg-white border border-stone-300 shadow-2xl p-6 space-y-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <p className="text-xs uppercase tracking-[0.2em] text-accent-strong">AI Assessment</p>
+                    <h3 className="text-2xl font-semibold text-slate-900">Practice MCQ Quiz</h3>
+                    {module && (
+                      <p className="text-sm text-slate-600">
+                        {module.title} | {formatSubject(module.subject)} | Grade {module.grade}
+                      </p>
+                    )}
                   </div>
-                  {quizComplete && score !== null && (
-                    <span className="text-accent-strong font-semibold">Score: {score}/{quizQuestions.length}</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="text-sm px-3 py-1 rounded-lg border border-accent bg-accent text-true-white hover:opacity-90 disabled:opacity-60"
+                      onClick={generateQuiz}
+                      disabled={generatingQuiz}
+                    >
+                      {generatingQuiz ? "Generating..." : "Regenerate"}
+                    </button>
+                    <button
+                      type="button"
+                      className="text-sm px-3 py-1 rounded-lg border border-rose-400 bg-rose-700 text-true-white hover:bg-rose-600 hover:border-rose-300"
+                      onClick={() => setQuizPanelOpen(false)}
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-slate-900 p-4 space-y-3">
+                  {quizStatus && <div className="text-sm text-slate-300">{quizStatus}</div>}
+
+                  {quizQuestions.length === 0 ? (
+                    <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-5 text-sm text-slate-300">
+                      {generatingQuiz ? "Preparing quiz..." : "Click Regenerate to fetch questions for this activity."}
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between text-sm text-slate-200">
+                        <div className="flex gap-2 flex-wrap">
+                          <span className="px-2 py-1 rounded-md bg-black/30 border border-white/10">
+                            Time left: {Math.floor(timeLeft / 60)}:{`${timeLeft % 60}`.padStart(2, "0")}
+                          </span>
+                          <span className="px-2 py-1 rounded-md bg-black/30 border border-white/10">
+                            Answered: {answeredCount}/{quizQuestions.length}
+                          </span>
+                        </div>
+                        {quizComplete && score !== null && (
+                          <span className="text-accent-strong font-semibold">Score: {score}/{quizQuestions.length}</span>
+                        )}
+                      </div>
+
+                      <div className="flex gap-2 flex-wrap">
+                        {quizQuestions.map((_, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            className={`w-10 h-10 rounded-full border text-sm font-semibold ${
+                              idx === currentQuestion ? "border-accent text-accent-strong bg-accent/10" : "border-white/15 text-white bg-white/5"
+                            }`}
+                            onClick={() => setCurrentQuestion(idx)}
+                          >
+                            {idx + 1}
+                          </button>
+                        ))}
+                      </div>
+
+                      {!quizComplete && (
+                        <div className="space-y-3">
+                          <p className="text-sm text-slate-200 font-semibold">Question {currentQuestion + 1} of {quizQuestions.length}</p>
+                          <div className="rounded-xl border border-accent/30 bg-white/5 p-4 space-y-3 shadow-glow">
+                            <p className="text-white text-base leading-relaxed font-semibold">{quizQuestions[currentQuestion].question}</p>
+                            <div className="space-y-2">
+                              {quizQuestions[currentQuestion].options.map((opt) => {
+                                const selected = selections[currentQuestion] === opt.label;
+                                return (
+                                  <button
+                                    key={opt.label}
+                                    type="button"
+                                    className={`w-full text-left px-3 py-2 rounded-lg border ${
+                                      selected ? "border-accent bg-accent/20 text-white" : "border-white/15 bg-white/5 text-slate-100"
+                                    }`}
+                                    onClick={() => setSelections((prev) => ({ ...prev, [currentQuestion]: opt.label }))}
+                                  >
+                                    <span className="font-semibold mr-2">{opt.label})</span>
+                                    {opt.text}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <div className="flex gap-2 justify-between">
+                              <button
+                                type="button"
+                                className="h-10 px-4 rounded-lg border border-white/15 bg-white/5 text-white font-semibold disabled:opacity-40"
+                                disabled={currentQuestion === 0}
+                                onClick={() => setCurrentQuestion((idx) => Math.max(0, idx - 1))}
+                              >
+                                Prev
+                              </button>
+                              <button
+                                type="button"
+                                className="h-10 px-4 rounded-lg border border-white/15 bg-white/5 text-white font-semibold disabled:opacity-40"
+                                disabled={currentQuestion === quizQuestions.length - 1}
+                                onClick={() => setCurrentQuestion((idx) => Math.min(quizQuestions.length - 1, idx + 1))}
+                              >
+                                Next
+                              </button>
+                              <button
+                                type="button"
+                                className="h-10 px-5 rounded-lg bg-accent text-true-white font-semibold shadow-glow disabled:opacity-40"
+                                onClick={() => setQuizComplete(true)}
+                                disabled={quizComplete}
+                              >
+                                Submit
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {quizComplete && score !== null && (
+                        <div className="rounded-xl border border-accent/30 bg-accent/10 p-3 text-white space-y-3">
+                          <p className="text-lg font-semibold">Assessment complete</p>
+                          <p className="text-sm">Score: {score}/{quizQuestions.length}</p>
+                          {quizQuestions[currentQuestion] && (() => {
+                            const q = quizQuestions[currentQuestion];
+                            const selected = selections[currentQuestion] ?? "";
+                            const selectedOption = q.options.find((opt) => opt.label === selected);
+                            const correctOption = q.options.find((opt) => opt.label === q.answer);
+                            const isCorrect = selected === q.answer;
+                            return (
+                              <div className="rounded-lg border border-white/10 bg-black/20 p-5 space-y-3">
+                                <p className="text-lg font-semibold text-white">
+                                  Q{currentQuestion + 1}. {q.question}
+                                </p>
+                                <p
+                                  className={`text-base font-semibold ${
+                                    isCorrect
+                                      ? "text-emerald-200"
+                                      : "text-rose-400 bg-rose-500/15 border border-rose-400/30 px-2 py-1 rounded-md inline-block"
+                                  }`}
+                                >
+                                  Your answer: {selected ? `${selected}) ${selectedOption?.text ?? ""}` : "Not answered"}
+                                </p>
+                                <p className="text-base text-slate-100">
+                                  Correct answer: {q.answer}) {correctOption?.text ?? ""}
+                                </p>
+                                {q.explanation && <p className="text-base text-slate-200">Explanation: {q.explanation}</p>}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
-                <div className="flex gap-2 flex-wrap">
-                  {quizQuestions.map((_, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      className={`w-10 h-10 rounded-full border text-sm font-semibold ${
-                        idx === currentQuestion ? "border-accent text-accent-strong bg-accent/10" : "border-white/15 text-white bg-white/5"
-                      }`}
-                      onClick={() => setCurrentQuestion(idx)}
-                    >
-                      {idx + 1}
-                    </button>
-                  ))}
-                </div>
-                {!quizComplete && (
-                  <div className="space-y-3">
-                    <p className="text-sm text-slate-200 font-semibold">Question {currentQuestion + 1} of {quizQuestions.length}</p>
-                    <div className="rounded-xl border border-accent/30 bg-white/5 p-4 space-y-3 shadow-glow">
-                      <p className="text-white text-base leading-relaxed font-semibold">{quizQuestions[currentQuestion].question}</p>
-                      <div className="space-y-2">
-                        {quizQuestions[currentQuestion].options.map((opt) => {
-                          const selected = selections[currentQuestion] === opt.label;
-                          return (
-                            <button
-                              key={opt.label}
-                              type="button"
-                              className={`w-full text-left px-3 py-2 rounded-lg border ${
-                                selected ? "border-accent bg-accent/20 text-white" : "border-white/15 bg-white/5 text-slate-100"
-                              }`}
-                              onClick={() => setSelections((prev) => ({ ...prev, [currentQuestion]: opt.label }))}
-                            >
-                              <span className="font-semibold mr-2">{opt.label})</span>
-                              {opt.text}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      <div className="flex gap-2 justify-between">
-                        <button
-                          type="button"
-                          className="h-10 px-4 rounded-lg border border-white/15 bg-white/5 text-white font-semibold disabled:opacity-40"
-                          disabled={currentQuestion === 0}
-                          onClick={() => setCurrentQuestion((idx) => Math.max(0, idx - 1))}
-                        >
-                          Prev
-                        </button>
-                        <button
-                          type="button"
-                          className="h-10 px-4 rounded-lg border border-white/15 bg-white/5 text-white font-semibold disabled:opacity-40"
-                          disabled={currentQuestion === quizQuestions.length - 1}
-                          onClick={() => setCurrentQuestion((idx) => Math.min(quizQuestions.length - 1, idx + 1))}
-                        >
-                          Next
-                        </button>
-                        <button
-                          type="button"
-                          className="h-10 px-5 rounded-lg bg-accent text-true-white font-semibold shadow-glow disabled:opacity-40"
-                          onClick={() => setQuizComplete(true)}
-                          disabled={quizComplete}
-                        >
-                          Submit
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                {quizComplete && score !== null && (
-                  <div className="rounded-xl border border-accent/30 bg-accent/10 p-3 text-white space-y-3">
-                    <p className="text-lg font-semibold">Assessment complete</p>
-                    <p className="text-sm">Score: {score}/{quizQuestions.length}</p>
-                    {quizQuestions[currentQuestion] && (() => {
-                      const q = quizQuestions[currentQuestion];
-                      const selected = selections[currentQuestion] ?? "";
-                      const selectedOption = q.options.find((opt) => opt.label === selected);
-                      const correctOption = q.options.find((opt) => opt.label === q.answer);
-                      const isCorrect = selected === q.answer;
-                      return (
-                        <div className="rounded-lg border border-white/10 bg-black/20 p-5 space-y-3">
-                          <p className="text-lg font-semibold text-white">
-                            Q{currentQuestion + 1}. {q.question}
-                          </p>
-                          <p
-                            className={`text-base font-semibold ${
-                              isCorrect
-                                ? "text-emerald-200"
-                                : "text-rose-400 bg-rose-500/15 border border-rose-400/30 px-2 py-1 rounded-md inline-block"
-                            }`}
-                          >
-                            Your answer: {selected ? `${selected}) ${selectedOption?.text ?? ""}` : "Not answered"}
-                          </p>
-                          <p className="text-base text-slate-100">
-                            Correct answer: {q.answer}) {correctOption?.text ?? ""}
-                          </p>
-                          {q.explanation && <p className="text-base text-slate-200">Explanation: {q.explanation}</p>}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                )}
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </section>
       )}
     </main>
