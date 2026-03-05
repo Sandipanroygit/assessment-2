@@ -1255,6 +1255,7 @@ const SUBJECT_THEMES: Record<string, SubjectTheme> = {
 
 const getSubjectTheme = (subject: string): SubjectTheme =>
   SUBJECT_THEMES[subject] ?? DEFAULT_SUBJECT_THEME;
+const isPhetProvider = (provider: string) => provider.trim().toLowerCase().includes("phet");
 
 export function SimulationLibraryView({
   enableTeacherAssign = false,
@@ -1272,16 +1273,28 @@ export function SimulationLibraryView({
     return SIMULATION_LIBRARY
       .filter((group) => subjectFilter === "all" || group.subject === subjectFilter)
       .map((group) => {
-      const simulations = group.simulations.filter((simulation) => {
-        const matchesGrade =
-          !showGradeDetails || gradeFilter === "all" || simulation.grades.includes(gradeFilter);
-        if (!matchesGrade) return false;
-        if (!normalizedSearch) return true;
-        const haystack = `${group.subject} ${simulation.title} ${simulation.focus}`.toLowerCase();
-        return haystack.includes(normalizedSearch);
-      });
-      return { ...group, simulations };
-    }).filter((group) => group.simulations.length > 0);
+        const simulations = group.simulations
+          .map((simulation, index) => ({ simulation, index }))
+          .filter(({ simulation }) => {
+            const matchesGrade =
+              !showGradeDetails || gradeFilter === "all" || simulation.grades.includes(gradeFilter);
+            if (!matchesGrade) return false;
+            if (!normalizedSearch) return true;
+            const haystack = `${group.subject} ${simulation.title} ${simulation.focus}`.toLowerCase();
+            return haystack.includes(normalizedSearch);
+          })
+          .sort((left, right) => {
+            const leftIsPhet = isPhetProvider(left.simulation.provider);
+            const rightIsPhet = isPhetProvider(right.simulation.provider);
+            if (leftIsPhet !== rightIsPhet) {
+              return leftIsPhet ? 1 : -1;
+            }
+            return left.index - right.index;
+          })
+          .map(({ simulation }) => simulation);
+        return { ...group, simulations };
+      })
+      .filter((group) => group.simulations.length > 0);
   }, [gradeFilter, searchTerm, showGradeDetails, subjectFilter]);
 
   const totalLinks = useMemo(
