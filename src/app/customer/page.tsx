@@ -884,7 +884,10 @@ export default function CustomerPage() {
 
     return (pressureVsAltitudeMatch ?? filteredModules[0])?.id ?? null;
   }, [filteredModules]);
-
+  const studentDroneActivityHref = useMemo(
+    () => (studentTourTargetModuleId ? `/customer/activity/${studentTourTargetModuleId}` : null),
+    [studentTourTargetModuleId],
+  );
   const vrSubjectKey = useMemo(() => normalizeVrSubjectKey(teacherSubject ?? subjectFilter), [subjectFilter, teacherSubject]);
 
   useEffect(() => {
@@ -1643,13 +1646,6 @@ export default function CustomerPage() {
         title: "STEAM-H Project",
         description: "Open this to publish your project to the STEAM-H showcase.",
         placement: "left",
-      },
-      {
-        id: "student-filters",
-        target: '[data-tour="student-filters"]',
-        title: "Browse Filters",
-        description: "Filter by grade and subject to focus on relevant activities.",
-        placement: "bottom",
       },
     ];
 
@@ -3399,6 +3395,75 @@ export default function CustomerPage() {
         </div>
       </div>
 
+      {role !== "teacher" && (
+        <section className="relative rounded-3xl border border-stone-300/75 bg-gradient-to-r from-stone-100 via-amber-50/80 to-zinc-100/95 p-2.5 ring-1 ring-white/70 shadow-[0_20px_38px_rgba(120,113,108,0.22),inset_0_2px_0_rgba(255,255,255,0.88)]">
+          <div className="flex flex-wrap gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {studentDroneActivityHref ? (
+              <Link
+                href={studentDroneActivityHref}
+                onClick={() => {
+                  if (studentTourTargetModuleId) {
+                    markModuleSeen(studentTourTargetModuleId);
+                  }
+                }}
+                className="group relative shrink-0 inline-flex items-center gap-2 rounded-2xl border ring-1 ring-inset px-4 py-2.5 text-sm font-semibold transition-all bg-amber-100 text-slate-900 border-amber-300 shadow-[0_8px_18px_rgba(120,113,108,0.18)] ring-black/20"
+              >
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg border bg-amber-200/70 border-amber-300 text-amber-900">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-4 w-4">
+                    <path d="M12 10v4" />
+                    <path d="M10 12h4" />
+                    <path d="M5 5l4 4" />
+                    <path d="M19 5l-4 4" />
+                    <path d="M5 19l4-4" />
+                    <path d="M19 19l-4-4" />
+                    <circle cx="5" cy="5" r="2.5" />
+                    <circle cx="19" cy="5" r="2.5" />
+                    <circle cx="5" cy="19" r="2.5" />
+                    <circle cx="19" cy="19" r="2.5" />
+                  </svg>
+                </span>
+                Student Drone Activity
+              </Link>
+            ) : (
+              <a
+                href="#curriculum"
+                className="group relative shrink-0 inline-flex items-center gap-2 rounded-2xl border ring-1 ring-inset px-4 py-2.5 text-sm font-semibold transition-all bg-amber-100 text-slate-900 border-amber-300 shadow-[0_8px_18px_rgba(120,113,108,0.18)] ring-black/20"
+              >
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg border bg-amber-200/70 border-amber-300 text-amber-900">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-4 w-4">
+                    <path d="M12 10v4" />
+                    <path d="M10 12h4" />
+                    <path d="M5 5l4 4" />
+                    <path d="M19 5l-4 4" />
+                    <path d="M5 19l4-4" />
+                    <path d="M19 19l-4-4" />
+                    <circle cx="5" cy="5" r="2.5" />
+                    <circle cx="19" cy="5" r="2.5" />
+                    <circle cx="5" cy="19" r="2.5" />
+                    <circle cx="19" cy="19" r="2.5" />
+                  </svg>
+                </span>
+                Student Drone Activity
+              </a>
+            )}
+            <Link
+              href="/simulations"
+              className="group relative shrink-0 inline-flex items-center gap-2 rounded-2xl border ring-1 ring-inset px-4 py-2.5 text-sm font-semibold transition-all bg-white/85 text-slate-700 border-stone-200 ring-black/10 hover:border-stone-400 hover:bg-white hover:ring-black/20"
+            >
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg border bg-stone-100 border-stone-300/80 text-slate-700 group-hover:bg-stone-200">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-4 w-4">
+                  <path d="M7 4h10" />
+                  <path d="M9 4v3l-4.5 8a3 3 0 0 0 2.6 4.5h10.8a3 3 0 0 0 2.6-4.5L16 7V4" />
+                  <path d="M8 13h8" />
+                  <path d="M10 16h4" />
+                </svg>
+              </span>
+              Simulations
+            </Link>
+          </div>
+        </section>
+      )}
+
       <section className="space-y-3" data-tour={role === "teacher" ? undefined : "student-system-requirements"}>
         <h2
           className="text-xl font-semibold text-white"
@@ -3423,61 +3488,62 @@ export default function CustomerPage() {
         </div>
       </section>
 
-      <div className="space-y-3">
-        <h2 className="text-xl font-semibold text-white">Browse activities</h2>
-        <div
-          className="glass-panel rounded-2xl p-4 grid sm:grid-cols-3 gap-3"
-          data-tour={role === "teacher" ? "teacher-filters" : "student-filters"}
-        >
-          <label className="text-sm text-slate-200 space-y-1">
-            Grade
-            <select
-              className="w-full rounded-lg bg-white border border-slate-300 px-3 py-2 text-slate-900 focus:border-accent focus:outline-none disabled:bg-slate-100 [color-scheme:light]"
-              value={gradeFilter}
-              onChange={(e) => setGradeFilter(e.target.value)}
-              disabled={!!userGrade}
-            >
-              {gradeOptions.map((g) => (
-                <option key={g} value={g} className="bg-white text-slate-900">
-                  {g}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm text-slate-200 space-y-1">
-            Subject
-            <select
-              className="w-full rounded-lg bg-white border border-slate-300 px-3 py-2 text-slate-900 focus:border-accent focus:outline-none disabled:bg-slate-100 [color-scheme:light]"
-              value={subjectFilter}
-              onChange={(e) => setSubjectFilter(e.target.value)}
-              disabled={!!teacherSubject}
-            >
-              {teacherSubject ? (
-                <option value={teacherSubject} className="bg-white text-slate-900">
-                  {formatSubject(teacherSubject)}
-                </option>
-              ) : (
-                <>
-                  <option value="all" className="bg-white text-slate-900">
-                    All
+      {role === "teacher" && (
+        <div className="space-y-3">
+          <h2 className="text-xl font-semibold text-white">Browse activities</h2>
+          <div className="glass-panel rounded-2xl p-4 grid sm:grid-cols-3 gap-3" data-tour="teacher-filters">
+            <label className="text-sm text-slate-200 space-y-1">
+              Grade
+              <select
+                className="w-full rounded-lg bg-white border border-slate-300 px-3 py-2 text-slate-900 focus:border-accent focus:outline-none disabled:bg-slate-100 [color-scheme:light]"
+                value={gradeFilter}
+                onChange={(e) => setGradeFilter(e.target.value)}
+                disabled={!!userGrade}
+              >
+                {gradeOptions.map((g) => (
+                  <option key={g} value={g} className="bg-white text-slate-900">
+                    {g}
                   </option>
-                  {Array.from(new Set(modules.map((m) => normalizeSubject(m.subject)))).map((s) => (
-                    <option key={s} value={s} className="bg-white text-slate-900">
-                      {formatSubject(s)}
+                ))}
+              </select>
+            </label>
+            <label className="text-sm text-slate-200 space-y-1">
+              Subject
+              <select
+                className="w-full rounded-lg bg-white border border-slate-300 px-3 py-2 text-slate-900 focus:border-accent focus:outline-none disabled:bg-slate-100 [color-scheme:light]"
+                value={subjectFilter}
+                onChange={(e) => setSubjectFilter(e.target.value)}
+                disabled={!!teacherSubject}
+              >
+                {teacherSubject ? (
+                  <option value={teacherSubject} className="bg-white text-slate-900">
+                    {formatSubject(teacherSubject)}
+                  </option>
+                ) : (
+                  <>
+                    <option value="all" className="bg-white text-slate-900">
+                      All
                     </option>
-                  ))}
-                </>
-              )}
-            </select>
-          </label>
-          <div className="flex items-end">
+                    {Array.from(new Set(modules.map((m) => normalizeSubject(m.subject)))).map((s) => (
+                      <option key={s} value={s} className="bg-white text-slate-900">
+                        {formatSubject(s)}
+                      </option>
+                    ))}
+                  </>
+                )}
+              </select>
+            </label>
+            <div className="flex items-end"></div>
           </div>
         </div>
-      </div>
+      )}
 
       <section id="curriculum" className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-white">Activities</h2>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold text-white">Activities</h2>
+            {role !== "teacher" && <p className="text-xs text-slate-300">All listed activities are drone related.</p>}
+          </div>
           <p className="text-sm text-slate-400">Showing {filteredModules.length} modules</p>
         </div>
         <div className="grid md:grid-cols-3 gap-6">
