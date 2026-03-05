@@ -34,7 +34,9 @@ const submissionHideKey = "activitySubmissionHide";
 const STUDENT_ACTIVITY_TOUR_AUTOSTART_KEY = "student_activity_tour_autostart_v2";
 const STUDENT_ACTIVITY_TOUR_CHAIN_KEY = "student_activity_tour_chain_meta_v2";
 const STUDENT_DASHBOARD_TOUR_RESUME_KEY = "student_dashboard_tour_resume_v2";
-const QUIZ_QUESTION_COUNT = 15;
+const QUIZ_CORE_QUESTION_COUNT = 15;
+const QUIZ_HUMANITY_QUESTION_COUNT = 5;
+const QUIZ_QUESTION_COUNT = QUIZ_CORE_QUESTION_COUNT + QUIZ_HUMANITY_QUESTION_COUNT;
 const QUIZ_TIME_PER_QUESTION_SECONDS = 60;
 const QUIZ_DURATION_SECONDS = QUIZ_QUESTION_COUNT * QUIZ_TIME_PER_QUESTION_SECONDS;
 const TEACHER_TOUR_PALETTE = {
@@ -96,6 +98,15 @@ type ActivitySubmission = {
   report: AiReport | null;
   reportStatus: string | null;
   createdAt: string;
+};
+
+type QuizQuestionKind = "core" | "humanity";
+type QuizQuestion = {
+  question: string;
+  options: Array<{ label: string; text: string }>;
+  answer: string;
+  explanation?: string;
+  kind: QuizQuestionKind;
 };
 
 const buildFileMeta = (file: File): UploadMeta => ({ name: file.name, size: file.size, type: file.type });
@@ -165,6 +176,14 @@ const normalizeRoleValue = (value: unknown) => {
 
 const sanitizeSegment = (value: string) =>
   value.replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase() || "item";
+const shuffleArray = <T,>(values: T[]) => {
+  const next = [...values];
+  for (let idx = next.length - 1; idx > 0; idx -= 1) {
+    const swapWith = Math.floor(Math.random() * (idx + 1));
+    [next[idx], next[swapWith]] = [next[swapWith], next[idx]];
+  }
+  return next;
+};
 
 const buildReportHtml = ({
   logoSrc,
@@ -446,9 +465,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [quizStatus, setQuizStatus] = useState<string | null>(null);
   const [generatingQuiz, setGeneratingQuiz] = useState(false);
-  const [quizQuestions, setQuizQuestions] = useState<
-    Array<{ question: string; options: Array<{ label: string; text: string }>; answer: string; explanation?: string }>
-  >([]);
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selections, setSelections] = useState<Record<number, string>>({});
   const [quizComplete, setQuizComplete] = useState(false);
@@ -920,14 +937,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
     );
   };
 
-  const applyQuizQuestions = (
-    questions: Array<{
-      question: string;
-      options: Array<{ label: string; text: string }>;
-      answer: string;
-      explanation?: string;
-    }>,
-  ) => {
+  const applyQuizQuestions = (questions: QuizQuestion[]) => {
     if (!questions.length) return false;
     setQuizQuestions(questions);
     setCurrentQuestion(0);
@@ -1090,6 +1100,95 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
     setGeneratingQuiz(true);
     setQuizStatus("Loading questions from this activity...");
 
+    const buildQuestion = (
+      question: string,
+      options: string[],
+      answerIndex: number,
+      explanation: string,
+      kind: QuizQuestionKind,
+    ): QuizQuestion => ({
+      question,
+      options: options.slice(0, 4).map((text, idx) => ({ label: "ABCD".charAt(idx), text })),
+      answer: "ABCD".charAt(Math.max(0, Math.min(3, answerIndex))),
+      explanation,
+      kind,
+    });
+
+    const buildHumanityFallbackQuestions = () => {
+      const activityName = module.title || "this activity";
+      const subjectName = formatSubject(module.subject || "this subject");
+      const summary = (module.description || "the activity objectives").trim();
+      const sopSummary = (module.judgingLogic || "the required activity procedure").trim();
+      const codeHint =
+        codeDisplay
+          .split("\n")
+          .map((line) => line.trim())
+          .find((line) => line.length > 12 && line.length < 140) || "the provided simulation logic";
+
+      return [
+        buildQuestion(
+          `During ${activityName}, what should students prioritize if the most accurate setup could expose sensitive community data?`,
+          [
+            "Apply privacy safeguards first, then tune accuracy within those limits.",
+            "Collect every possible data point and discuss privacy after completion.",
+            "Ignore data concerns because educational tasks are always exempt.",
+            "Stop the activity immediately and skip analysis entirely.",
+          ],
+          0,
+          `The activity should balance performance with real-world responsibility; privacy and safety constraints come first for ${summary}.`,
+          "humanity",
+        ),
+        buildQuestion(
+          `A team can complete ${activityName} faster by skipping one SOP check. What is the best decision?`,
+          [
+            "Keep all SOP checks and document timing trade-offs transparently.",
+            "Skip the check if the teacher is observing the run.",
+            "Skip only the final check because results matter more than process.",
+            "Let each student choose their own safety level.",
+          ],
+          0,
+          `Critical thinking in ${subjectName} includes disciplined execution; procedure integrity (${sopSummary}) prevents hidden failure modes.`,
+          "humanity",
+        ),
+        buildQuestion(
+          `If one student cannot access the interface used in ${activityName}, what response is most appropriate?`,
+          [
+            "Adapt instructions/tools so all students can participate and still meet the same learning goal.",
+            "Assign that student only note-taking while others complete the core task.",
+            "Lower expectations for that student and remove assessment questions.",
+            "Proceed unchanged because the class timeline is fixed.",
+          ],
+          0,
+          `Activity relevance is preserved by keeping the same objective while improving access and participation quality.`,
+          "humanity",
+        ),
+        buildQuestion(
+          `When results from ${codeHint} conflict with expected outcomes, what is the most ethical classroom action?`,
+          [
+            "Report uncertainty clearly, investigate causes, and avoid overstating conclusions.",
+            "Choose the result that best matches expectations to keep confidence high.",
+            "Discard conflicting runs without recording them.",
+            "Publish only successful attempts from the activity.",
+          ],
+          0,
+          "Responsible STEM practice requires transparent evidence handling, especially when outputs affect real-life decisions.",
+          "humanity",
+        ),
+        buildQuestion(
+          `How should students judge whether ${activityName} creates real community value beyond technical success?`,
+          [
+            "Evaluate who benefits, who may be harmed, and whether risks are fairly managed.",
+            "Focus only on speed and accuracy metrics from the simulator.",
+            "Assume any technology use automatically helps everyone.",
+            "Base impact solely on how difficult the code looked.",
+          ],
+          0,
+          `Humanity-focused critical thinking ties activity outcomes to social impact, fairness, and accountable deployment in ${subjectName}.`,
+          "humanity",
+        ),
+      ].slice(0, QUIZ_HUMANITY_QUESTION_COUNT);
+    };
+
     const loadFromQuestionBank = async () => {
       const gradeSegment = sanitizeSegment(module.grade);
       const moduleSegments = Array.from(
@@ -1115,66 +1214,124 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
         if (!res.ok) continue;
         const payload = await res.text();
         const parsed = parseQuestionBankPayload(payload);
-        if (parsed.length) return parsed;
+        if (parsed.length) return parsed.slice(0, QUIZ_CORE_QUESTION_COUNT);
       }
-      return [] as typeof quizQuestions;
+      return [] as QuizQuestion[];
     };
 
-    const generateAiQuiz = async () => {
-      setQuizStatus("Generating fresh questions for this activity...");
+    const requestAiQuestions = async ({
+      message,
+      kind,
+      limit,
+      statusMessage,
+    }: {
+      message: string;
+      kind: QuizQuestionKind;
+      limit: number;
+      statusMessage: string;
+    }) => {
+      setQuizStatus(statusMessage);
       try {
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            message:
-              `Create ${QUIZ_QUESTION_COUNT} multiple-choice questions (A-D) with answers and short explanations for "${module.title}". `
-              + "Return in the format: Q1. question\\nA) option\\nB) option\\nC) option\\nD) option\\nAnswer: A\\nExplanation: ...",
+            message,
             context: {
               title: module.title,
               subject: module.subject,
               grade: module.grade,
               description: module.description,
               code: codeDisplay,
+              sop: module.judgingLogic,
             },
           }),
         });
         if (!res.ok) {
           setQuizStatus("AI service unavailable. Please try again shortly.");
-          return [] as typeof quizQuestions;
+          return [] as QuizQuestion[];
         }
         const data = (await res.json()) as { reply?: string; fallback?: boolean; detail?: string };
         const reply = (data?.reply || "").trim();
+        const parsed = reply ? parseQuiz(reply, kind, limit) : [];
 
         if (data?.fallback) {
+          if (parsed.length) return parsed;
           setQuizStatus(data.detail || reply || "AI service unavailable.");
-          return [] as typeof quizQuestions;
+          return [] as QuizQuestion[];
         }
 
         if (!reply) {
           setQuizStatus("No quiz returned by AI. Please retry.");
-          return [] as typeof quizQuestions;
+          return [] as QuizQuestion[];
         }
 
-        const parsed = parseQuiz(reply);
         if (!parsed.length) {
           setQuizStatus("AI replied but no valid MCQs were parsed.");
-          return [] as typeof quizQuestions;
+          return [] as QuizQuestion[];
         }
         return parsed;
       } catch (err) {
         console.error("AI quiz generation failed", err);
         setQuizStatus(getErrorMessage(err));
-        return [] as typeof quizQuestions;
+        return [] as QuizQuestion[];
       }
     };
 
+    const generateAiQuiz = async () =>
+      requestAiQuestions({
+        message:
+          `Create ${QUIZ_CORE_QUESTION_COUNT} activity-specific multiple-choice questions (A-D) with answers and short explanations for "${module.title}". `
+          + "Keep them technical and concept-focused for this module only. "
+          + "Return in the format: Q1. question\\nA) option\\nB) option\\nC) option\\nD) option\\nAnswer: A\\nExplanation: ...",
+        kind: "core",
+        limit: QUIZ_CORE_QUESTION_COUNT,
+        statusMessage: "Generating core activity questions...",
+      });
+
+    const generateHumanityAiQuiz = async () =>
+      requestAiQuestions({
+        message:
+          `Create ${QUIZ_HUMANITY_QUESTION_COUNT} real-life, humanity-focused critical-thinking multiple-choice questions (A-D) for "${module.title}". `
+          + "Every question must stay directly relevant to this activity, its SOP, code, safety, and expected outcomes. "
+          + "Focus on ethical judgment, community impact, accessibility, and responsible use. "
+          + "Return in the format: Q1. question\\nA) option\\nB) option\\nC) option\\nD) option\\nAnswer: A\\nExplanation: ...",
+        kind: "humanity",
+        limit: QUIZ_HUMANITY_QUESTION_COUNT,
+        statusMessage: "Adding humanity critical-thinking questions...",
+      });
+
     try {
       const bankQuestions = await loadFromQuestionBank();
-      if (applyQuizQuestions(bankQuestions)) return;
+      let coreQuestions = bankQuestions.slice(0, QUIZ_CORE_QUESTION_COUNT);
 
-      const aiQuestions = await generateAiQuiz();
-      if (applyQuizQuestions(aiQuestions)) return;
+      if (coreQuestions.length < QUIZ_CORE_QUESTION_COUNT) {
+        const aiCoreQuestions = await generateAiQuiz();
+        if (aiCoreQuestions.length) {
+          coreQuestions = [...coreQuestions, ...aiCoreQuestions].slice(0, QUIZ_CORE_QUESTION_COUNT);
+        }
+      }
+
+      if (coreQuestions.length < QUIZ_CORE_QUESTION_COUNT) {
+        setQuizStatus("Unable to generate enough activity questions right now. Please try again.");
+        return;
+      }
+
+      const aiHumanityQuestions = await generateHumanityAiQuiz();
+      const fallbackHumanityQuestions = buildHumanityFallbackQuestions();
+      const humanityQuestions = (
+        aiHumanityQuestions.length >= QUIZ_HUMANITY_QUESTION_COUNT
+          ? aiHumanityQuestions.slice(0, QUIZ_HUMANITY_QUESTION_COUNT)
+          : [...aiHumanityQuestions, ...fallbackHumanityQuestions].slice(0, QUIZ_HUMANITY_QUESTION_COUNT)
+      ).map((question) => ({ ...question, kind: "humanity" as const }));
+
+      const mixedQuestions = shuffleArray([...coreQuestions, ...humanityQuestions]).slice(0, QUIZ_QUESTION_COUNT);
+      if (applyQuizQuestions(mixedQuestions)) {
+        if (aiHumanityQuestions.length < QUIZ_HUMANITY_QUESTION_COUNT) {
+          setQuizStatus("Loaded fallback humanity critical-thinking questions from activity context.");
+        }
+        return;
+      }
 
       setQuizStatus((prev) => prev ?? "Unable to generate quiz right now. Please try again in a bit.");
     } catch (err) {
@@ -1185,14 +1342,9 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
     }
   };
 
-  const parseQuiz = (text: string) => {
+  const parseQuiz = (text: string, kind: QuizQuestionKind = "core", limit = QUIZ_QUESTION_COUNT) => {
     const blocks = text.split(/Q\d+\./i).filter(Boolean);
-    const questions: Array<{
-      question: string;
-      options: Array<{ label: string; text: string }>;
-      answer: string;
-      explanation?: string;
-    }> = [];
+    const questions: QuizQuestion[] = [];
     const answerRegex = /Answer:\s*([A-D])/i;
     blocks.forEach((block) => {
       const lines = block.trim().split("\n").map((l) => l.trim()).filter(Boolean);
@@ -1212,11 +1364,11 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
       const answer = answerMatch ? answerMatch[1].toUpperCase() : "";
       const explanationLine = lines.find((l) => /^Explanation:/i.test(l));
       const explanation = explanationLine ? explanationLine.replace(/^Explanation:\s*/i, "").trim() : "";
-      if (question && opts.length === 4 && answer) {
-        questions.push({ question, options: opts, answer, explanation: explanation || undefined });
+      if (question && opts.length === 4 && /^[A-D]$/.test(answer)) {
+        questions.push({ question, options: opts, answer, explanation: explanation || undefined, kind });
       }
     });
-    return questions.slice(0, QUIZ_QUESTION_COUNT);
+    return questions.slice(0, limit);
   };
 
   const parseQuestionBankPayload = (raw: string) => {
@@ -1225,11 +1377,11 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
         return options
           .slice(0, 4)
           .map((opt, idx) => {
-            if (typeof opt === "string") return { label: "ABCD".charAt(idx), text: opt };
+            const normalizedLabel = "ABCD".charAt(idx);
+            if (typeof opt === "string") return { label: normalizedLabel, text: opt };
             if (opt && typeof opt === "object" && "text" in opt) {
-              const label = typeof (opt as { label?: string }).label === "string" ? (opt as { label: string }).label : "ABCD".charAt(idx);
               const text = String((opt as { text?: unknown }).text ?? "");
-              return { label: label.toUpperCase(), text };
+              return { label: normalizedLabel, text };
             }
             return null;
           })
@@ -1238,46 +1390,53 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
       return [];
     };
 
-    const normalizeArray = (items: unknown[]): Array<{ question: string; options: Array<{ label: string; text: string }>; answer: string; explanation?: string }> => {
+    const normalizeAnswer = (answerRaw: string) => {
+      const normalized = answerRaw.trim().toUpperCase();
+      if (/^[A-D]$/.test(normalized)) return normalized;
+      if (/^[1-4]$/.test(normalized)) return "ABCD".charAt(Number.parseInt(normalized, 10) - 1);
+      return "";
+    };
+
+    const normalizeArray = (items: unknown[]): QuizQuestion[] => {
       return items
         .map((item) => {
           if (!item || typeof item !== "object") return null;
           const q = (item as { q?: string; question?: string }).question || (item as { q?: string }).q || "";
           const opts = safeOptions((item as { options?: unknown }).options);
-          const ans = ((item as { answer?: string }).answer || "").trim().toUpperCase();
+          const ans = normalizeAnswer((item as { answer?: string }).answer || "");
           const explanation =
             typeof (item as { explanation?: string }).explanation === "string"
               ? (item as { explanation?: string }).explanation
               : undefined;
           if (!q || opts.length !== 4 || !ans) return null;
-          return { question: q, options: opts, answer: ans.charAt(0), explanation };
+          return { question: q, options: opts, answer: ans, explanation, kind: "core" as const };
         })
-        .filter(Boolean) as Array<{ question: string; options: Array<{ label: string; text: string }>; answer: string; explanation?: string }>;
+        .filter(Boolean) as QuizQuestion[];
     };
 
     try {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        return normalizeArray(parsed).slice(0, QUIZ_QUESTION_COUNT);
+        return normalizeArray(parsed).slice(0, QUIZ_CORE_QUESTION_COUNT);
       }
       if (parsed && typeof parsed === "object") {
         const questionsField = (parsed as { questions?: unknown }).questions;
         if (typeof questionsField === "string") {
           try {
             const nested = JSON.parse(questionsField);
-            if (Array.isArray(nested)) return normalizeArray(nested).slice(0, QUIZ_QUESTION_COUNT);
+            if (Array.isArray(nested)) return normalizeArray(nested).slice(0, QUIZ_CORE_QUESTION_COUNT);
           } catch {
             // fall through to parse as text
-            const viaText = parseQuiz(questionsField);
+            const viaText = parseQuiz(questionsField, "core", QUIZ_CORE_QUESTION_COUNT);
             if (viaText.length) return viaText;
           }
         }
-        if (Array.isArray(questionsField)) return normalizeArray(questionsField).slice(0, QUIZ_QUESTION_COUNT);
+        if (Array.isArray(questionsField)) return normalizeArray(questionsField).slice(0, QUIZ_CORE_QUESTION_COUNT);
       }
     } catch {
       // not JSON, try text parsing
     }
-    const fallback = parseQuiz(raw);
+    const fallback = parseQuiz(raw, "core", QUIZ_CORE_QUESTION_COUNT);
     return fallback;
   };
 
@@ -2999,20 +3158,28 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
                       </div>
 
                       <div className="flex gap-2 flex-wrap">
-                        {quizQuestions.map((_, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            className={`w-10 h-10 rounded-full border text-sm font-semibold ${
-                              idx === currentQuestion
-                                ? "border-accent text-accent-strong bg-accent/10"
-                                : "border-slate-300 text-slate-700 bg-white"
-                            }`}
-                            onClick={() => setCurrentQuestion(idx)}
-                          >
-                            {idx + 1}
-                          </button>
-                        ))}
+                        {quizQuestions.map((item, idx) => {
+                          const isHumanityQuestion = item.kind === "humanity";
+                          const isActive = idx === currentQuestion;
+                          return (
+                            <button
+                              key={idx}
+                              type="button"
+                              className={`w-10 h-10 rounded-full border text-sm font-semibold ${
+                                isHumanityQuestion
+                                  ? isActive
+                                    ? "border-orange-500 text-orange-700 bg-orange-50"
+                                    : "border-orange-400 text-slate-700 bg-white"
+                                  : isActive
+                                    ? "border-accent text-accent-strong bg-accent/10"
+                                    : "border-slate-300 text-slate-700 bg-white"
+                              }`}
+                              onClick={() => setCurrentQuestion(idx)}
+                            >
+                              {idx + 1}
+                            </button>
+                          );
+                        })}
                       </div>
 
                       {!quizComplete && (
