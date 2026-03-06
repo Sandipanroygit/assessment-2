@@ -77,6 +77,19 @@ const formatDateTime = (value?: string | null) => {
   });
 };
 
+const toInputDateTime = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offsetMs = date.getTimezoneOffset() * 60 * 1000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+};
+
+const defaultSimulationDueInput = () => {
+  const date = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  date.setHours(23, 59, 0, 0);
+  return toInputDateTime(date.toISOString());
+};
+
 export default function SimulationsPage() {
   const [role, setRole] = useState<UserRole>("");
   const [sessionToken, setSessionToken] = useState<string | null>(null);
@@ -84,6 +97,7 @@ export default function SimulationsPage() {
   const [selectedSimulation, setSelectedSimulation] = useState<SelectedSimulation | null>(null);
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [assignGrade, setAssignGrade] = useState("");
+  const [assignDueAt, setAssignDueAt] = useState(defaultSimulationDueInput());
   const [assignNotes, setAssignNotes] = useState("");
   const [assigningSimulation, setAssigningSimulation] = useState(false);
   const [assignStatus, setAssignStatus] = useState<string | null>(null);
@@ -290,6 +304,7 @@ export default function SimulationsPage() {
     setAssignModalOpen(true);
     setAssignStatus(null);
     setAssignNotes("");
+    setAssignDueAt(defaultSimulationDueInput());
     setAssignGrade((prev) => (prev ? prev : teacherGradeOptions[0] ?? ""));
   }, [isTeacher, teacherGradeOptions]);
 
@@ -304,6 +319,15 @@ export default function SimulationsPage() {
     }
     if (!assignGrade.trim()) {
       setAssignStatus("Select a grade.");
+      return;
+    }
+    if (!assignDueAt.trim()) {
+      setAssignStatus("Select a deadline.");
+      return;
+    }
+    const parsedDueAt = new Date(assignDueAt);
+    if (Number.isNaN(parsedDueAt.getTime())) {
+      setAssignStatus("Select a valid deadline.");
       return;
     }
 
@@ -323,6 +347,7 @@ export default function SimulationsPage() {
           simulationUrl: selectedSimulation.url,
           subject: selectedSimulation.subject,
           notes: assignNotes.trim() || null,
+          dueAt: parsedDueAt.toISOString(),
         }),
       });
 
@@ -346,7 +371,7 @@ export default function SimulationsPage() {
     } finally {
       setAssigningSimulation(false);
     }
-  }, [assignGrade, assignNotes, selectedSimulation, sessionToken]);
+  }, [assignDueAt, assignGrade, assignNotes, selectedSimulation, sessionToken]);
 
   const openAssessmentModal = useCallback((assignment: AssignedSimulation) => {
     const questions = assignment.assessment_questions ?? [];
@@ -527,6 +552,16 @@ export default function SimulationsPage() {
             </label>
 
             <label className="block text-sm text-slate-800 space-y-1">
+              Deadline
+              <input
+                type="datetime-local"
+                value={assignDueAt}
+                onChange={(event) => setAssignDueAt(event.target.value)}
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-emerald-500"
+              />
+            </label>
+
+            <label className="block text-sm text-slate-800 space-y-1">
               Notes (optional)
               <textarea
                 value={assignNotes}
@@ -545,7 +580,7 @@ export default function SimulationsPage() {
               <button
                 type="button"
                 onClick={() => void assignSimulationToGrade()}
-                disabled={assigningSimulation || !assignGrade}
+                disabled={assigningSimulation || !assignGrade || !assignDueAt}
                 className="rounded-lg border border-emerald-700 bg-emerald-700 px-4 py-2 text-sm font-semibold text-true-white hover:bg-emerald-600 transition disabled:opacity-60"
               >
                 {assigningSimulation ? "Assigning..." : "Assign"}

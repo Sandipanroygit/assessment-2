@@ -141,11 +141,10 @@ export async function POST(req: Request) {
     if (notes.length > 1500) {
       return NextResponse.json({ error: "Notes should be within 1500 characters" }, { status: 400 });
     }
-    const dueAt = dueAtRaw ? new Date(dueAtRaw) : (() => {
-      const date = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-      date.setHours(23, 59, 0, 0);
-      return date;
-    })();
+    if (!dueAtRaw) {
+      return NextResponse.json({ error: "Deadline is required" }, { status: 400 });
+    }
+    const dueAt = new Date(dueAtRaw);
     if (Number.isNaN(dueAt.getTime())) {
       return NextResponse.json({ error: "Invalid deadline date" }, { status: 400 });
     }
