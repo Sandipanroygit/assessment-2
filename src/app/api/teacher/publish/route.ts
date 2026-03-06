@@ -7,6 +7,14 @@ const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabaseAdmin =
   SUPABASE_URL && SERVICE_ROLE_KEY ? createClient(SUPABASE_URL, SERVICE_ROLE_KEY) : null;
 
+const withDeadlineHint = (message: string) => {
+  const normalized = message.toLowerCase();
+  if (normalized.includes("due_at") && (normalized.includes("column") || normalized.includes("schema cache"))) {
+    return `${message} Apply \`supabase/curriculum_module_deadlines_patch.sql\` in Supabase SQL Editor.`;
+  }
+  return message;
+};
+
 export async function POST(req: Request) {
   if (!supabaseAdmin) {
     return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
@@ -23,7 +31,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid token" }, { status: 401 });
   }
 
-  let body: { moduleId?: string; published?: boolean } = {};
+  let body: {
+    moduleId?: string;
+    published?: boolean;
+    dueAt?: string | null;
+    grade?: string | null;
+    notes?: string | null;
+  } = {};
   try {
     body = await req.json();
   } catch {
@@ -32,9 +46,30 @@ export async function POST(req: Request) {
 
   const moduleId = body.moduleId?.trim();
   const published = body.published ?? true;
+  const dueAtRaw = typeof body.dueAt === "string" ? body.dueAt.trim() : "";
+  const gradeRaw = typeof body.grade === "string" ? body.grade.trim() : "";
+  const notesRaw = typeof body.notes === "string" ? body.notes.trim() : "";
 
   if (!moduleId) {
     return NextResponse.json({ error: "moduleId is required" }, { status: 400 });
+  }
+
+  let dueAtIso: string | null = null;
+  if (published) {
+    if (!dueAtRaw) {
+      return NextResponse.json({ error: "Deadline is required while publishing" }, { status: 400 });
+    }
+    const parsedDueAt = new Date(dueAtRaw);
+    if (Number.isNaN(parsedDueAt.getTime())) {
+      return NextResponse.json({ error: "Invalid deadline date" }, { status: 400 });
+    }
+    if (!gradeRaw) {
+      return NextResponse.json({ error: "Grade is required while publishing" }, { status: 400 });
+    }
+    if (notesRaw.length > 1500) {
+      return NextResponse.json({ error: "Notes should be within 1500 characters" }, { status: 400 });
+    }
+    dueAtIso = parsedDueAt.toISOString();
   }
 
   const userMeta = userData.user.user_metadata || {};
@@ -47,12 +82,12 @@ export async function POST(req: Request) {
   // Ensure the module belongs to the teacher's subject (if provided)
   const { data: moduleRow, error: moduleError } = await supabaseAdmin
     .from("curriculum_modules")
-    .select("id, title, subject")
+    .select("id, title, subject, grade, due_at")
     .eq("id", moduleId)
     .maybeSingle();
 
   if (moduleError) {
-    return NextResponse.json({ error: moduleError.message }, { status: 500 });
+    return NextResponse.json({ error: withDeadlineHint(moduleError.message) }, { status: 500 });
   }
   if (!moduleRow) {
     return NextResponse.json({ error: "Module not found" }, { status: 404 });
@@ -61,13 +96,21 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Cannot publish modules outside your subject" }, { status: 403 });
   }
 
+  const updatePayload: { published: boolean; due_at?: string; grade?: string } = { published };
+  if (dueAtIso) {
+    updatePayload.due_at = dueAtIso;
+  }
+  if (published) {
+    updatePayload.grade = gradeRaw;
+  }
+
   const { error: updateError } = await supabaseAdmin
     .from("curriculum_modules")
-    .update({ published })
+    .update(updatePayload)
     .eq("id", moduleId);
 
   if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 500 });
+    return NextResponse.json({ error: withDeadlineHint(updateError.message) }, { status: 500 });
   }
 
   // Logging failure should not block publish action.
@@ -81,6 +124,7 @@ export async function POST(req: Request) {
       module_id: moduleId,
       module_title: moduleRow.title ?? null,
       module_subject: moduleRow.subject,
+      module_notes: notesRaw || null,
       published,
     },
   });

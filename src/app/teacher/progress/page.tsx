@@ -23,6 +23,7 @@ type ModuleRow = {
   grade: string;
   subject: string;
   published: boolean | null;
+  due_at?: string | null;
 };
 
 type StudentRow = {
@@ -31,6 +32,69 @@ type StudentRow = {
   email?: string | null;
   grade?: string | null;
   subject?: string | null;
+};
+
+type SimulationAssignmentRow = {
+  id: string;
+  teacher_id: string;
+  teacher_name: string;
+  target_grade: string;
+  target_grade_key?: string | null;
+  subject?: string | null;
+  simulation_title: string;
+  simulation_url: string;
+  notes?: string | null;
+  due_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+type SimulationProgressRow = {
+  assignment_id: string;
+  student_id: string;
+  student_name?: string | null;
+  student_grade?: string | null;
+  status?: string | null;
+  viewed_at?: string | null;
+  assessment_score?: number | null;
+  assessment_total?: number | null;
+  assessment_submitted_at?: string | null;
+  updated_at?: string | null;
+};
+
+type SteamhAssignmentRow = {
+  id: string;
+  student_id: string;
+  student_name: string;
+  title: string;
+  subject?: string | null;
+  grade?: string | null;
+  due_at: string;
+  submitted_at?: string | null;
+  status?: string | null;
+  created_at?: string | null;
+};
+
+type ProgressTrack = "drone" | "simulation" | "steamh";
+
+const normalizeGradeKey = (value?: string | null) =>
+  (value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/grade/gi, "")
+    .replace(/[^a-z0-9]+/g, "");
+
+const formatDateTime = (value?: string | null) => {
+  if (!value) return "--";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "--";
+  return parsed.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 };
 
 const TEACHER_PROGRESS_TOUR_STORAGE_KEY = "teacher_progress_feature_tour_v2";
@@ -48,9 +112,13 @@ export default function TeacherProgressPage() {
   const [modules, setModules] = useState<ModuleRow[]>([]);
   const [submissions, setSubmissions] = useState<ProgressRow[]>([]);
   const [students, setStudents] = useState<StudentRow[]>([]);
+  const [simulationAssignments, setSimulationAssignments] = useState<SimulationAssignmentRow[]>([]);
+  const [simulationProgressRows, setSimulationProgressRows] = useState<SimulationProgressRow[]>([]);
+  const [steamhAssignments, setSteamhAssignments] = useState<SteamhAssignmentRow[]>([]);
   const [status, setStatus] = useState<string | null>(null);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [, startLoading] = useTransition();
+  const [progressTrack, setProgressTrack] = useState<ProgressTrack>("drone");
   const [moduleFilter, setModuleFilter] = useState<string>("all");
   const [remindingId, setRemindingId] = useState<string | null>(null);
   const [reminderBanner, setReminderBanner] = useState<string | null>(null);
@@ -88,6 +156,9 @@ export default function TeacherProgressPage() {
               setModules(body.modules ?? []);
               setSubmissions(body.submissions ?? []);
               setStudents(body.students ?? []);
+              setSimulationAssignments(body.simulationAssignments ?? []);
+              setSimulationProgressRows(body.simulationProgress ?? []);
+              setSteamhAssignments(body.steamhAssignments ?? []);
               setStatus(null);
             } catch (err) {
               const message = err instanceof Error ? err.message : "Unable to load progress";
@@ -163,6 +234,100 @@ export default function TeacherProgressPage() {
         };
       });
   }, [filteredModule, modules, students, submissions]);
+
+  const simulationProgressByAssignmentAndStudent = useMemo(() => {
+    const map = new Map<string, SimulationProgressRow>();
+    simulationProgressRows.forEach((row) => {
+      const key = `${row.assignment_id}::${row.student_id}`;
+      map.set(key, row);
+    });
+    return map;
+  }, [simulationProgressRows]);
+
+  const simulationStudentProgressRows = useMemo(() => {
+    const rows: Array<{
+      id: string;
+      simulationTitle: string;
+      simulationSubject: string | null;
+      targetGrade: string;
+      studentId: string;
+      studentName: string;
+      studentGrade: string | null;
+      dueAt: string | null;
+      status: "Completed" | "Viewed" | "Pending" | "Overdue";
+      assessmentScore: number | null;
+      assessmentTotal: number | null;
+      assessmentSubmittedAt: string | null;
+      viewedAt: string | null;
+    }> = [];
+
+    simulationAssignments.forEach((assignment) => {
+      const gradeKey = normalizeGradeKey(assignment.target_grade_key || assignment.target_grade);
+      const targetStudents = students.filter(
+        (student) => normalizeGradeKey(student.grade) === gradeKey,
+      );
+      targetStudents.forEach((student) => {
+        const progress =
+          simulationProgressByAssignmentAndStudent.get(`${assignment.id}::${student.id}`) ?? null;
+        const viewedAt = progress?.viewed_at ?? null;
+        const assessmentSubmittedAt = progress?.assessment_submitted_at ?? null;
+        const assessmentScore =
+          typeof progress?.assessment_score === "number" && Number.isFinite(progress.assessment_score)
+            ? progress.assessment_score
+            : null;
+        const assessmentTotal =
+          typeof progress?.assessment_total === "number" && Number.isFinite(progress.assessment_total)
+            ? progress.assessment_total
+            : null;
+        const isCompleted = Boolean(assessmentSubmittedAt);
+        const isViewed =
+          isCompleted || progress?.status?.toLowerCase() === "viewed" || Boolean(viewedAt);
+        const dueMs = Date.parse(assignment.due_at ?? "");
+        const isOverdue = !isViewed && !Number.isNaN(dueMs) && dueMs <= Date.now();
+        rows.push({
+          id: `${assignment.id}::${student.id}`,
+          simulationTitle: assignment.simulation_title,
+          simulationSubject: assignment.subject ?? null,
+          targetGrade: assignment.target_grade,
+          studentId: student.id,
+          studentName: student.full_name,
+          studentGrade: student.grade ?? null,
+          dueAt: assignment.due_at ?? null,
+          status: isCompleted ? "Completed" : isViewed ? "Viewed" : isOverdue ? "Overdue" : "Pending",
+          assessmentScore,
+          assessmentTotal,
+          assessmentSubmittedAt,
+          viewedAt,
+        });
+      });
+    });
+
+    return rows.sort((a, b) => {
+      const aDue = Date.parse(a.dueAt ?? "");
+      const bDue = Date.parse(b.dueAt ?? "");
+      const aDueComparable = Number.isNaN(aDue) ? Number.MAX_SAFE_INTEGER : aDue;
+      const bDueComparable = Number.isNaN(bDue) ? Number.MAX_SAFE_INTEGER : bDue;
+      if (aDueComparable !== bDueComparable) return aDueComparable - bDueComparable;
+      const titleCompare = a.simulationTitle.localeCompare(b.simulationTitle, undefined, { sensitivity: "base" });
+      if (titleCompare !== 0) return titleCompare;
+      return a.studentName.localeCompare(b.studentName, undefined, { sensitivity: "base" });
+    });
+  }, [simulationAssignments, simulationProgressByAssignmentAndStudent, students]);
+
+  const steamhProgressRows = useMemo(
+    () =>
+      [...steamhAssignments].sort((a, b) => {
+        const aDue = Date.parse(a.due_at);
+        const bDue = Date.parse(b.due_at);
+        const aDueComparable = Number.isNaN(aDue) ? Number.MAX_SAFE_INTEGER : aDue;
+        const bDueComparable = Number.isNaN(bDue) ? Number.MAX_SAFE_INTEGER : bDue;
+        if (aDueComparable !== bDueComparable) return aDueComparable - bDueComparable;
+        const aCreated = Date.parse(a.created_at ?? "");
+        const bCreated = Date.parse(b.created_at ?? "");
+        return (Number.isNaN(bCreated) ? 0 : bCreated) - (Number.isNaN(aCreated) ? 0 : aCreated);
+      }),
+    [steamhAssignments],
+  );
 
   const firstRemindableStudentId = useMemo(
     () => studentProgress.find((row) => row.status?.toLowerCase() === "not submitted")?.id ?? null,
@@ -355,11 +520,14 @@ export default function TeacherProgressPage() {
       "progress-reminder-bell-fallback",
     ]);
     if (!moduleRequiredSteps.has(stepId)) return;
+    if (progressTrack !== "drone") {
+      setProgressTrack("drone");
+    }
     if (!tourPreferredModuleId) return;
     if (moduleFilter !== tourPreferredModuleId) {
       setModuleFilter(tourPreferredModuleId);
     }
-  }, [moduleFilter, progressTourSteps, tourPreferredModuleId, tourRun, tourStepIndex]);
+  }, [moduleFilter, progressTourSteps, progressTrack, tourPreferredModuleId, tourRun, tourStepIndex]);
 
   useEffect(() => {
     if (tourInitialized) return;
@@ -485,22 +653,42 @@ export default function TeacherProgressPage() {
         </>
       ) : (
         <>
-          <div className="glass-panel rounded-2xl p-4 flex flex-wrap gap-3 items-center" data-tour="teacher-progress-filter-panel">
-            <label className="text-sm text-slate-200 space-y-1">
-              Module
-              <select
-                data-tour="teacher-progress-module-select"
-                className="w-full rounded-lg bg-white/5 border border-slate-400/60 px-3 py-2"
-                value={moduleFilter}
-                onChange={(e) => setModuleFilter(e.target.value)}
+          <div className="glass-panel rounded-2xl p-4 space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setProgressTrack("drone")}
+                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                  progressTrack === "drone"
+                    ? "border-cyan-300 bg-cyan-500/20 text-cyan-100"
+                    : "border-white/20 bg-white/5 text-slate-300 hover:bg-white/10"
+                }`}
               >
-                {moduleOptions.map((opt) => (
-                  <option key={opt.id} value={opt.id}>
-                    {opt.title}
-                  </option>
-                ))}
-              </select>
-            </label>
+                Drone Activity
+              </button>
+              <button
+                type="button"
+                onClick={() => setProgressTrack("simulation")}
+                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                  progressTrack === "simulation"
+                    ? "border-cyan-300 bg-cyan-500/20 text-cyan-100"
+                    : "border-white/20 bg-white/5 text-slate-300 hover:bg-white/10"
+                }`}
+              >
+                Simulation
+              </button>
+              <button
+                type="button"
+                onClick={() => setProgressTrack("steamh")}
+                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                  progressTrack === "steamh"
+                    ? "border-cyan-300 bg-cyan-500/20 text-cyan-100"
+                    : "border-white/20 bg-white/5 text-slate-300 hover:bg-white/10"
+                }`}
+              >
+                STEAM-H
+              </button>
+            </div>
             {status && (
               <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-amber-200">{status}</div>
             )}
@@ -510,103 +698,256 @@ export default function TeacherProgressPage() {
               </div>
             )}
           </div>
-          <div className="glass-panel rounded-2xl p-4 overflow-auto" data-tour="teacher-progress-table">
-            <table className="table-v1">
-              <thead>
-                <tr className="text-left text-slate-400 border-b border-white/10">
-                  <th className="py-2 pr-3">Student</th>
-                  <th className="py-2 pr-3">Grade</th>
-                  <th className="py-2 pr-3" data-tour="teacher-progress-status-column">Status</th>
-                  <th className="py-2 pr-3" data-tour="teacher-progress-reminder-column">Reminder</th>
-                  <th className="py-2 pr-3">Attempts</th>
-                  <th className="py-2 pr-3">Last updated</th>
-                </tr>
-              </thead>
-              <tbody>
-                {studentProgress.length === 0 ? (
-                  <tr>
-                    <td className="py-3 pr-3 text-slate-300" colSpan={6}>
-                      {filteredModule ? "No students found for this subject/grade yet." : "Select module"}
-                    </td>
-                  </tr>
-                ) : (
-                  studentProgress.map((row) => (
-                    <tr key={row.id} className="border-b border-white/5">
-                      <td className="py-2 pr-3 font-semibold text-white">{row.full_name}</td>
-                      <td className="py-2 pr-3 text-slate-300">{row.grade ?? "-"}</td>
-                      <td className="py-2 pr-3">
-                        <span
-                          className={`px-2 py-1 rounded-full text-xs !text-white ${
-                            (() => {
-                              const normalized = (row.status ?? "").toLowerCase();
-                              const isSubmitted = normalized === "submitted" || normalized === "report ready";
-                              const isNotSubmitted = normalized === "not submitted";
-                              const bg =
-                                normalized === "completed" || isSubmitted
-                                  ? "bg-emerald-600"
-                                  : normalized === "pending"
-                                    ? "bg-amber-600"
-                                    : isNotSubmitted
-                                      ? "bg-rose-700"
-                                      : "bg-slate-600";
-                              const weight = isSubmitted || isNotSubmitted ? "font-semibold" : "";
-                              return [bg, weight].filter(Boolean).join(" ");
-                            })()
-                          }`}
-                        >
-                          {row.status?.toLowerCase() === "report ready" ? "submitted" : row.status}
-                        </span>
-                      </td>
-                      <td className="py-2 pr-3">
-                        {row.status?.toLowerCase() === "not submitted" ? (
-                          <button
-                            data-tour={
-                              row.id === firstRemindableStudentId ? "teacher-progress-reminder-bell" : undefined
-                            }
-                            className="h-8 w-8 rounded-full bg-amber-500 text-slate-900 text-xs font-semibold border border-amber-300 hover:bg-amber-400 disabled:opacity-50 inline-flex items-center justify-center"
-                            onClick={() =>
-                              void sendReminder(
-                                row.id,
-                                row.full_name,
-                                filteredModule?.id ?? null,
-                                filteredModule?.title ?? row.moduleTitle ?? null,
-                                filteredModule?.subject ?? row.subject ?? null
-                              )
-                            }
-                            disabled={remindingId === row.id}
-                            aria-label="Send reminder"
-                          >
-                            {remindingId === row.id ? (
-                              <span className="text-[10px] font-semibold">...</span>
-                            ) : (
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                className="h-4 w-4"
+
+          {progressTrack === "drone" ? (
+            <>
+              <div className="glass-panel rounded-2xl p-4 flex flex-wrap gap-3 items-center" data-tour="teacher-progress-filter-panel">
+                <label className="text-sm text-slate-200 space-y-1">
+                  Module
+                  <select
+                    data-tour="teacher-progress-module-select"
+                    className="w-full rounded-lg bg-white/5 border border-slate-400/60 px-3 py-2"
+                    value={moduleFilter}
+                    onChange={(e) => setModuleFilter(e.target.value)}
+                  >
+                    {moduleOptions.map((opt) => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {filteredModule?.due_at && (
+                  <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200">
+                    Deadline: {formatDateTime(filteredModule.due_at)}
+                  </div>
+                )}
+              </div>
+              <div className="glass-panel rounded-2xl p-4 overflow-auto" data-tour="teacher-progress-table">
+                <table className="table-v1">
+                  <thead>
+                    <tr className="text-left text-slate-400 border-b border-white/10">
+                      <th className="py-2 pr-3">Student</th>
+                      <th className="py-2 pr-3">Grade</th>
+                      <th className="py-2 pr-3">Deadline</th>
+                      <th className="py-2 pr-3" data-tour="teacher-progress-status-column">Status</th>
+                      <th className="py-2 pr-3" data-tour="teacher-progress-reminder-column">Reminder</th>
+                      <th className="py-2 pr-3">Attempts</th>
+                      <th className="py-2 pr-3">Last updated</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {studentProgress.length === 0 ? (
+                      <tr>
+                        <td className="py-3 pr-3 text-slate-300" colSpan={7}>
+                          {filteredModule ? "No students found for this subject/grade yet." : "Select module"}
+                        </td>
+                      </tr>
+                    ) : (
+                      studentProgress.map((row) => (
+                        <tr key={row.id} className="border-b border-white/5">
+                          <td className="py-2 pr-3 font-semibold text-white">{row.full_name}</td>
+                          <td className="py-2 pr-3 text-slate-300">{row.grade ?? "-"}</td>
+                          <td className="py-2 pr-3 text-slate-300">
+                            {formatDateTime(filteredModule?.due_at ?? null)}
+                          </td>
+                          <td className="py-2 pr-3">
+                            <span
+                              className={`px-2 py-1 rounded-full text-xs !text-white ${
+                                (() => {
+                                  const normalized = (row.status ?? "").toLowerCase();
+                                  const isSubmitted = normalized === "submitted" || normalized === "report ready";
+                                  const isNotSubmitted = normalized === "not submitted";
+                                  const bg =
+                                    normalized === "completed" || isSubmitted
+                                      ? "bg-emerald-600"
+                                      : normalized === "pending"
+                                        ? "bg-amber-600"
+                                        : isNotSubmitted
+                                          ? "bg-rose-700"
+                                          : "bg-slate-600";
+                                  const weight = isSubmitted || isNotSubmitted ? "font-semibold" : "";
+                                  return [bg, weight].filter(Boolean).join(" ");
+                                })()
+                              }`}
+                            >
+                              {row.status?.toLowerCase() === "report ready" ? "submitted" : row.status}
+                            </span>
+                          </td>
+                          <td className="py-2 pr-3">
+                            {row.status?.toLowerCase() === "not submitted" ? (
+                              <button
+                                data-tour={
+                                  row.id === firstRemindableStudentId ? "teacher-progress-reminder-bell" : undefined
+                                }
+                                className="h-8 w-8 rounded-full bg-amber-500 text-slate-900 text-xs font-semibold border border-amber-300 hover:bg-amber-400 disabled:opacity-50 inline-flex items-center justify-center"
+                                onClick={() =>
+                                  void sendReminder(
+                                    row.id,
+                                    row.full_name,
+                                    filteredModule?.id ?? null,
+                                    filteredModule?.title ?? row.moduleTitle ?? null,
+                                    filteredModule?.subject ?? row.subject ?? null
+                                  )
+                                }
+                                disabled={remindingId === row.id}
+                                aria-label="Send reminder"
                               >
-                                <path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.172V11a6 6 0 1 0-12 0v3.172a2 2 0 0 1-.6 1.428L4 17h5" />
-                                <path d="M9 17a3 3 0 0 0 6 0" />
-                              </svg>
+                                {remindingId === row.id ? (
+                                  <span className="text-[10px] font-semibold">...</span>
+                                ) : (
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    className="h-4 w-4"
+                                  >
+                                    <path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.172V11a6 6 0 1 0-12 0v3.172a2 2 0 0 1-.6 1.428L4 17h5" />
+                                    <path d="M9 17a3 3 0 0 0 6 0" />
+                                  </svg>
+                                )}
+                                <span className="sr-only">Send reminder</span>
+                              </button>
+                            ) : (
+                              <span className="text-xs text-slate-400">-</span>
                             )}
-                            <span className="sr-only">Send reminder</span>
-                          </button>
-                        ) : (
-                          <span className="text-xs text-slate-400">-</span>
-                        )}
-                      </td>
-                      <td className="py-2 pr-3 text-slate-300">{row.attempts}</td>
-                      <td className="py-2 pr-3 text-slate-300">
-                        {row.latest ? new Date(row.latest).toLocaleString() : "-"}
+                          </td>
+                          <td className="py-2 pr-3 text-slate-300">{row.attempts}</td>
+                          <td className="py-2 pr-3 text-slate-300">
+                            {row.latest ? new Date(row.latest).toLocaleString() : "-"}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : null}
+
+          {progressTrack === "simulation" ? (
+            <div className="glass-panel rounded-2xl p-4 overflow-auto" data-tour="teacher-progress-table">
+              <table className="table-v1">
+                <thead>
+                  <tr className="text-left text-slate-400 border-b border-white/10">
+                    <th className="py-2 pr-3">Simulation</th>
+                    <th className="py-2 pr-3">Grade</th>
+                    <th className="py-2 pr-3">Student</th>
+                    <th className="py-2 pr-3">Deadline</th>
+                    <th className="py-2 pr-3">Status</th>
+                    <th className="py-2 pr-3">Score</th>
+                    <th className="py-2 pr-3">Completed at</th>
+                    <th className="py-2 pr-3">Viewed at</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {simulationStudentProgressRows.length === 0 ? (
+                    <tr>
+                      <td className="py-3 pr-3 text-slate-300" colSpan={8}>
+                        No simulation assignments mapped to current students yet.
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                  ) : (
+                    simulationStudentProgressRows.map((row) => (
+                      <tr key={row.id} className="border-b border-white/5">
+                        <td className="py-2 pr-3 text-white">
+                          <p className="font-semibold">{row.simulationTitle}</p>
+                          {row.simulationSubject ? (
+                            <p className="text-xs text-slate-400">{row.simulationSubject}</p>
+                          ) : null}
+                        </td>
+                        <td className="py-2 pr-3 text-slate-300">{row.targetGrade}</td>
+                        <td className="py-2 pr-3 text-slate-200">{row.studentName}</td>
+                        <td className="py-2 pr-3 text-slate-300">{formatDateTime(row.dueAt)}</td>
+                        <td className="py-2 pr-3">
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs !text-white ${
+                              row.status === "Completed"
+                                ? "bg-emerald-700 font-semibold"
+                                : row.status === "Viewed"
+                                ? "bg-emerald-600 font-semibold"
+                                : row.status === "Overdue"
+                                  ? "bg-rose-700 font-semibold"
+                                  : "bg-amber-600"
+                            }`}
+                          >
+                            {row.status}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-3 text-slate-300">
+                          {row.assessmentScore !== null && row.assessmentTotal !== null
+                            ? `${row.assessmentScore}/${row.assessmentTotal}`
+                            : "--"}
+                        </td>
+                        <td className="py-2 pr-3 text-slate-300">{formatDateTime(row.assessmentSubmittedAt)}</td>
+                        <td className="py-2 pr-3 text-slate-300">{formatDateTime(row.viewedAt)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+
+          {progressTrack === "steamh" ? (
+            <div className="glass-panel rounded-2xl p-4 overflow-auto" data-tour="teacher-progress-table">
+              <table className="table-v1">
+                <thead>
+                  <tr className="text-left text-slate-400 border-b border-white/10">
+                    <th className="py-2 pr-3">Student</th>
+                    <th className="py-2 pr-3">Task</th>
+                    <th className="py-2 pr-3">Deadline</th>
+                    <th className="py-2 pr-3">Status</th>
+                    <th className="py-2 pr-3">Submitted at</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {steamhProgressRows.length === 0 ? (
+                    <tr>
+                      <td className="py-3 pr-3 text-slate-300" colSpan={5}>
+                        No STEAM-H assignments found.
+                      </td>
+                    </tr>
+                  ) : (
+                    steamhProgressRows.map((assignment) => {
+                      const dueMs = Date.parse(assignment.due_at);
+                      const isSubmitted = Boolean(assignment.submitted_at);
+                      const isOverdue = !isSubmitted && !Number.isNaN(dueMs) && dueMs <= Date.now();
+                      const statusLabel = isSubmitted ? "Submitted" : isOverdue ? "Overdue" : "Pending";
+                      const statusClass = isSubmitted
+                        ? "bg-emerald-600 font-semibold"
+                        : isOverdue
+                          ? "bg-rose-700 font-semibold"
+                          : "bg-amber-600";
+                      return (
+                        <tr key={assignment.id} className="border-b border-white/5">
+                          <td className="py-2 pr-3 text-white">
+                            <p className="font-semibold">{assignment.student_name}</p>
+                            <p className="text-xs text-slate-400">{assignment.grade ?? "--"}</p>
+                          </td>
+                          <td className="py-2 pr-3 text-slate-200">
+                            <p className="font-semibold">{assignment.title}</p>
+                            {assignment.subject ? (
+                              <p className="text-xs text-slate-400">{assignment.subject}</p>
+                            ) : null}
+                          </td>
+                          <td className="py-2 pr-3 text-slate-300">{formatDateTime(assignment.due_at)}</td>
+                          <td className="py-2 pr-3">
+                            <span className={`px-2 py-1 rounded-full text-xs !text-white ${statusClass}`}>
+                              {statusLabel}
+                            </span>
+                          </td>
+                          <td className="py-2 pr-3 text-slate-300">{formatDateTime(assignment.submitted_at)}</td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
         </>
       )}
     </main>

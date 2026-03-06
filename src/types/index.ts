@@ -12,6 +12,7 @@ export interface CurriculumModule {
   codeSnippet?: string;
   priceYearly?: number;
   published?: boolean;
+  dueAt?: string | null;
 }
 
 export interface Product {

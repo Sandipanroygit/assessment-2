@@ -27,10 +27,15 @@ create table if not exists public.curriculum_modules (
   asset_urls jsonb default '[]',
   price_yearly numeric,
   published boolean default true,
+  due_at timestamp with time zone,
   created_at timestamp with time zone default now()
 );
 
 alter table public.curriculum_modules add column if not exists judging_logic text;
+alter table public.curriculum_modules add column if not exists due_at timestamp with time zone;
+
+create index if not exists curriculum_modules_subject_due_idx
+  on public.curriculum_modules (subject, due_at asc, created_at desc);
 
 create table if not exists public.products (
   id uuid primary key default gen_random_uuid(),
@@ -166,6 +171,53 @@ create index if not exists steamh_assignments_teacher_due_idx
 create index if not exists steamh_assignments_student_due_idx
   on public.steamh_assignments (student_id, due_at asc, created_at desc);
 
+create table if not exists public.simulation_assignments (
+  id uuid primary key default gen_random_uuid(),
+  teacher_id uuid not null references public.profiles (id) on delete cascade,
+  teacher_name text not null,
+  target_grade text not null,
+  target_grade_key text not null,
+  subject text,
+  simulation_title text not null,
+  simulation_url text not null,
+  notes text,
+  due_at timestamp with time zone not null,
+  assessment_questions jsonb,
+  assessment_generated_at timestamp with time zone,
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone default now()
+);
+
+create index if not exists simulation_assignments_teacher_due_idx
+  on public.simulation_assignments (teacher_id, due_at asc, created_at desc);
+
+create index if not exists simulation_assignments_grade_due_idx
+  on public.simulation_assignments (target_grade_key, due_at asc, created_at desc);
+
+create table if not exists public.simulation_assignment_progress (
+  id uuid primary key default gen_random_uuid(),
+  assignment_id uuid not null references public.simulation_assignments (id) on delete cascade,
+  student_id uuid not null references public.profiles (id) on delete cascade,
+  student_name text,
+  student_grade text,
+  status text check (status in ('assigned', 'viewed')) default 'assigned',
+  viewed_at timestamp with time zone,
+  assessment_score integer,
+  assessment_total integer,
+  assessment_submitted_at timestamp with time zone,
+  assessment_answers jsonb,
+  last_reminded_at timestamp with time zone,
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone default now(),
+  unique (assignment_id, student_id)
+);
+
+create index if not exists simulation_assignment_progress_assignment_idx
+  on public.simulation_assignment_progress (assignment_id, status, updated_at desc);
+
+create index if not exists simulation_assignment_progress_student_idx
+  on public.simulation_assignment_progress (student_id, assignment_id);
+
 create table if not exists public.activity_submissions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references public.profiles (id) on delete set null,
@@ -252,6 +304,8 @@ alter table public.sales_inquiries enable row level security;
 alter table public.steamh_projects enable row level security;
 alter table public.steamh_collaboration_requests enable row level security;
 alter table public.steamh_assignments enable row level security;
+alter table public.simulation_assignments enable row level security;
+alter table public.simulation_assignment_progress enable row level security;
 alter table public.activity_submissions enable row level security;
 alter table public.notifications enable row level security;
 alter table public.student_queries enable row level security;
@@ -469,6 +523,44 @@ create policy "Teachers manage own STEAM-H assignments" on public.steamh_assignm
 create policy "Students read own STEAM-H assignments" on public.steamh_assignments
   for select using (auth.uid() = student_id);
 create policy "Admins manage STEAM-H assignments" on public.steamh_assignments
+  for all using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "Teachers manage own simulation assignments" on public.simulation_assignments;
+drop policy if exists "Admins manage simulation assignments" on public.simulation_assignments;
+create policy "Teachers manage own simulation assignments" on public.simulation_assignments
+  for all
+  using (auth.uid() = teacher_id and public.is_teacher())
+  with check (auth.uid() = teacher_id and public.is_teacher());
+create policy "Admins manage simulation assignments" on public.simulation_assignments
+  for all using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "Teachers manage simulation assignment progress" on public.simulation_assignment_progress;
+drop policy if exists "Students read own simulation assignment progress" on public.simulation_assignment_progress;
+drop policy if exists "Students update own simulation assignment progress" on public.simulation_assignment_progress;
+drop policy if exists "Admins manage simulation assignment progress" on public.simulation_assignment_progress;
+create policy "Teachers manage simulation assignment progress" on public.simulation_assignment_progress
+  for all
+  using (
+    public.is_teacher()
+    and exists (
+      select 1
+      from public.simulation_assignments a
+      where a.id = assignment_id and a.teacher_id = auth.uid()
+    )
+  )
+  with check (
+    public.is_teacher()
+    and exists (
+      select 1
+      from public.simulation_assignments a
+      where a.id = assignment_id and a.teacher_id = auth.uid()
+    )
+  );
+create policy "Students read own simulation assignment progress" on public.simulation_assignment_progress
+  for select using (auth.uid() = student_id);
+create policy "Students update own simulation assignment progress" on public.simulation_assignment_progress
+  for update using (auth.uid() = student_id) with check (auth.uid() = student_id);
+create policy "Admins manage simulation assignment progress" on public.simulation_assignment_progress
   for all using (public.is_admin()) with check (public.is_admin());
 
 -- Activity submissions: students manage their own; admins can read all

@@ -19,6 +19,27 @@ const normalizeSubject = (subject: string) =>
   subject?.toLowerCase() === "maths" ? "Mathematics" : subject;
 const normalizeStatusValue = (value: unknown) => (typeof value === "string" ? value.trim().toLowerCase() : "");
 const normalizeTextValue = (value: unknown) => (typeof value === "string" ? value.trim().toLowerCase() : "");
+const toInputDateTime = (value?: string | null) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offsetMs = date.getTimezoneOffset() * 60 * 1000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+};
+const defaultPublishDueInput = () => {
+  const date = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  date.setHours(23, 59, 0, 0);
+  return toInputDateTime(date.toISOString());
+};
+const sortGradeLabels = (grades: string[]) =>
+  [...grades].sort((a, b) => {
+    const aMatch = a.match(/\d+/);
+    const bMatch = b.match(/\d+/);
+    const aNumber = aMatch ? Number(aMatch[0]) : Number.MAX_SAFE_INTEGER;
+    const bNumber = bMatch ? Number(bMatch[0]) : Number.MAX_SAFE_INTEGER;
+    if (aNumber !== bNumber) return aNumber - bNumber;
+    return a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
+  });
 
 type NotificationRow = {
   id: string;
@@ -93,6 +114,7 @@ export default function CustomerPage() {
   const [subjectFilter, setSubjectFilter] = useState<string>("all");
   const [teacherSubject, setTeacherSubject] = useState<string | null>(null);
   const [modules, setModules] = useState<CurriculumModule[]>([]);
+  const [moduleDeadlineInputById, setModuleDeadlineInputById] = useState<Record<string, string>>({});
   const [signingOut, startSignOut] = useTransition();
   const [dataStatus, setDataStatus] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -122,6 +144,13 @@ export default function CustomerPage() {
   const notificationsRef = useRef<HTMLDivElement | null>(null);
   const [teacherMenuOpen, setTeacherMenuOpen] = useState(false);
   const teacherMenuRef = useRef<HTMLDivElement | null>(null);
+  const [publishDeadlineModal, setPublishDeadlineModal] = useState<{
+    moduleId: string;
+    moduleTitle: string;
+    grade: string;
+    dueAt: string;
+    notes: string;
+  } | null>(null);
   const [requestOpen, setRequestOpen] = useState(false);
   const [requestMode, setRequestMode] = useState<"vr" | "drone">("vr");
   const [requestItems, setRequestItems] = useState<string[]>([]);
@@ -384,9 +413,12 @@ export default function CustomerPage() {
           (profileData as { grade?: string } | null)?.grade ??
           (latestUser.user_metadata?.grade as string | undefined) ??
           null;
-        if (gradeFromMeta) {
+        if (derivedRole !== "teacher" && gradeFromMeta) {
           setGradeFilter(gradeFromMeta);
           setUserGrade(gradeFromMeta);
+        } else if (derivedRole === "teacher") {
+          setGradeFilter("all");
+          setUserGrade(null);
         }
 
         const subjectFromMeta = (latestUser.user_metadata?.subject as string | undefined) ?? null;
@@ -468,11 +500,24 @@ export default function CustomerPage() {
           });
         }
         if (cancelled) return;
-        setModules(rows.map((m) => enhanceModule(m)));
+        const enhancedRows = rows.map((m) => {
+          const moduleWithDue = m as CurriculumModule & { due_at?: string | null };
+          return enhanceModule({
+            ...moduleWithDue,
+            dueAt: moduleWithDue.dueAt ?? moduleWithDue.due_at ?? null,
+          });
+        });
+        setModules(enhancedRows);
+        setModuleDeadlineInputById(
+          Object.fromEntries(
+            enhancedRows.map((module) => [module.id, toInputDateTime(module.dueAt) || defaultPublishDueInput()]),
+          ),
+        );
         setDataStatus(null);
       } catch (err) {
         if (cancelled) return;
         setModules([]);
+        setModuleDeadlineInputById({});
         const message =
           err instanceof Error && err.message.trim()
             ? err.message
@@ -865,7 +910,7 @@ export default function CustomerPage() {
 
   const filteredModules = useMemo(() => {
     return modules.filter((m) => {
-      const effectiveGrade = userGrade ?? gradeFilter;
+      const effectiveGrade = role === "teacher" ? gradeFilter : (userGrade ?? gradeFilter);
       const gradeMatch = effectiveGrade === "all" || m.grade === effectiveGrade;
       const normalizedSubject = normalizeSubject(m.subject);
       const subjectMatch = subjectFilter === "all" || normalizedSubject === subjectFilter;
@@ -874,6 +919,18 @@ export default function CustomerPage() {
       return gradeMatch && subjectMatch && publishedMatch;
     });
   }, [gradeFilter, subjectFilter, modules, role, userGrade]);
+
+  const publishGradeOptions = useMemo(() => {
+    const unique = new Set<string>();
+    modules.forEach((module) => {
+      const grade = (module.grade ?? "").trim();
+      if (grade) unique.add(grade);
+    });
+    if (publishDeadlineModal?.grade?.trim()) {
+      unique.add(publishDeadlineModal.grade.trim());
+    }
+    return sortGradeLabels(Array.from(unique));
+  }, [modules, publishDeadlineModal?.grade]);
 
   const studentTourTargetModuleId = useMemo(() => {
     if (filteredModules.length === 0) return null;
@@ -957,6 +1014,8 @@ export default function CustomerPage() {
         ? "Select a date at least 14 days from today (custom VR requests need more lead time)."
         : "Select a date at least 3 days from today (next 2 days are blocked)."
       : "Select a date at least 8 days from today; require 7 days for R&D to draft and test.";
+  const shouldLockBackgroundScroll =
+    !!publishDeadlineModal || requestOpen || studentDoubtOpen || teacherQueriesOpen;
 
   useEffect(() => {
     // If switching modes makes the previously selected date invalid, clear it.
@@ -966,27 +1025,60 @@ export default function CustomerPage() {
   }, [requestDate, requestMinDate]);
 
   useEffect(() => {
-    if (!teacherQueriesOpen) return;
+    if (!shouldLockBackgroundScroll) return;
 
-    const originalOverflow = document.body.style.overflow;
-    const originalPaddingRight = document.body.style.paddingRight;
+    const originalBodyOverflow = document.body.style.overflow;
+    const originalBodyPaddingRight = document.body.style.paddingRight;
+    const originalHtmlOverflow = document.documentElement.style.overflow;
     const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
 
     document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
     if (scrollbarWidth > 0) {
       document.body.style.paddingRight = `${scrollbarWidth}px`;
     }
 
     return () => {
-      document.body.style.overflow = originalOverflow;
-      document.body.style.paddingRight = originalPaddingRight;
+      document.body.style.overflow = originalBodyOverflow;
+      document.body.style.paddingRight = originalBodyPaddingRight;
+      document.documentElement.style.overflow = originalHtmlOverflow;
     };
-  }, [teacherQueriesOpen]);
+  }, [shouldLockBackgroundScroll]);
 
-  const togglePublish = async (moduleId: string, nextPublished: boolean) => {
+  const togglePublish = async (
+    moduleId: string,
+    nextPublished: boolean,
+    dueAtInputOverride?: string,
+    gradeOverride?: string,
+    notesOverride?: string,
+  ) => {
     if (!sessionToken) {
       setDataStatus("Missing session. Please re-login.");
-      return;
+      return false;
+    }
+    const dueAtInput = (dueAtInputOverride ?? moduleDeadlineInputById[moduleId] ?? "").trim();
+    const selectedGrade = (gradeOverride ?? "").trim();
+    const selectedNotes = (notesOverride ?? "").trim();
+    let dueAtIso: string | null = null;
+    if (nextPublished) {
+      if (!dueAtInput) {
+        setDataStatus("Set a deadline before publishing this activity.");
+        return false;
+      }
+      const parsedDueAt = new Date(dueAtInput);
+      if (Number.isNaN(parsedDueAt.getTime())) {
+        setDataStatus("Select a valid deadline before publishing this activity.");
+        return false;
+      }
+      if (!selectedGrade) {
+        setDataStatus("Select grade before publishing this activity.");
+        return false;
+      }
+      if (selectedNotes.length > 1500) {
+        setDataStatus("Notes should be within 1500 characters.");
+        return false;
+      }
+      dueAtIso = parsedDueAt.toISOString();
     }
     try {
       setPublishingId(moduleId);
@@ -996,24 +1088,80 @@ export default function CustomerPage() {
           Authorization: `Bearer ${sessionToken}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ moduleId, published: nextPublished }),
+        body: JSON.stringify({
+          moduleId,
+          published: nextPublished,
+          dueAt: dueAtIso,
+          grade: nextPublished ? selectedGrade : undefined,
+          notes: nextPublished ? selectedNotes || null : undefined,
+        }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
         setDataStatus(body?.error ?? "Publish failed");
-        return;
+        return false;
       }
       setModules((prev) =>
-        prev.map((m) => (m.id === moduleId ? { ...m, published: nextPublished } : m)),
+        prev.map((m) =>
+          m.id === moduleId
+            ? {
+                ...m,
+                published: nextPublished,
+                dueAt: dueAtIso ?? m.dueAt ?? null,
+                grade: nextPublished && selectedGrade ? selectedGrade : m.grade,
+              }
+            : m,
+        ),
       );
+      if (dueAtIso) {
+        setModuleDeadlineInputById((prev) => ({
+          ...prev,
+          [moduleId]: toInputDateTime(dueAtIso) || prev[moduleId] || defaultPublishDueInput(),
+        }));
+      }
       setDataStatus(null);
+      return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : "Publish failed";
       setDataStatus(message);
+      return false;
     } finally {
       setPublishingId(null);
     }
   };
+
+  const openPublishDeadlineModal = useCallback((
+    moduleId: string,
+    moduleTitle: string,
+    dueAt?: string | null,
+  ) => {
+    setPublishDeadlineModal({
+      moduleId,
+      moduleTitle,
+      grade: "",
+      dueAt: moduleDeadlineInputById[moduleId] || toInputDateTime(dueAt) || defaultPublishDueInput(),
+      notes: "",
+    });
+    setDataStatus(null);
+  }, [moduleDeadlineInputById]);
+
+  const closePublishDeadlineModal = useCallback(() => {
+    setPublishDeadlineModal(null);
+  }, []);
+
+  const confirmPublishWithDeadline = useCallback(async () => {
+    if (!publishDeadlineModal) return;
+    const success = await togglePublish(
+      publishDeadlineModal.moduleId,
+      true,
+      publishDeadlineModal.dueAt,
+      publishDeadlineModal.grade,
+      publishDeadlineModal.notes,
+    );
+    if (success) {
+      closePublishDeadlineModal();
+    }
+  }, [closePublishDeadlineModal, publishDeadlineModal, togglePublish]);
 
   const toggleRequestItem = (item: string) => {
     setRequestItems((prev) => {
@@ -2121,6 +2269,106 @@ export default function CustomerPage() {
       {dataStatus && (
         <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
           {dataStatus}
+        </div>
+      )}
+
+      {publishDeadlineModal && role === "teacher" && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto px-4 pb-10 pt-12 md:pt-16 bg-slate-900/70 backdrop-blur-sm">
+          <div className="w-full max-w-2xl rounded-2xl bg-white border border-stone-300 shadow-2xl p-6 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="text-xs uppercase tracking-[0.2em] text-accent-strong">Publish Activity</p>
+                <h3 className="text-2xl font-semibold text-slate-900">Set drone deadline</h3>
+                <p className="text-sm text-slate-600">
+                  Choose a deadline before publishing this module to students.
+                </p>
+              </div>
+              <button
+                className="text-sm px-3 py-1 rounded-lg border border-rose-400 bg-rose-700 text-true-white hover:bg-rose-600 hover:border-rose-300 cursor-pointer"
+                onClick={closePublishDeadlineModal}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="rounded-xl border border-emerald-500 bg-emerald-800 px-4 py-3">
+              <p className="text-xs uppercase tracking-[0.16em] text-true-white">Selected module</p>
+              <p className="text-base font-semibold text-true-white">{publishDeadlineModal.moduleTitle}</p>
+            </div>
+
+            <label className="block text-sm text-slate-800 space-y-1">
+              Grade
+              <select
+                value={publishDeadlineModal.grade}
+                onChange={(event) =>
+                  setPublishDeadlineModal((prev) => (prev ? { ...prev, grade: event.target.value } : prev))
+                }
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-accent-strong"
+              >
+                <option value="">Select grade</option>
+                {publishGradeOptions.map((grade) => (
+                  <option key={grade} value={grade}>
+                    Grade {grade}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block text-sm text-slate-800 space-y-1">
+              Deadline
+              <input
+                type="datetime-local"
+                value={publishDeadlineModal.dueAt}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setPublishDeadlineModal((prev) => (prev ? { ...prev, dueAt: value } : prev));
+                  setModuleDeadlineInputById((prev) => ({
+                    ...prev,
+                    [publishDeadlineModal.moduleId]: value,
+                  }));
+                }}
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-accent-strong"
+              />
+            </label>
+
+            <label className="block text-sm text-slate-800 space-y-1">
+              Notes (optional)
+              <textarea
+                value={publishDeadlineModal.notes}
+                onChange={(event) =>
+                  setPublishDeadlineModal((prev) => (prev ? { ...prev, notes: event.target.value } : prev))
+                }
+                rows={3}
+                maxLength={1500}
+                placeholder="Add instructions for students (optional)."
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-accent-strong resize-y"
+              />
+            </label>
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={closePublishDeadlineModal}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void confirmPublishWithDeadline();
+                }}
+                disabled={
+                  publishingId === publishDeadlineModal.moduleId ||
+                  !publishDeadlineModal.grade.trim() ||
+                  !publishDeadlineModal.dueAt.trim()
+                }
+                className="rounded-lg border border-emerald-700 bg-emerald-700 px-4 py-2 text-sm font-semibold text-true-white hover:bg-emerald-600 transition disabled:opacity-60"
+              >
+                {publishingId === publishDeadlineModal.moduleId ? "Publishing..." : "Publish"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -3527,7 +3775,7 @@ export default function CustomerPage() {
               }
             >
               <div className="flex items-center justify-between text-xs uppercase tracking-[0.2em] font-semibold text-accent-strong">
-                <span>Grade {module.grade}</span>
+                <span>{role === "teacher" ? "Drone activity" : `Grade ${module.grade}`}</span>
                 <span className="text-emerald-800">{formatSubject(module.subject)}</span>
               </div>
               {role === "teacher" && !seenModules.has(module.id) && (
@@ -3548,7 +3796,7 @@ export default function CustomerPage() {
                 )}
               </div>
               {role === "teacher" && (
-                <div className="flex items-center gap-2 text-xs">
+                <div className="flex flex-wrap items-center gap-2 text-xs">
                   <span
                     data-tour={index === 0 ? "teacher-publish-status" : undefined}
                     className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full font-semibold border ${
@@ -3562,7 +3810,13 @@ export default function CustomerPage() {
                   <button
                     data-tour={index === 0 ? "teacher-publish-toggle" : undefined}
                     className="px-3 py-1 rounded-lg bg-emerald-500 text-white font-semibold border border-emerald-300 shadow-glow hover:bg-emerald-400 disabled:opacity-50"
-                    onClick={() => void togglePublish(module.id, !module.published)}
+                    onClick={() => {
+                      if (module.published) {
+                        void togglePublish(module.id, false);
+                        return;
+                      }
+                      openPublishDeadlineModal(module.id, module.title, module.dueAt);
+                    }}
                     disabled={publishingId === module.id}
                   >
                     {publishingId === module.id

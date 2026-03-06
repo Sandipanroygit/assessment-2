@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { generateSimulationAssessment } from "@/lib/simulationAssessment";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -8,7 +9,7 @@ const supabaseAdmin =
   SUPABASE_URL && SERVICE_ROLE_KEY ? createClient(SUPABASE_URL, SERVICE_ROLE_KEY) : null;
 
 const ASSIGNMENT_SELECT =
-  "id,teacher_id,teacher_name,target_grade,target_grade_key,subject,simulation_title,simulation_url,notes,created_at,updated_at";
+  "id,teacher_id,teacher_name,target_grade,target_grade_key,subject,simulation_title,simulation_url,notes,due_at,assessment_questions,assessment_generated_at,created_at,updated_at";
 
 const normalizeRole = (value: unknown) => (typeof value === "string" ? value.trim().toLowerCase() : "");
 const normalizeGradeKey = (value: string) =>
@@ -28,8 +29,11 @@ const extractToken = (req: Request) => {
 const withTableHint = (message: string) => {
   const normalized = message.toLowerCase();
   if (
-    normalized.includes("simulation_assignments") &&
-    (normalized.includes("does not exist") || normalized.includes("schema cache"))
+    (normalized.includes("simulation_assignments") ||
+      normalized.includes("simulation_assignment_progress") ||
+      normalized.includes("due_at") ||
+      normalized.includes("assessment_")) &&
+    (normalized.includes("does not exist") || normalized.includes("schema cache") || normalized.includes("column"))
   ) {
     return `${message} Apply \`supabase/simulation_assignments_patch.sql\` in Supabase SQL Editor.`;
   }
@@ -62,6 +66,7 @@ export async function GET(req: Request) {
       .from("simulation_assignments")
       .select(ASSIGNMENT_SELECT)
       .eq("teacher_id", teacher.id)
+      .order("due_at", { ascending: true })
       .order("created_at", { ascending: false })
       .limit(200);
 
@@ -104,6 +109,7 @@ export async function POST(req: Request) {
       simulationUrl?: string;
       subject?: string;
       notes?: string;
+      dueAt?: string;
     };
 
     const targetGrade = typeof body.grade === "string" ? body.grade.trim() : "";
@@ -111,6 +117,7 @@ export async function POST(req: Request) {
     const simulationUrl = typeof body.simulationUrl === "string" ? body.simulationUrl.trim() : "";
     const subject = typeof body.subject === "string" ? body.subject.trim() : "";
     const notes = typeof body.notes === "string" ? body.notes.trim() : "";
+    const dueAtRaw = typeof body.dueAt === "string" ? body.dueAt.trim() : "";
 
     const targetGradeKey = normalizeGradeKey(targetGrade);
     if (!targetGrade || !targetGradeKey) {
@@ -134,9 +141,25 @@ export async function POST(req: Request) {
     if (notes.length > 1500) {
       return NextResponse.json({ error: "Notes should be within 1500 characters" }, { status: 400 });
     }
+    const dueAt = dueAtRaw ? new Date(dueAtRaw) : (() => {
+      const date = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      date.setHours(23, 59, 0, 0);
+      return date;
+    })();
+    if (Number.isNaN(dueAt.getTime())) {
+      return NextResponse.json({ error: "Invalid deadline date" }, { status: 400 });
+    }
 
     const teacherName =
       (teacher.user_metadata?.full_name as string | undefined)?.trim() ?? teacher.email ?? "Teacher";
+
+    const generatedAssessment = await generateSimulationAssessment({
+      simulationTitle,
+      subject,
+      targetGrade,
+      notes,
+    });
+    const assessmentGeneratedAt = new Date().toISOString();
 
     const { data: inserted, error: insertError } = await supabaseAdmin
       .from("simulation_assignments")
@@ -149,6 +172,9 @@ export async function POST(req: Request) {
         simulation_title: simulationTitle,
         simulation_url: parsedUrl.toString(),
         notes: notes || null,
+        due_at: dueAt.toISOString(),
+        assessment_questions: generatedAssessment.questions,
+        assessment_generated_at: assessmentGeneratedAt,
       })
       .select(ASSIGNMENT_SELECT)
       .single();
@@ -156,24 +182,51 @@ export async function POST(req: Request) {
     if (insertError) {
       return NextResponse.json({ error: withTableHint(insertError.message) }, { status: 500 });
     }
+    if (!inserted) {
+      return NextResponse.json({ error: "Unable to save simulation assignment" }, { status: 500 });
+    }
 
-    let warning: string | null = null;
+    let warning: string | null = generatedAssessment.warning;
     try {
       const { data: profileRows, error: profileError } = await supabaseAdmin
         .from("profiles")
-        .select("id,grade,role")
+        .select("id,grade,role,full_name")
         .in("role", ["student", "customer"]);
       if (profileError) {
         warning = profileError.message;
       } else {
-        const matchingStudentIds = (profileRows ?? [])
+        const matchingStudents = (profileRows ?? [])
           .filter((row) => normalizeGradeKey(row.grade ?? "") === targetGradeKey)
-          .map((row) => row.id);
-        if (matchingStudentIds.length > 0) {
+          .map((row) => ({
+            id: row.id,
+            grade: row.grade ?? null,
+            full_name: row.full_name ?? null,
+          }));
+        if (matchingStudents.length > 0) {
+          const progressRows = matchingStudents.map((student) => ({
+            assignment_id: inserted.id,
+            student_id: student.id,
+            student_name: student.full_name,
+            student_grade: student.grade,
+            status: "assigned",
+            viewed_at: null,
+          }));
+          const { error: progressError } = await supabaseAdmin
+            .from("simulation_assignment_progress")
+            .upsert(progressRows, { onConflict: "assignment_id,student_id" });
+          if (progressError) {
+            warning = warning ? `${warning}; ${progressError.message}` : progressError.message;
+          }
+
           const title = `Simulation assigned: ${simulationTitle}`;
-          const message = `${teacherName} assigned a simulation for ${targetGrade}.`;
-          const notifications = matchingStudentIds.map((studentId) => ({
-            user_id: studentId,
+          const deadlineLabel = dueAt.toLocaleDateString("en-GB", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+          });
+          const message = `${teacherName} assigned a simulation for ${targetGrade}. Deadline: ${deadlineLabel}.`;
+          const notifications = matchingStudents.map((student) => ({
+            user_id: student.id,
             module_id: null,
             subject: subject || null,
             title,
@@ -183,7 +236,7 @@ export async function POST(req: Request) {
           }));
           const { error: notificationError } = await supabaseAdmin.from("notifications").insert(notifications);
           if (notificationError) {
-            warning = notificationError.message;
+            warning = warning ? `${warning}; ${notificationError.message}` : notificationError.message;
           }
         }
       }

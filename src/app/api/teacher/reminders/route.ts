@@ -58,7 +58,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: studentError?.message ?? "Student not found" }, { status: 404 });
     }
     const studentRole = (studentData.user.user_metadata?.role as string | undefined)?.toLowerCase() ?? "";
-    if (studentRole !== "student") {
+    if (studentRole !== "student" && studentRole !== "customer") {
       return NextResponse.json({ error: "Target user is not a student" }, { status: 400 });
     }
     await ensureProfile(teacher);

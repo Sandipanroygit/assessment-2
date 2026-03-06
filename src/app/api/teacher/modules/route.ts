@@ -9,6 +9,8 @@ const supabaseAdmin =
 
 const isMissingJudgingLogicColumn = (message?: string) =>
   /judging_logic/i.test(message || "") && /(column|schema cache)/i.test(message || "");
+const isMissingDueAtColumn = (message?: string) =>
+  /due_at/i.test(message || "") && /(column|schema cache)/i.test(message || "");
 const cleanString = (value: unknown) =>
   typeof value === "string" && value.trim() ? value.trim() : null;
 const normalizeRole = (value: unknown) =>
@@ -32,22 +34,19 @@ export async function GET(req: Request) {
 
   const metadataRole = normalizeRole(userData.user.user_metadata?.role);
   const metadataSubject = cleanString(userData.user.user_metadata?.subject);
-  const metadataGrade = cleanString(userData.user.user_metadata?.grade);
 
   let profileRole: string | null = null;
-  let profileGrade: string | null = null;
 
-  if (metadataRole !== "teacher" || !metadataGrade) {
+  if (metadataRole !== "teacher") {
     const { data: profileData, error: profileError } = await supabaseAdmin
       .from("profiles")
-      .select("role,grade")
+      .select("role")
       .eq("id", userData.user.id)
       .maybeSingle();
     if (profileError) {
       return NextResponse.json({ error: profileError.message }, { status: 500 });
     }
     profileRole = normalizeRole(profileData?.role) || null;
-    profileGrade = cleanString(profileData?.grade);
   }
 
   const role = metadataRole === "teacher" ? "teacher" : profileRole ?? "";
@@ -56,25 +55,49 @@ export async function GET(req: Request) {
   }
 
   const subject = metadataSubject;
-  const grade = metadataGrade ?? profileGrade;
 
-  const buildQuery = (includeJudgingLogic: boolean) => {
+  const buildQuery = (includeJudgingLogic: boolean, includeDueAt: boolean) => {
+    const selectParts = [
+      "id",
+      "title",
+      "grade",
+      "subject",
+      "module",
+      "description",
+      "asset_urls",
+      "price_yearly",
+      "published",
+      "created_at",
+    ];
+    if (includeJudgingLogic) selectParts.splice(6, 0, "judging_logic");
+    if (includeDueAt) selectParts.splice(includeJudgingLogic ? 7 : 6, 0, "due_at");
+
     let query = supabaseAdmin
       .from("curriculum_modules")
-      .select(
-        includeJudgingLogic
-          ? "id,title,grade,subject,module,description,judging_logic,asset_urls,price_yearly,published,created_at"
-          : "id,title,grade,subject,module,description,asset_urls,price_yearly,published,created_at",
-      )
+      .select(selectParts.join(","))
       .order("created_at", { ascending: false });
     if (subject) query = query.eq("subject", subject);
-    if (grade) query = query.eq("grade", grade);
     return query;
   };
 
-  let { data, error } = await buildQuery(true);
-  if (error && isMissingJudgingLogicColumn(error.message)) {
-    ({ data, error } = await buildQuery(false));
+  let includeJudgingLogic = true;
+  let includeDueAt = true;
+  let data: unknown = null;
+  let error: { message: string } | null = null;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const result = await buildQuery(includeJudgingLogic, includeDueAt);
+    data = result.data;
+    error = result.error;
+    if (!error) break;
+    if (includeDueAt && isMissingDueAtColumn(error.message)) {
+      includeDueAt = false;
+      continue;
+    }
+    if (includeJudgingLogic && isMissingJudgingLogicColumn(error.message)) {
+      includeJudgingLogic = false;
+      continue;
+    }
+    break;
   }
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
