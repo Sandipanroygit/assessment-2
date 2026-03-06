@@ -68,7 +68,8 @@ export async function GET(req: Request) {
 
   // Modules (published only) in teacher subject
   const buildModuleQuery = (includeDueAt: boolean) => {
-    let query = (supabaseAdmin.from("curriculum_modules") as any)
+    let query = supabaseAdmin
+      .from("curriculum_modules")
       .select(includeDueAt ? MODULE_SELECT_WITH_DUE : MODULE_SELECT_WITHOUT_DUE)
       .eq("published", true);
     if (subject) query = query.eq("subject", subject);
