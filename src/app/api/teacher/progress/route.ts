@@ -83,7 +83,8 @@ export async function GET(req: Request) {
     const result = await buildModuleQuery(includeDueAt);
     modulesError = result.error;
     if (!modulesError) {
-      modules = (result.data ?? []) as Array<Record<string, unknown>>;
+      const rawModules = (result.data ?? []) as unknown;
+      modules = Array.isArray(rawModules) ? (rawModules as Array<Record<string, unknown>>) : [];
       break;
     }
     const normalized = modulesError.message.toLowerCase();
