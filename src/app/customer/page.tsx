@@ -3485,6 +3485,32 @@ export default function CustomerPage() {
                       </button>
 
                       <Link
+                        href="/socratic-ai"
+                        onClick={() => setTeacherMenuOpen(false)}
+                        className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 bg-slate-50 hover:bg-amber-50 border border-slate-200 hover:border-amber-300/60 text-sm text-slate-800 transition"
+                      >
+                        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500 border border-amber-300 text-true-white shadow-glow">
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="h-5 w-5"
+                          >
+                            <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z" />
+                            <path d="M12 6v4l3 2" />
+                          </svg>
+                        </span>
+                        <div className="text-left">
+                          <p className="font-semibold">Socratic AI</p>
+                          <p className="text-xs text-slate-500">JEE/NEET Logic Coach</p>
+                        </div>
+                      </Link>
+
+                      <Link
                         href="/student/steamh-projects"
                         data-tour="student-menu-upload-project"
                         onClick={() => setTeacherMenuOpen(false)}

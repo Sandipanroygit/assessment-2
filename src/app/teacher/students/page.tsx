@@ -36,6 +36,7 @@ function formatJoinedDate(value?: string | null) {
 
 export default function TeacherStudentsPage() {
   const router = useRouter();
+  const [fullName, setFullName] = useState("Teacher");
   const [students, setStudents] = useState<StudentRow[]>([]);
   const [status, setStatus] = useState<string | null>(null);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
@@ -55,6 +56,14 @@ export default function TeacherStudentsPage() {
       try {
         const { data } = await supabase.auth.getSession();
         const token = data.session?.access_token ?? null;
+        if (data.session?.user) {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("full_name")
+            .eq("id", data.session.user.id)
+            .maybeSingle();
+          setFullName(profile?.full_name || data.session.user.user_metadata?.full_name || data.session.user.email || "Teacher");
+        }
         if (!token) {
           setStatus("Please log in again.");
           setIsInitialLoading(false);
@@ -317,30 +326,59 @@ export default function TeacherStudentsPage() {
         palette={TEACHER_TOUR_PALETTE}
       />
 
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div data-tour="teacher-students-header">
-          <p className="text-accent-strong uppercase text-xs tracking-[0.2em]">Teacher</p>
-          <h1 className="text-3xl font-semibold text-white">Registered students</h1>
-          <p className="text-slate-300 text-sm">Subject-matched students for your classes.</p>
+      <div
+        className="sticky top-0 z-30 isolate -mx-[clamp(1.25rem,4vw,4rem)] -mt-[clamp(2rem,4vw,3.5rem)] space-y-3 overflow-visible rounded-none border border-white/35 bg-white/30 supports-[backdrop-filter]:bg-white/16 px-3 pb-3 pt-[clamp(2rem,4vw,3.5rem)] shadow-[0_26px_56px_rgba(15,23,42,0.24)] backdrop-blur-3xl backdrop-saturate-150"
+      >
+        <div
+          className="relative z-20 rounded-none border border-white/28 bg-white/35 supports-[backdrop-filter]:bg-white/20 p-3 shadow-[0_10px_24px_rgba(15,23,42,0.16)] backdrop-blur-2xl"
+          data-tour="teacher-students-header"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="space-y-1">
+              <p className="text-xs uppercase tracking-[0.2em] text-accent-strong">Teacher</p>
+              <h1 className="text-3xl font-semibold text-white leading-tight">Hi {fullName}</h1>
+              <p className="text-slate-300 text-sm">Managing Registered Students</p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  void playUiClickTone();
+                  startTour();
+                }}
+                className="px-4 py-2 rounded-xl border border-cyan-300/70 bg-cyan-500/10 text-sm font-semibold text-cyan-100 hover:bg-cyan-500/20"
+              >
+                Take tour
+              </button>
+              <Link
+                href="/customer"
+                className="px-4 py-2 rounded-xl bg-emerald-800 hover:bg-emerald-700 text-sm !text-white hover:!text-white visited:!text-white font-semibold shadow-md ring-1 ring-white/10 hover:-translate-y-0.5 transition-transform duration-150"
+              >
+                Back to dashboard
+              </Link>
+            </div>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              void playUiClickTone();
-              startTour();
-            }}
-            className="px-4 py-2 rounded-xl border border-cyan-300/70 bg-cyan-500/10 text-sm font-semibold text-cyan-100 hover:bg-cyan-500/20"
-          >
-            Take tour
-          </button>
-          <Link
-            href="/customer"
-            className="px-4 py-2 rounded-xl border border-accent bg-accent outline outline-1 outline-black text-sm text-true-white shadow-glow hover:opacity-90"
-          >
-            Back to dashboard
-          </Link>
-        </div>
+
+        <section className="relative z-10 rounded-none border border-white/28 bg-white/35 supports-[backdrop-filter]:bg-white/20 p-2.5 shadow-[0_12px_26px_rgba(15,23,42,0.14)] backdrop-blur-2xl">
+          <div className="flex flex-wrap gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <Link
+              href="/teacher/students"
+              className="group relative shrink-0 inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition-all bg-accent text-true-white border-accent-strong/40 shadow-glow hover:-translate-y-0.5"
+            >
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-accent-strong/90 text-true-white">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-4 w-4">
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                </svg>
+              </span>
+              Class Roster
+            </Link>
+          </div>
+        </section>
       </div>
 
       {isInitialLoading ? (

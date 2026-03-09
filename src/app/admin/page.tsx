@@ -223,6 +223,7 @@ export default function AdminPage() {
   const [authStatus, setAuthStatus] = useState<string | null>(null);
   const [signingOut, startSignOut] = useTransition();
   const router = useRouter();
+  const [fullName, setFullName] = useState("Admin");
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [curriculumRows, setCurriculumRows] = useState<CurriculumModule[]>([]);
   const [productRows, setProductRows] = useState<Product[]>([]);

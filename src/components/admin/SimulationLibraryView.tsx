@@ -291,32 +291,32 @@ const SIMULATION_LIBRARY: SubjectSimulationGroup[] = [
         focus: "Pressure concepts in solids/liquids and real-life applications",
       },
       {
-        title: "MyPhysicsLab",
-        provider: "MyPhysicsLab",
-        url: "https://www.myphysicslab.com/",
-        grades: [11, 12],
-        focus: "Advanced mechanics simulations",
+        title: "Bending Light",
+        provider: "PhET",
+        url: "https://phet.colorado.edu/en/simulations/bending-light",
+        grades: [9, 10, 11, 12],
+        focus: "Refraction, Snell's law, and prisms",
       },
       {
-        title: "HTML5 Physics Simulations",
-        provider: "Walter Fendt",
-        url: "https://www.walter-fendt.de/html5/phen/",
+        title: "Masses and Springs",
+        provider: "PhET",
+        url: "https://phet.colorado.edu/en/simulations/masses-and-springs",
         grades: [9, 10, 11, 12],
-        focus: "Topic-wise physics interactives",
+        focus: "Hooke's law and periodic motion",
       },
       {
-        title: "Virtual Labs India",
-        provider: "vLab",
-        url: "https://www.vlab.co.in/",
+        title: "Hooke's Law",
+        provider: "PhET",
+        url: "https://phet.colorado.edu/en/simulations/hookes-law",
         grades: [9, 10, 11, 12],
-        focus: "Virtual experiments for school and engineering science",
+        focus: "Relationship between force and spring displacement",
       },
       {
-        title: "OLabs Virtual Labs",
-        provider: "OLabs",
-        url: "https://www.olabs.edu.in/",
+        title: "Balancing Act",
+        provider: "PhET",
+        url: "https://phet.colorado.edu/en/simulations/balancing-act",
         grades: [9, 10, 11, 12],
-        focus: "School-level practical simulations",
+        focus: "Torque, levers, and equilibrium",
       },
       {
         title: "Charge Launcher",
@@ -402,11 +402,18 @@ const SIMULATION_LIBRARY: SubjectSimulationGroup[] = [
         focus: "Strong/weak acids and bases",
       },
       {
-        title: "Virtual Chemistry Lab",
-        provider: "ChemCollective",
-        url: "https://chemcollective.org/vlab",
-        grades: [11, 12],
-        focus: "Virtual experiments",
+        title: "Gas Properties",
+        provider: "PhET",
+        url: "https://phet.colorado.edu/en/simulations/gas-properties",
+        grades: [9, 10, 11, 12],
+        focus: "Relationship between pressure, volume, and temperature",
+      },
+      {
+        title: "Atomic Interactions",
+        provider: "PhET",
+        url: "https://phet.colorado.edu/en/simulations/atomic-interactions",
+        grades: [10, 11, 12],
+        focus: "Van der Waals forces and atomic bonds",
       },
       {
         title: "MolView",
@@ -457,25 +464,151 @@ const SIMULATION_LIBRARY: SubjectSimulationGroup[] = [
         focus: "Nerve impulse transmission",
       },
       {
-        title: "LabXchange Biology Library",
-        provider: "LabXchange",
-        url: "https://labxchange.org/library",
-        grades: [9, 10, 11, 12],
-        focus: "Biology labs and interactives",
-      },
-      {
-        title: "Concord Modeler",
-        provider: "Concord Consortium",
-        url: "https://mw.concord.org/modeler/",
-        grades: [10, 11, 12],
-        focus: "Biology and chemistry model-based labs",
-      },
-      {
-        title: "NetLogo Web",
-        provider: "Northwestern University",
-        url: "https://www.netlogoweb.org/",
+        title: "CRISPR Gene Editing",
+        provider: "LabXchange / ASU",
+        url: "https://www.labxchange.org/library/items/lb:LabXchange:6e6e6e6e:simulation:1",
         grades: [11, 12],
-        focus: "Population and ecosystem models",
+        focus: "Master CRISPR-Cas9 toolset to edit DNA and treat virtual patients",
+      },
+      {
+        title: "ELISA Immunoassay",
+        provider: "LabXchange",
+        url: "https://www.labxchange.org/library/items/lb:LabXchange:8f8f8f8f:simulation:1",
+        grades: [11, 12],
+        focus: "Quantify protein samples using antigen-antibody binding techniques",
+      },
+      {
+        title: "Photosynthesis: Light Intensity",
+        provider: "LabXchange",
+        url: "https://www.labxchange.org/library/items/lb:LabXchange:1c1c1c1c:simulation:1",
+        grades: [9, 10, 11, 12],
+        focus: "Measure how light distance and intensity affect photosynthesis rates",
+      },
+      {
+        title: "Photosynthesis: CO2 Levels",
+        provider: "LabXchange",
+        url: "https://www.labxchange.org/library/items/lb:LabXchange:2d2d2d2d:simulation:1",
+        grades: [9, 10, 11, 12],
+        focus: "Explore how carbon dioxide concentration limits oxygen production",
+      },
+      {
+        title: "Cellular Respiration in Yeast",
+        provider: "LabXchange",
+        url: "https://www.labxchange.org/library/items/lb:LabXchange:3e3e3e3e:simulation:1",
+        grades: [9, 10, 11, 12],
+        focus: "Investigate factors affecting yeast respiration and CO2 output",
+      },
+      {
+        title: "Central Dogma: Protein Synthesis",
+        provider: "LabXchange / Labster",
+        url: "https://www.labxchange.org/library/items/lb:LabXchange:4f4f4f4f:simulation:1",
+        grades: [10, 11, 12],
+        focus: "Observe transcription and translation at the molecular level",
+      },
+      {
+        title: "Restriction Enzyme Digest",
+        provider: "LabXchange",
+        url: "https://www.labxchange.org/library/items/lb:LabXchange:f3c6e9e4:simulation:1",
+        grades: [11, 12],
+        focus: "Practice using restriction enzymes to cut DNA plasmids",
+      },
+      {
+        title: "Heredity Simulation",
+        provider: "LabXchange",
+        url: "https://www.labxchange.org/library/items/lb:LabXchange:7b2f7b2f:simulation:1",
+        grades: [9, 10, 11, 12],
+        focus: "Explore Mendelian inheritance through trait crosses",
+      },
+      {
+        title: "RNA VirtuaLab",
+        provider: "LabXchange / NOVA",
+        url: "https://www.labxchange.org/library/items/lb:LabXchange:5d5d5d5d:simulation:1",
+        grades: [10, 11, 12],
+        focus: "Design and fold RNA molecules in a puzzle-based environment",
+      },
+      {
+        title: "Diffusion and Osmosis",
+        provider: "LabXchange",
+        url: "https://www.labxchange.org/library/items/lb:LabXchange:4a4a4a4a:simulation:1",
+        grades: [9, 10, 11, 12],
+        focus: "Study molecule movement and membrane permeability",
+      },
+      {
+        title: "Evolution Lab",
+        provider: "LabXchange / NOVA",
+        url: "https://www.labxchange.org/library/items/lb:LabXchange:3c3c3c3c:simulation:1",
+        grades: [9, 10, 11, 12],
+        focus: "Build phylogenetic trees to explore species relationships",
+      },
+      {
+        title: "Virtual Frog Dissection",
+        provider: "LabXchange",
+        url: "https://www.labxchange.org/library/items/lb:LabXchange:2b2b2b2b:simulation:1",
+        grades: [9, 10, 11, 12],
+        focus: "Interactive 3D exploration of frog anatomy",
+      },
+      {
+        title: "Micropipetting",
+        provider: "LabXchange",
+        url: "https://www.labxchange.org/library/items/lb:LabXchange:9e678b87:simulation:1",
+        grades: [9, 10, 11, 12],
+        focus: "Practice using micropipettes in a virtual lab setting",
+      },
+      {
+        title: "Gel Electrophoresis",
+        provider: "LabXchange",
+        url: "https://www.labxchange.org/library/items/lb:LabXchange:77150c99:simulation:1",
+        grades: [10, 11, 12],
+        focus: "Simulate the separation of DNA or proteins by size",
+      },
+      {
+        title: "PCR Simulation",
+        provider: "LabXchange",
+        url: "https://www.labxchange.org/library/items/lb:LabXchange:8e3d368e:simulation:1",
+        grades: [11, 12],
+        focus: "Amplify specific DNA sequences using Polymerase Chain Reaction",
+      },
+      {
+        title: "Bacterial Transformation",
+        provider: "LabXchange",
+        url: "https://www.labxchange.org/library/items/lb:LabXchange:63030386:simulation:1",
+        grades: [10, 11, 12],
+        focus: "Introduce foreign DNA into bacterial cells",
+      },
+      {
+        title: "DNA Structure",
+        provider: "LabXchange",
+        url: "https://www.labxchange.org/library/items/lb:LabXchange:a87b1c1d:simulation:1",
+        grades: [9, 10, 11, 12],
+        focus: "Interactive exploration of the DNA double helix",
+      },
+      {
+        title: "Light Microscope",
+        provider: "LabXchange",
+        url: "https://www.labxchange.org/library/items/lb:LabXchange:8d3f6d3f:simulation:1",
+        grades: [9, 10, 11, 12],
+        focus: "Virtual practice with microscope controls and sample viewing",
+      },
+      {
+        title: "Virus Hunter",
+        provider: "HHMI BioInteractive",
+        url: "https://www.biointeractive.org/itls/virus-hunter",
+        grades: [10, 11, 12],
+        focus: "Forensics and viral identification",
+      },
+      {
+        title: "Evolving Bacteria",
+        provider: "HHMI BioInteractive",
+        url: "https://www.biointeractive.org/itls/evolving-bacteria",
+        grades: [11, 12],
+        focus: "Experimental evolution and antibiotic resistance",
+      },
+      {
+        title: "Molecule Polarity",
+        provider: "PhET",
+        url: "https://phet.colorado.edu/en/simulations/molecule-polarity",
+        grades: [10, 11, 12],
+        focus: "Chemical bonding and electronegativity",
       },
       {
         title: "OneZoom Tree of Life",
@@ -483,13 +616,6 @@ const SIMULATION_LIBRARY: SubjectSimulationGroup[] = [
         url: "https://www.onezoom.org/",
         grades: [9, 10, 11, 12],
         focus: "Biodiversity exploration",
-      },
-      {
-        title: "HHMI BioInteractive",
-        provider: "BioInteractive",
-        url: "https://www.biointeractive.org/",
-        grades: [9, 10, 11, 12],
-        focus: "Biology simulations and interactive resources",
       },
       {
         title: "DNA Profiling",
@@ -520,32 +646,11 @@ const SIMULATION_LIBRARY: SubjectSimulationGroup[] = [
         focus: "Gene regulation and protein synthesis concepts",
       },
       {
-        title: "BioMan Biology Virtual Labs",
-        provider: "BioMan Biology",
-        url: "https://biomanbio.com/",
-        grades: [9, 10, 11, 12],
-        focus: "Topic-wise virtual labs across cells, ecology, genetics, and physiology",
-      },
-      {
-        title: "Virtual Biology Lab",
-        provider: "Virtual Biology Lab",
-        url: "https://virtualbiologylab.org/",
-        grades: [10, 11, 12],
-        focus: "Population, ecology, and evolutionary simulation experiments",
-      },
-      {
         title: "Geniventure",
         provider: "Concord Consortium",
         url: "https://concord.org/teaching-genetics/dragons/",
         grades: [9, 10, 11, 12],
         focus: "Interactive heredity and meiosis with genetics modeling",
-      },
-      {
-        title: "Learn.Genetics Virtual Labs",
-        provider: "University of Utah",
-        url: "https://learn.genetics.utah.edu/",
-        grades: [9, 10, 11, 12],
-        focus: "Free genetics, cell biology, evolution, and health interactives",
       },
       {
         title: "LabXchange Enzyme Activity Lab",
@@ -560,20 +665,6 @@ const SIMULATION_LIBRARY: SubjectSimulationGroup[] = [
         url: "https://ccl.northwestern.edu/netlogo/models/WolfSheepPredation",
         grades: [10, 11, 12],
         focus: "Predator-prey population dynamics and ecosystem stability",
-      },
-      {
-        title: "The Biology Project",
-        provider: "University of Arizona",
-        url: "https://biology.arizona.edu/the_biology_project/the_biology_project.html",
-        grades: [9, 10, 11, 12],
-        focus: "Interactive biology modules and concept practice sets",
-      },
-      {
-        title: "Cell Collective",
-        provider: "Cell Collective",
-        url: "https://cellcollective.org/",
-        grades: [11, 12],
-        focus: "Systems-biology pathway and network behavior simulations",
       },
     ],
   },
@@ -726,11 +817,11 @@ const SIMULATION_LIBRARY: SubjectSimulationGroup[] = [
         focus: "Block coding simulation",
       },
       {
-        title: "Blockly Games",
-        provider: "Blockly",
-        url: "https://blockly.games/",
+        title: "Blockly Maze",
+        provider: "Blockly Games",
+        url: "https://blockly.games/maze",
         grades: [9, 10],
-        focus: "Programming logic games",
+        focus: "Programming logic and loops",
       },
       {
         title: "CircuitVerse",
@@ -1019,11 +1110,11 @@ const SIMULATION_LIBRARY: SubjectSimulationGroup[] = [
         focus: "Budget trade-off simulator for deficit and public-policy choices",
       },
       {
-        title: "Econ Lowdown Online Learning",
-        provider: "Federal Reserve Bank of St. Louis",
-        url: "https://www.stlouisfed.org/education/econ-lowdown-online-learning",
+        title: "Supply and Demand Interactive",
+        provider: "Federal Reserve",
+        url: "https://www.stlouisfed.org/education/supply-and-demand-interactive",
         grades: [9, 10, 11, 12],
-        focus: "Free macro, micro, and finance interactives for classrooms",
+        focus: "Market dynamics and price formation",
       },
       {
         title: "World Bank DataBank",
@@ -1038,13 +1129,6 @@ const SIMULATION_LIBRARY: SubjectSimulationGroup[] = [
         url: "https://wits.worldbank.org/",
         grades: [11, 12],
         focus: "Global trade, tariff, and competitiveness analysis tools",
-      },
-      {
-        title: "WITS Simulation Tools",
-        provider: "World Bank",
-        url: "https://wits.worldbank.org/simulationtool.html",
-        grades: [11, 12],
-        focus: "Tariff-cut and trade-outcome simulation modules",
       },
       {
         title: "OECD Data Explorer",
@@ -1066,20 +1150,6 @@ const SIMULATION_LIBRARY: SubjectSimulationGroup[] = [
         url: "https://unctadstat.unctad.org/",
         grades: [10, 11, 12],
         focus: "Trade, development, and macroeconomic data visual analytics",
-      },
-      {
-        title: "Experiencing Economics",
-        provider: "CORE Econ",
-        url: "https://www.core-econ.org/project/experiencing-economics/",
-        grades: [10, 11, 12],
-        focus: "Classroom economics experiments and game-based interactive activities",
-      },
-      {
-        title: "Doing Economics",
-        provider: "CORE Econ",
-        url: "https://www.core-econ.org/project/doing-economics/",
-        grades: [10, 11, 12],
-        focus: "Data-driven economics projects with interactive analytical workflows",
       },
       {
         title: "Imagine Economics",
@@ -1475,7 +1545,7 @@ export function SimulationLibraryView({
                     backgroundImage: `linear-gradient(180deg, ${theme.surface} 0%, #ffffff 70%)`,
                   }}
                 >
-                  <table className="table-v1 table-fixed">
+                  <table className="table-v1 table-fixed w-full">
                     <colgroup>
                       <col className={showGradeDetails ? "w-[30%]" : "w-[34%]"} />
                       <col className={showGradeDetails ? "w-[36%]" : "w-[46%]"} />
@@ -1484,7 +1554,7 @@ export function SimulationLibraryView({
                     </colgroup>
                     <thead>
                       <tr className="text-left text-slate-700 border-b border-slate-200">
-                        <th className="py-2 pr-3">Simulation</th>
+                        <th className="py-2 pr-3 pl-4">Simulation</th>
                         <th className="py-2 pr-3">Focus</th>
                         {showGradeDetails && <th className="py-2 pr-3">Grades</th>}
                         <th className="py-2 pr-3 whitespace-nowrap">Action</th>
@@ -1503,7 +1573,7 @@ export function SimulationLibraryView({
                           className="border-b transition-colors hover:bg-[var(--row-hover)]"
                           style={rowStyle}
                         >
-                          <td className="py-2 pr-3 align-top font-semibold text-slate-900">{simulation.title}</td>
+                          <td className="py-2 pr-3 pl-4 align-top font-semibold text-slate-900">{simulation.title}</td>
                           <td className="py-2 pr-3 align-top text-slate-700">{simulation.focus}</td>
                           {showGradeDetails && (
                             <td className="py-2 pr-3 align-top whitespace-nowrap text-slate-700">{simulation.grades.join(", ")}</td>

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 type StudentRow = {
@@ -63,6 +63,7 @@ function normalizeGrade(value?: string | null) {
 }
 
 export default function TeacherAssignTaskPage() {
+  const [fullName, setFullName] = useState("Teacher");
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [students, setStudents] = useState<StudentRow[]>([]);
   const [selectedGrade, setSelectedGrade] = useState("");
@@ -78,6 +79,7 @@ export default function TeacherAssignTaskPage() {
   const [assigningTask, setAssigningTask] = useState(false);
   const [remindingAssignmentId, setRemindingAssignmentId] = useState<string | null>(null);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [, startLoading] = useTransition();
 
   const loadAssignments = useCallback(async (token: string) => {
     try {
@@ -103,9 +105,17 @@ export default function TeacherAssignTaskPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const { data } = await supabase.auth.getSession();
-        const token = data.session?.access_token ?? null;
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token ?? null;
         setSessionToken(token);
+        if (session?.user) {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("full_name")
+            .eq("id", session.user.id)
+            .maybeSingle();
+          setFullName(profile?.full_name || session.user.user_metadata?.full_name || session.user.email || "Teacher");
+        }
         if (!token) {
           setStatus("Please log in again.");
           setIsInitialLoading(false);
@@ -281,26 +291,54 @@ export default function TeacherAssignTaskPage() {
 
   return (
     <main className="section-padding space-y-8">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <p className="text-accent-strong uppercase text-xs tracking-[0.2em]">Teacher</p>
-          <h1 className="text-3xl font-semibold text-white">STEAM-H Task</h1>
-          <p className="text-slate-300 text-sm">Create tasks and monitor project submissions in one place.</p>
+      <div
+        className="sticky top-0 z-30 isolate -mx-[clamp(1.25rem,4vw,4rem)] -mt-[clamp(2rem,4vw,3.5rem)] space-y-3 overflow-visible rounded-none border border-white/35 bg-white/30 supports-[backdrop-filter]:bg-white/16 px-3 pb-3 pt-[clamp(2rem,4vw,3.5rem)] shadow-[0_26px_56px_rgba(15,23,42,0.24)] backdrop-blur-3xl backdrop-saturate-150"
+      >
+        <div
+          className="relative z-20 rounded-none border border-white/28 bg-white/35 supports-[backdrop-filter]:bg-white/20 p-3 shadow-[0_10px_24px_rgba(15,23,42,0.16)] backdrop-blur-2xl"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="space-y-1">
+              <p className="text-xs uppercase tracking-[0.2em] text-accent-strong">Teacher</p>
+              <h1 className="text-3xl font-semibold text-white leading-tight">Hi {fullName}</h1>
+              <p className="text-slate-300 text-sm">Create and Manage STEAM-H Tasks</p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Link
+                href="/teacher/students"
+                className="px-4 py-2 rounded-xl border border-white/20 bg-white/5 text-sm text-slate-200 hover:bg-white/10"
+              >
+                Registered students
+              </Link>
+              <Link
+                href="/customer"
+                className="px-4 py-2 rounded-xl bg-emerald-800 hover:bg-emerald-700 text-sm !text-white hover:!text-white visited:!text-white font-semibold shadow-md ring-1 ring-white/10 hover:-translate-y-0.5 transition-transform duration-150"
+              >
+                Back to dashboard
+              </Link>
+            </div>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Link
-            href="/teacher/students"
-            className="px-4 py-2 rounded-xl border border-white/20 bg-white/5 text-sm text-slate-200 hover:bg-white/10"
-          >
-            Registered students
-          </Link>
-          <Link
-            href="/customer"
-            className="px-4 py-2 rounded-xl border border-accent bg-accent outline outline-1 outline-black text-sm text-true-white shadow-glow hover:opacity-90"
-          >
-            Back to dashboard
-          </Link>
-        </div>
+
+        <section className="relative z-10 rounded-none border border-white/28 bg-white/35 supports-[backdrop-filter]:bg-white/20 p-2.5 shadow-[0_12px_26px_rgba(15,23,42,0.14)] backdrop-blur-2xl">
+          <div className="flex flex-wrap gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <Link
+              href="/teacher/assign-task"
+              className="group relative shrink-0 inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition-all bg-accent text-true-white border-accent-strong/40 shadow-glow hover:-translate-y-0.5"
+            >
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-accent-strong/90 text-true-white">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+                  <path d="M9 5h6" />
+                  <path d="M9 9h6" />
+                  <path d="M9 13h4" />
+                  <path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" />
+                </svg>
+              </span>
+              STEAM-H Task
+            </Link>
+          </div>
+        </section>
       </div>
 
       {isInitialLoading ? (
@@ -349,9 +387,9 @@ export default function TeacherAssignTaskPage() {
                   onChange={(event) => setSelectedGrade(event.target.value)}
                   className="w-full rounded-xl border border-accent/25 bg-white px-3 py-2 text-slate-900 outline-none focus:border-accent-strong"
                 >
-                  <option value="">All grades</option>
+                  <option value="" className="text-black">All grades</option>
                   {gradeOptions.map((grade) => (
-                    <option key={grade} value={grade}>
+                    <option key={grade} value={grade} className="text-black">
                       {grade}
                     </option>
                   ))}
@@ -369,9 +407,9 @@ export default function TeacherAssignTaskPage() {
                   }
                   className="w-full rounded-xl border border-accent/25 bg-white px-3 py-2 text-slate-900 outline-none focus:border-accent-strong"
                 >
-                  <option value="">Select student</option>
+                  <option value="" className="text-black">Select student</option>
                   {filteredStudents.map((student) => (
-                    <option key={student.id} value={student.id}>
+                    <option key={student.id} value={student.id} className="text-black">
                       {student.full_name} {student.grade ? `- ${student.grade}` : ""}
                     </option>
                   ))}
@@ -437,7 +475,7 @@ export default function TeacherAssignTaskPage() {
                   disabled={assigningTask || filteredStudents.length === 0}
                   className="px-4 py-2 rounded-xl border border-accent bg-accent text-sm text-true-white shadow-glow hover:opacity-90 disabled:opacity-60"
                 >
-                  {assigningTask ? "Saving STEAM-H Task..." : "STEAM-H Task"}
+                  {assigningTask ? "Saving STEAM-H Task..." : "Assign Task"}
                 </button>
               </div>
             </section>
@@ -467,15 +505,11 @@ export default function TeacherAssignTaskPage() {
                     </thead>
                     <tbody>
                       {assignmentRows.map((assignment) => {
-                        const dueMs = Date.parse(assignment.due_at);
                         const isSubmitted = Boolean(assignment.submitted_at);
-                        const isOverdue = !isSubmitted && !Number.isNaN(dueMs) && dueMs <= Date.now();
-                        const statusLabel = isSubmitted ? "Submitted" : isOverdue ? "Overdue" : "Pending";
+                        const statusLabel = isSubmitted ? "Submitted" : "Not Submitted";
                         const statusClass = isSubmitted
                           ? "border-emerald-700/40 bg-emerald-300 text-emerald-950"
-                          : isOverdue
-                            ? "border-red-800/70 bg-red-600 text-white"
-                            : "border-amber-700/50 bg-amber-300 text-amber-950";
+                          : "border-red-800/70 bg-red-600 text-white";
 
                         return (
                           <tr key={assignment.id}>

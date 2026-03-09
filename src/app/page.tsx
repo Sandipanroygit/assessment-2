@@ -196,17 +196,17 @@ const EAGLE_WIDGET_STORAGE_KEY = "homepage_eagle_widget_position_v1";
 const NASA_PROMO_ENABLED = true;
 const NASA_PROMO_EDIT_MODE_ENABLED = true;
 const HEADER_AD_STATE_KEY = "homepage_header_ad_config_v1";
-const NASA_PROMO_DEFAULT_WIDTH = 170;
-const NASA_PROMO_MIN_WIDTH = 100;
-const NASA_PROMO_MAX_WIDTH = 620;
-const NASA_PROMO_MIN_X = -220;
-const NASA_PROMO_MAX_X = 520;
-const NASA_PROMO_MIN_Y = -70;
-const NASA_PROMO_MAX_Y = 150;
+const NASA_PROMO_DEFAULT_WIDTH = 320;
+const NASA_PROMO_MIN_WIDTH = 120;
+const NASA_PROMO_MAX_WIDTH = 800;
+const NASA_PROMO_MIN_X = -400;
+const NASA_PROMO_MAX_X = 600;
+const NASA_PROMO_MIN_Y = -100;
+const NASA_PROMO_MAX_Y = 200;
 const NASA_PROMO_DRAG_THRESHOLD = 4;
 const NASA_PROMO_DEFAULT_SCALE = 1;
 const NASA_PROMO_MIN_SCALE = 1;
-const NASA_PROMO_MAX_SCALE = 2.4;
+const NASA_PROMO_MAX_SCALE = 3.5;
 const HOME_BLOCK_TWO_SNAP_OFFSET = -290;
 const CARD2_CENTER_SNAP_THRESHOLD = 10;
 const CARD2_EDIT_MODE_ENABLED = false;
@@ -391,11 +391,20 @@ export default function Home() {
   const [nasaPromoLayout, setNasaPromoLayout] = useState<NasaPromoLayout>(() =>
     clampNasaPromoLayout(NASA_PROMO_LOCKED_LAYOUT),
   );
-  const [headerAdImageUrl, setHeaderAdImageUrl] = useState("");
-  const [headerAdLinkUrl, setHeaderAdLinkUrl] = useState("https://www3.nasa.gov/send-your-name-with-artemis/");
+  const [headerAds, setHeaderAds] = useState<Array<{ imageUrl: string; linkUrl: string }>>([]);
+  const [currentAdIndex, setCurrentAdIndex] = useState(0);
   const [headerAdSaveStatus, setHeaderAdSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [headerAdError, setHeaderAdError] = useState<string | null>(null);
-  const canManageHeaderAd = canEditHeaderAd && headerAdSaveStatus !== "saved";
+  const [adManagerOpen, setAdManagerOpen] = useState(false);
+  const canManageHeaderAd = canEditHeaderAd;
+
+  useEffect(() => {
+    if (headerAds.length <= 1) return;
+    const timer = setInterval(() => {
+      setCurrentAdIndex((prev) => (prev + 1) % headerAds.length);
+    }, 8000);
+    return () => clearInterval(timer);
+  }, [headerAds.length]);
   const faqTabDragRef = useRef<{ pointerId: number | null; startY: number; startTop: number; moved: boolean }>({
     pointerId: null,
     startY: 0,
@@ -711,6 +720,7 @@ export default function Home() {
           config?: {
             imageUrl?: string | null;
             linkUrl?: string | null;
+            ads?: Array<{ imageUrl: string; linkUrl: string }>;
             layout?: Partial<NasaPromoLayout> | null;
           } | null;
         };
@@ -721,15 +731,11 @@ export default function Home() {
           return;
         }
 
-        const imageUrl = typeof config.imageUrl === "string" ? config.imageUrl.trim() : "";
-        const linkUrl = typeof config.linkUrl === "string" && config.linkUrl.trim()
-          ? config.linkUrl.trim()
-          : "https://www3.nasa.gov/send-your-name-with-artemis/";
+        const ads = Array.isArray(config.ads) ? config.ads : (config.imageUrl ? [{ imageUrl: config.imageUrl, linkUrl: config.linkUrl || "" }] : []);
         const layout = config.layout ?? {};
 
         if (!cancelled) {
-          setHeaderAdImageUrl(imageUrl);
-          setHeaderAdLinkUrl(linkUrl);
+          setHeaderAds(ads);
           setNasaPromoLayout(
             clampNasaPromoLayout({
               x: Number.isFinite(layout.x) ? layout.x ?? 0 : 0,
@@ -1733,15 +1739,17 @@ export default function Home() {
     event.target.value = "";
     if (!file) return;
     if (!canManageHeaderAd) return;
+    if (headerAds.length >= 10) {
+      setHeaderAdError("Maximum of 10 advertisements reached.");
+      return;
+    }
 
     setHeaderAdSaveStatus("idle");
     setHeaderAdError(null);
 
     try {
       const { data, error } = await supabase.auth.getUser();
-      if (error || !data.user) {
-        throw new Error("Admin session not found.");
-      }
+      if (error || !data.user) throw new Error("Admin session not found.");
 
       const uploadedUrl = await uploadFileToBucket({
         bucket: "curriculum-assets",
@@ -1749,7 +1757,8 @@ export default function Home() {
         pathPrefix: `header-ads/${data.user.id}`,
       });
 
-      setHeaderAdImageUrl(uploadedUrl);
+      setHeaderAds(prev => [...prev, { imageUrl: uploadedUrl, linkUrl: "" }]);
+      setCurrentAdIndex(headerAds.length); // Select the newly uploaded ad
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to upload ad image.";
       setHeaderAdError(message);
@@ -1757,28 +1766,18 @@ export default function Home() {
     }
   };
 
-  const saveNasaPromoLayout = async (overrideImageUrl?: string) => {
+  const saveNasaPromoLayout = async () => {
     if (!canManageHeaderAd) return;
-
     setHeaderAdSaveStatus("saving");
     setHeaderAdError(null);
 
     try {
       const { data, error } = await supabase.auth.getUser();
-      if (error || !data.user) {
-        throw new Error("Admin session not found.");
-      }
-
-      const nextImageUrl = typeof overrideImageUrl === "string" ? overrideImageUrl : headerAdImageUrl;
-      const nextLinkUrl =
-        typeof headerAdLinkUrl === "string" && headerAdLinkUrl.trim()
-          ? headerAdLinkUrl.trim()
-          : "https://www3.nasa.gov/send-your-name-with-artemis/";
+      if (error || !data.user) throw new Error("Admin session not found.");
 
       const config = {
-        enabled: Boolean(nextImageUrl),
-        imageUrl: nextImageUrl || null,
-        linkUrl: nextLinkUrl,
+        enabled: headerAds.length > 0,
+        ads: headerAds,
         layout: clampNasaPromoLayout(nasaPromoLayout),
       };
 
@@ -1792,10 +1791,7 @@ export default function Home() {
         { onConflict: "user_id,key" },
       );
 
-      if (upsertError) {
-        throw new Error(upsertError.message);
-      }
-
+      if (upsertError) throw new Error(upsertError.message);
       setHeaderAdSaveStatus("saved");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to save header ad.";
@@ -1804,10 +1800,23 @@ export default function Home() {
     }
   };
 
-  const removeHeaderAd = async () => {
+  const removeHeaderAd = async (index: number) => {
     if (!canManageHeaderAd) return;
-    setHeaderAdImageUrl("");
-    await saveNasaPromoLayout("");
+    setHeaderAds(prev => {
+      const next = prev.filter((_, i) => i !== index);
+      if (currentAdIndex >= next.length && next.length > 0) {
+        setCurrentAdIndex(next.length - 1);
+      } else if (next.length === 0) {
+        setCurrentAdIndex(0);
+      }
+      return next;
+    });
+    setHeaderAdSaveStatus("idle");
+  };
+
+  const updateAdLink = (index: number, link: string) => {
+    setHeaderAds(prev => prev.map((ad, i) => i === index ? { ...ad, linkUrl: link } : ad));
+    setHeaderAdSaveStatus("idle");
   };
 
   const setCard2ItemRef = (id: Card2ElementId, node: HTMLDivElement | null) => {
@@ -2182,168 +2191,217 @@ export default function Home() {
           </div>
         </div>
         <nav className={`hidden md:flex items-center text-sm transition-all duration-300 ${headerCollapsed ? "gap-2" : "gap-4"}`}>
-          {(canManageHeaderAd || !headerCollapsed) && nasaPromoReady && NASA_PROMO_ENABLED && (headerAdImageUrl || canManageHeaderAd) && (
-            <div
-              className={`relative flex-none nasa-promo-shimmer ${canManageHeaderAd ? "select-none outline outline-1 outline-amber-300/70 rounded-md" : ""
-                }`}
-              style={{
-                width: `${headerCollapsed ? Math.min(nasaPromoLayout.width, 120) : nasaPromoLayout.width}px`,
-                transform: `translate(${nasaPromoLayout.x}px, ${nasaPromoLayout.y}px)`,
-                overflow: canManageHeaderAd ? "visible" : "hidden",
-              }}
-              onPointerDown={startNasaPromoDrag}
-              onPointerMove={moveNasaPromoDrag}
-              onPointerUp={endNasaPromoDrag}
-              onPointerCancel={endNasaPromoDrag}
-            >
-              <a
-                href={headerAdLinkUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="relative inline-flex items-center w-full overflow-hidden rounded-sm"
-                aria-label="Header advertisement"
-                title="Header advertisement"
-                onClick={onNasaPromoClick}
+          {(headerAds.length > 0 || canManageHeaderAd) && (
+            <div className="relative group">
+              <div
+                className="relative flex-none overflow-hidden rounded-lg bg-white/5 border border-black/80 shadow-sm"
+                style={{
+                  width: `${headerCollapsed ? Math.min(nasaPromoLayout.width, 140) : nasaPromoLayout.width}px`,
+                  height: `${(headerCollapsed ? Math.min(nasaPromoLayout.width, 140) : nasaPromoLayout.width) * 0.4}px`,
+                  transform: `translate(${nasaPromoLayout.x}px, ${nasaPromoLayout.y}px)`,
+                  transition: "all 300ms ease-in-out"
+                }}
               >
-                {headerAdImageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={headerAdImageUrl}
-                    alt="Header advertisement"
-                    className="block h-auto w-full object-contain nasa-promo-image-breath"
-                    style={{
-                      transform: `scale(${nasaPromoLayout.cropScale})`,
-                      transformOrigin: "center center",
-                    }}
-                  />
+                {headerAds.length > 0 ? (
+                  headerAds.map((ad, idx) => (
+                    <a
+                      key={`${ad.imageUrl}-${idx}`}
+                      href={ad.linkUrl || "#"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${idx === currentAdIndex ? "opacity-100 z-10" : "opacity-0 z-0 pointer-events-none"
+                        }`}
+                      aria-label={`Advertisement ${idx + 1}`}
+                    >
+                      <Image
+                        src={ad.imageUrl}
+                        alt=""
+                        fill
+                        unoptimized
+                        className="object-cover"
+                        style={{
+                          transform: `scale(${nasaPromoLayout.cropScale}) translateZ(0)`,
+                          transformOrigin: "center center",
+                          backfaceVisibility: "hidden",
+                        }}
+                      />
+                    </a>
+                  ))
                 ) : (
-                  <span className="flex h-16 w-full items-center justify-center rounded-sm border border-dashed border-slate-400/70 bg-white/90 px-2 text-xs font-semibold text-slate-900">
-                    Upload header advertisement
-                  </span>
+                  <div className="flex h-full w-full items-center justify-center px-2 text-center text-[10px] font-bold text-slate-400">
+                    No Ads Active
+                  </div>
                 )}
-              </a>
+              </div>
+
               {canManageHeaderAd && (
                 <button
                   type="button"
-                  aria-label="Move header ad"
-                  data-nasa-promo-control="true"
-                  className="absolute -top-1.5 -left-1.5 h-5 w-5 rounded-md border border-amber-100 bg-amber-300/95 text-[10px] font-black leading-none text-slate-900 shadow cursor-grab active:cursor-grabbing"
-                  onPointerDown={(event) => {
-                    startNasaPromoDrag(event);
-                    event.stopPropagation();
-                  }}
-                  onPointerMove={(event) => {
-                    moveNasaPromoDrag(event);
-                    event.stopPropagation();
-                  }}
-                  onPointerUp={(event) => {
-                    endNasaPromoDrag(event);
-                    event.stopPropagation();
-                  }}
-                  onPointerCancel={(event) => {
-                    endNasaPromoDrag(event);
-                    event.stopPropagation();
-                  }}
+                  onClick={() => setAdManagerOpen(true)}
+                  className="absolute -top-2 -right-2 z-40 opacity-0 group-hover:opacity-100 flex h-7 w-7 items-center justify-center rounded-full bg-amber-400 text-slate-900 shadow-lg border-2 border-white hover:scale-110 transition-all duration-200"
+                  title="Manage Advertisements"
                 >
-                  +
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="h-3.5 w-3.5">
+                    <path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                  </svg>
                 </button>
               )}
-              {canManageHeaderAd && (
-                <div
-                  data-nasa-promo-stop-drag="true"
-                  className="absolute left-0 top-full z-30 mt-2 w-[260px] rounded-md border border-white/35 bg-black/92 px-2 py-2 text-xs text-white shadow-lg backdrop-blur"
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onPointerMove={(event) => event.stopPropagation()}
-                  onPointerUp={(event) => event.stopPropagation()}
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <div className="mb-2 flex items-center justify-between gap-1">
-                    <span className="font-semibold tracking-wide">Zoom</span>
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        className="rounded border border-emerald-200/80 bg-emerald-500/25 px-1.5 py-0.5 text-[10px] font-semibold text-white hover:bg-emerald-500/35"
-                        onClick={() => {
-                          void saveNasaPromoLayout();
-                        }}
-                      >
-                        Save
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded border border-white/50 px-1.5 py-0.5 text-[10px] font-semibold text-white hover:bg-white/15"
-                        onClick={resetNasaPromoCrop}
-                      >
-                        Reset
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded border border-rose-300/80 bg-rose-500/25 px-1.5 py-0.5 text-[10px] font-semibold text-white hover:bg-rose-500/35"
-                        onClick={() => {
-                          void removeHeaderAd();
-                        }}
-                      >
-                        Remove
-                      </button>
+            </div>
+          )}
+
+          {adManagerOpen && (
+            <div
+              id="ad-carousel-manager"
+              className="fixed inset-0 z-[100] flex items-start justify-center bg-slate-900/40 backdrop-blur-sm p-4 pt-16"
+              onClick={() => setAdManagerOpen(false)}
+            >
+              <div
+                className="w-full max-w-7xl max-h-[92vh] overflow-hidden bg-white rounded-2xl p-8 space-y-6 shadow-[0_32px_64px_rgba(0,0,0,0.2)] border border-slate-200"
+                role="dialog"
+                aria-modal="true"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.16em] text-accent-strong font-bold">Ad Manager</p>
+                    <h2 className="text-xl font-bold text-slate-900">Carousel and Links</h2>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={headerAdSaveStatus === "saving"}
+                      className="text-sm px-4 py-2 rounded-xl bg-accent text-true-white font-bold border border-accent-strong/20 hover:opacity-90 transition disabled:opacity-50 shadow-md"
+                      onClick={() => void saveNasaPromoLayout()}
+                    >
+                      {headerAdSaveStatus === "saving" ? "Saving..." : "Save All"}
+                    </button>
+                    <button
+                      className="text-sm px-4 py-2 rounded-xl bg-slate-100 text-slate-700 font-bold border border-slate-200 hover:bg-slate-200 transition shadow-sm"
+                      onClick={() => setAdManagerOpen(false)}
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid gap-8 lg:grid-cols-[1fr_320px]">
+                  <div className="space-y-8 overflow-y-auto max-h-[60vh] pr-4 custom-scrollbar">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4">
+                      {headerAds.map((ad, idx) => (
+                        <div
+                          key={`manager-thumb-${idx}`}
+                          onClick={() => setCurrentAdIndex(idx)}
+                          className={`group relative aspect-[2.5/1] cursor-pointer overflow-hidden rounded-xl border-2 transition-all ${idx === currentAdIndex ? "border-amber-500 scale-[1.02] shadow-[0_10px_25px_rgba(245,158,11,0.2)]" : "border-slate-200 opacity-70 hover:opacity-100"
+                            }`}
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={ad.imageUrl} alt="" className="h-full w-full object-cover" />
+                          <div className="absolute inset-0 bg-white/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[10px] font-black text-slate-900 uppercase tracking-wider">
+                            Slide {idx + 1}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void removeHeaderAd(idx);
+                            }}
+                            className="absolute right-1.5 top-1.5 h-6 w-6 rounded-md bg-rose-500 text-white flex items-center justify-center hover:bg-rose-600 shadow-sm"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="h-3 w-3">
+                              <path d="M18 6 6 18M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      ))}
+                      {headerAds.length < 10 && (
+                        <label className="flex aspect-[2.5/1] cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100 hover:border-slate-400 transition-colors">
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-6 w-6 text-slate-400 mb-1">
+                            <path d="M12 5v14M5 12h14" />
+                          </svg>
+                          <span className="text-[10px] font-bold text-slate-500">Upload New</span>
+                          <input
+                            type="file"
+                            accept="image/*,.gif"
+                            onChange={(e) => void uploadHeaderAdFile(e)}
+                            className="hidden"
+                          />
+                        </label>
+                      )}
+                    </div>
+
+                    {headerAds.length > 0 && (
+                      <div className="rounded-2xl bg-slate-50 p-6 border border-slate-200 space-y-6">
+                        <div className="grid gap-6 md:grid-cols-2">
+                          <label className="block space-y-2">
+                            <span className="text-xs font-bold uppercase tracking-widest text-slate-500">Destination Link (Slide {currentAdIndex + 1})</span>
+                            <input
+                              type="url"
+                              value={headerAds[currentAdIndex]?.linkUrl || ""}
+                              onChange={(e) => updateAdLink(currentAdIndex, e.target.value)}
+                              placeholder="https://example.com"
+                              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 font-semibold outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all shadow-sm"
+                            />
+                          </label>
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold uppercase tracking-widest text-slate-500">Global Scale / Zoom</span>
+                              <span className="text-sm font-mono text-amber-600 font-bold">{nasaPromoLayout.cropScale}x</span>
+                            </div>
+                            <input
+                              type="range"
+                              min={NASA_PROMO_MIN_SCALE}
+                              max={NASA_PROMO_MAX_SCALE}
+                              step={0.01}
+                              value={nasaPromoLayout.cropScale}
+                              onChange={(e) => updateNasaPromoCropScale(Number(e.target.value))}
+                              className="w-full accent-amber-500 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ) }
+                  </div>
+
+                  <div className="flex flex-col gap-4">
+                    <div className="rounded-2xl bg-amber-50 border border-amber-200 p-6 shadow-sm">
+                      <h3 className="text-xs font-bold text-amber-700 uppercase tracking-[0.16em] mb-4">Slide Preview</h3>
+                      <div className="aspect-[2.5/1] rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shadow-inner">
+                        {headerAds[currentAdIndex] ? (
+                          <img
+                            src={headerAds[currentAdIndex].imageUrl}
+                            alt=""
+                            className="h-full w-full object-cover"
+                            style={{ transform: `scale(${nasaPromoLayout.cropScale})` }}
+                          />
+                        ) : (
+                          <div className="h-full w-full flex items-center justify-center text-xs text-slate-400 font-medium italic">No Image Selected</div>
+                        )}
+                      </div>
+                      {headerAds[currentAdIndex] && (
+                        <p className="mt-3 text-[10px] text-center text-slate-500 font-medium italic">
+                          Click thumbnails on left to switch preview
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="mt-auto space-y-3">
+                      {headerAdSaveStatus === "saved" && (
+                        <div className="flex items-center justify-center gap-2 py-2 text-emerald-600 animate-in fade-in slide-in-from-bottom-1">
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="h-4 w-4">
+                            <path d="M20 6 9 17l-5-5" />
+                          </svg>
+                          <span className="text-xs font-bold">Changes synced successfully</span>
+                        </div>
+                      )}
+                      {headerAdError && (
+                        <p className="rounded-xl bg-rose-50 p-4 text-center text-xs font-bold text-rose-600 border border-rose-200">
+                          {headerAdError}
+                        </p>
+                      )}
                     </div>
                   </div>
-                  <label className="mb-1.5 block">
-                    <span className="mb-0.5 block font-semibold">Upload</span>
-                    <input
-                      type="file"
-                      accept="image/*,.gif"
-                      onChange={(event) => {
-                        void uploadHeaderAdFile(event);
-                      }}
-                      className="file-accent w-full rounded border border-white/35 bg-white/15 px-1.5 py-1 text-[11px] text-white"
-                    />
-                  </label>
-                  <label className="mb-1.5 block">
-                    <span className="mb-0.5 block font-semibold">Link</span>
-                    <input
-                      type="url"
-                      value={headerAdLinkUrl}
-                      onChange={(event) => {
-                        setHeaderAdLinkUrl(event.target.value);
-                        setHeaderAdSaveStatus("idle");
-                        setHeaderAdError(null);
-                      }}
-                      placeholder="https://example.com"
-                      className="w-full rounded border border-white/35 bg-white/15 px-2 py-1 text-[11px] text-white placeholder:text-white/65"
-                    />
-                  </label>
-                  <label className="mb-1.5 flex items-center gap-1.5">
-                    <span className="w-10 shrink-0 font-semibold">Zoom</span>
-                    <input
-                      type="range"
-                      min={NASA_PROMO_MIN_SCALE}
-                      max={NASA_PROMO_MAX_SCALE}
-                      step={0.01}
-                      value={nasaPromoLayout.cropScale}
-                      onChange={(event) => updateNasaPromoCropScale(Number(event.target.value))}
-                      className="w-full accent-emerald-400"
-                      aria-label="NASA promo crop zoom"
-                    />
-                  </label>
-                  <p className="mt-1.5 text-[10px] text-white/85">Drag to move, bottom-right handle to resize, then click Save.</p>
-                  {headerAdSaveStatus === "saving" && (
-                    <p className="mt-1 text-[10px] font-semibold text-cyan-200">Saving...</p>
-                  )}
-                  {headerAdError && <p className="mt-1 text-[10px] font-semibold text-rose-200">{headerAdError}</p>}
                 </div>
-              )}
-              {canManageHeaderAd && (
-                <button
-                  type="button"
-                  aria-label="Resize header ad"
-                  data-nasa-promo-stop-drag="true"
-                  className="absolute -bottom-1.5 -right-1.5 h-5 w-5 rounded-md border border-amber-100 bg-amber-300/95 shadow cursor-ew-resize"
-                  onPointerDown={startNasaPromoResize}
-                  onPointerMove={moveNasaPromoResize}
-                  onPointerUp={endNasaPromoResize}
-                  onPointerCancel={endNasaPromoResize}
-                />
-              )}
+              </div>
             </div>
           )}
           <div className="hidden md:flex flex-col items-start gap-1">
