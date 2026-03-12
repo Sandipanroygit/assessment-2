@@ -77,7 +77,7 @@ function SmartCanvas({ onSnapshot, isAnalyzing, viewingSnapshot }: { onSnapshot:
       ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, rect.width, rect.height);
-      const img = new Image();
+      const img = new window.Image();
       img.src = tempImage;
       img.onload = () => {
         ctx.drawImage(img, 0, 0, rect.width, rect.height);

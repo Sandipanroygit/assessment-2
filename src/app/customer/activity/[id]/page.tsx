@@ -13,6 +13,7 @@ import logo from "../../../../../image/logo.jpg";
 import {
   AmbientLight,
   Box3,
+  BufferGeometry,
   Color,
   DirectionalLight,
   Mesh,
