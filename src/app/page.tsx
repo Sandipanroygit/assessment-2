@@ -704,8 +704,7 @@ export default function Home() {
     const applyFallback = () => {
       if (cancelled) return;
       setNasaPromoLayout(clampNasaPromoLayout(NASA_PROMO_LOCKED_LAYOUT));
-      setHeaderAdImageUrl("");
-      setHeaderAdLinkUrl("https://www3.nasa.gov/send-your-name-with-artemis/");
+      setHeaderAds([]);
     };
 
     const loadHeaderAd = async () => {
