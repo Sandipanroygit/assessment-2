@@ -897,7 +897,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
           scene.add(mesh);
         },
         undefined,
-        (err: ErrorEvent | Error) => {
+        (err: unknown) => {
           console.error("STL load failed", err);
           setError("Unable to preview this STL. You can still download it.");
         },

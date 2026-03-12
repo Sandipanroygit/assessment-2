@@ -154,7 +154,7 @@ function SmartCanvas({ onSnapshot, isAnalyzing, viewingSnapshot }: { onSnapshot:
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const prevIndex = historyIndex - 1;
-    const img = new (window as any).Image();
+    const img = new window.Image();
     img.src = history[prevIndex];
     img.onload = () => {
       const rect = canvas.parentElement?.getBoundingClientRect();
@@ -173,7 +173,7 @@ function SmartCanvas({ onSnapshot, isAnalyzing, viewingSnapshot }: { onSnapshot:
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const nextIndex = historyIndex + 1;
-    const img = new (window as any).Image();
+    const img = new window.Image();
     img.src = history[nextIndex];
     img.onload = () => {
       const rect = canvas.parentElement?.getBoundingClientRect();
