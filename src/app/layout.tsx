@@ -29,7 +29,7 @@ export default function RootLayout({
       <body
         className={`${inter.variable} antialiased bg-surface text-slate-900 dynamic-bg`}
       >
-        <AutoFullscreen />
+        {/* <AutoFullscreen /> */}
         <Suspense fallback={null}>
           <ActivityTracker />
         </Suspense>
