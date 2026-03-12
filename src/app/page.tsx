@@ -177,8 +177,8 @@ const FAQ_TAB_HEIGHT = 96;
 const FAQ_TAB_MARGIN = 8;
 const FAQ_TAB_DEFAULT_RAISE = 40;
 const FAQ_TAB_DRAG_THRESHOLD = 6;
-const EAGLE_BUBBLE_DEFAULT_TOP = -1;
-const EAGLE_BUBBLE_DEFAULT_RIGHT = 105;
+const EAGLE_BUBBLE_DEFAULT_TOP = -5;
+const EAGLE_BUBBLE_DEFAULT_RIGHT = 99;
 const EAGLE_BUBBLE_MIN_TOP = -20;
 const EAGLE_BUBBLE_MAX_TOP = 96;
 const EAGLE_BUBBLE_MIN_RIGHT = 8;
@@ -186,8 +186,8 @@ const EAGLE_BUBBLE_MAX_RIGHT = 260;
 const EAGLE_BUBBLE_DRAG_THRESHOLD = 6;
 const EAGLE_BUBBLE_DRAG_ENABLED = false;
 const EAGLE_BUBBLE_STORAGE_KEY = "homepage_eagle_bubble_position_v1";
-const EAGLE_WIDGET_DEFAULT_BOTTOM = 80;
-const EAGLE_WIDGET_DEFAULT_RIGHT = 24;
+const EAGLE_WIDGET_DEFAULT_BOTTOM = 58;
+const EAGLE_WIDGET_DEFAULT_RIGHT = 19;
 const EAGLE_WIDGET_MARGIN = 8;
 const EAGLE_WIDGET_SIZE = 160;
 const EAGLE_WIDGET_DRAG_THRESHOLD = 6;
@@ -1033,6 +1033,21 @@ export default function Home() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+
+    if (!EAGLE_WIDGET_DRAG_ENABLED) {
+      setEagleWidgetPosition(clampEagleWidgetPosition(
+        { bottom: EAGLE_WIDGET_DEFAULT_BOTTOM, right: EAGLE_WIDGET_DEFAULT_RIGHT },
+        window.innerWidth,
+        window.innerHeight,
+      ));
+      try {
+        window.localStorage.removeItem(EAGLE_WIDGET_STORAGE_KEY);
+      } catch {
+        // Ignore
+      }
+      setEagleWidgetReady(true);
+      return;
+    }
 
     const defaultPosition = clampEagleWidgetPosition(
       { bottom: EAGLE_WIDGET_DEFAULT_BOTTOM, right: EAGLE_WIDGET_DEFAULT_RIGHT },
