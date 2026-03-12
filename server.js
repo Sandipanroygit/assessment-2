@@ -11,15 +11,21 @@ const fs = require("fs");
 const path = require("path");
 const pdfParse = require("pdf-parse");
 
-// Load .env (optional, used mainly for PORT)
+// Load .env then .env.local (Next.js style)
 dotenv.config();
+if (fs.existsSync(".env.local")) {
+  const envConfig = dotenv.parse(fs.readFileSync(".env.local"));
+  for (const k in envConfig) {
+    process.env[k] = envConfig[k];
+  }
+}
 
-// 🔑 Hardcoded API key for now. KEEP IT IN QUOTES.
+// 🔑 Gemini API Key from environment.
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 if (!GOOGLE_API_KEY) {
-  throw new Error("Missing GOOGLE_API_KEY");
+  throw new Error("Missing GOOGLE_API_KEY in environment or .env.local");
 }
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-1.5-flash";
 
 // Create Express app + config
 const app = express();

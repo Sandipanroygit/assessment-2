@@ -40,11 +40,12 @@ const pickApiKey = (headerKey: string | null) => {
     process.env.GOOGLE_API_KEY_QUESTIONS,
     process.env.GOOGLE_API_KEY_FALLBACK,
     headerKey,
-    process.env.NEXT_PUBLIC_GOOGLE_API_KEY, // last resort
   ].filter(Boolean) as string[];
 
+  // Note: Only use keys that look like Google/Gemini keys (AIza...)
   const isMasked = (k: string) => k.includes("*") || k.includes("•");
   const looksValid = (k: string) => /^AIza[0-9A-Za-z_-]{20,}/.test(k) && !isMasked(k);
+  
   return candidates.find(looksValid) ?? candidates.find((k) => !isMasked(k)) ?? null;
 };
 

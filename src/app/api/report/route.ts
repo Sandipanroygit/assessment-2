@@ -267,8 +267,9 @@ const extractContentString = (rawContent: unknown) => {
 const pickApiKey = (headerKey: string | null) => {
   const candidates = [
     process.env.GOOGLE_API_KEY,
+    process.env.GOOGLE_API_KEY_QUESTIONS,
+    process.env.GOOGLE_API_KEY_FALLBACK,
     headerKey,
-    process.env.NEXT_PUBLIC_GOOGLE_API_KEY,
   ].filter(Boolean) as string[];
   const isMasked = (key: string) => key.includes("*") || key.includes("•");
   const looksValid = (key: string) => /^AIza[0-9A-Za-z_-]{20,}/.test(key) && !isMasked(key);

@@ -174,7 +174,6 @@ const pickGeminiApiKey = () => {
     process.env.GOOGLE_API_KEY,
     process.env.GOOGLE_API_KEY_QUESTIONS,
     process.env.GOOGLE_API_KEY_FALLBACK,
-    process.env.NEXT_PUBLIC_GOOGLE_API_KEY,
   ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
 
   const isMasked = (value: string) => value.includes("*");

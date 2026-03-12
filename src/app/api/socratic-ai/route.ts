@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { GoogleGenerativeAI, Part } from "@google/generative-ai";
 
 type SocraticRequest = {
   question: string;
@@ -12,32 +13,30 @@ Your goal is to be a supportive, "over-the-shoulder" mentor that guides students
 
 CRITICAL RULES:
 1. NEVER GIVE THE FINAL ANSWER. Even if the student asks for it.
-2. CONTINUOUS MONITORING: You are analyzing periodic snapshots of the student's handwritten work (Smart Canvas) along with the question.
-3. MORALE BOOSTING (IMPORTANT): 
-   - If the student is moving in the correct direction, APPRECIATE them immediately. 
-   - Examples: "Excellent first step! Your free-body diagram is perfectly balanced.", "Great job identifying the core formula here. Keep deriving!", "I love how you've broken down this complex problem—continue with this logic!"
-4. SOCRATIC NUDGING (FOR ERRORS):
+2. CONTINUOUS MONITORING: You are analyzing periodic snapshots of the student's handwritten work (Smart Canvas).
+3. BAN GENERIC PRAISE: Do not start with "Excellent start", "Great job", or "I see you're working hard." If the work is correct, simply state exactly what was identified and then nudge for the NEXT step.
+4. STEP-BY-STEP TRACKING: Use the provided LOGIC CONTEXT to identify exactly which step (1, 2, or 3) the student is currently on. 
+   - Identify the LAST successful logical step they completed on the canvas.
+   - Then, ask a question or provide a hint that points towards the START of the very next step in the LOGIC CONTEXT.
+5. SOCRATIC NUDGING (FOR ERRORS):
    - If you detect a mistake (wrong sign, incorrect formula, calculation error), do not point it out directly. 
    - Ask a question that helps them spot it. 
-   - Examples: "Take a closer look at the direction of your friction force. Is it opposing the motion correctly?", "I notice you used the constant acceleration formula—does that apply throughout this entire duration?"
-5. MESSY HANDWRITING: If you genuinely cannot read a specific step, ask a Socratic question about the *intent* of that step instead of giving a technical error. (e.g., "I'm following your logic, but could you clarify the variable you just derived?")
-6. BE CONCISE: Keep feedback to 2-3 sentences. Stay in the flow of their "Mock Test" mindset.
+   - Example: "If the object is moving at a constant speed, what does that tell you about the net force according to Newton's First Law?"
+6. BE HYPER-SPECIFIC: Mention specific variables (v, R, acceleration, etc.) and diagrams seen in the handwriting.
+7. BE CONCISE: Keep feedback to 2 short sentences.
 
 You are patient, high-energy, and expert-level in Physics, Chemistry, Math, and Biology.
 `;
 
 export async function POST(req: Request) {
-  // Use the same robust key resolution as assessment generation
   const apiKey = [
     process.env.GOOGLE_API_KEY,
     process.env.GOOGLE_API_KEY_QUESTIONS,
     process.env.GOOGLE_API_KEY_FALLBACK,
-    process.env.OPENAI_API_KEY, // project-specific: some google keys are stored here
-    process.env.NEXT_PUBLIC_GOOGLE_API_KEY,
-  ].find(k => k && k.trim().length > 0 && k.startsWith("AIza")); // Google keys start with AIza
+  ].find(k => k && k.trim().length > 0 && k.startsWith("AIza"));
   
   if (!apiKey) {
-    return NextResponse.json({ error: "Socratic AI requires a valid Google API Key. Please configure GOOGLE_API_KEY in your dashboard." }, { status: 500 });
+    return NextResponse.json({ error: "Socratic AI requires a valid Google API Key." }, { status: 500 });
   }
 
   let body: SocraticRequest;
@@ -49,62 +48,51 @@ export async function POST(req: Request) {
 
   const { question, context, canvasImage } = body;
   
-  // Prepare Gemini payload
-  const model = "gemini-1.5-flash"; 
+  const modelName = process.env.GEMINI_MODEL || "gemini-2.0-flash"; // Use the latest flash model
   
-  const userParts: any[] = [
-    { text: `Question: ${question}\n\nLogic Context: ${context || "None provided"}\n\nPlease analyze my current work and provide a Socratic hint.` }
-  ];
-
-  if (canvasImage && canvasImage.includes("base64,")) {
-    const base64Data = canvasImage.split("base64,")[1];
-    const mimeType = canvasImage.split(";")[0].split(":")[1];
-    userParts.push({
-      inlineData: {
-        data: base64Data,
-        mimeType: mimeType
-      }
-    });
-  }
-
-  const payload = {
-    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-    contents: [
-      {
-        role: "user",
-        parts: userParts,
-      },
-    ],
-    generationConfig: { temperature: 0.4, maxOutputTokens: 300 },
-  };
-
   try {
-    console.log("Socratic AI: Monitoring logic using Gemini Flash...");
-    const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      }
-    );
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: modelName }, { apiVersion: "v1" });
 
-    const data = await geminiRes.json().catch(() => null);
+    const userParts: Part[] = [
+      { text: `
+QUESTION: ${question}
+STEP-BY-STEP LOGIC CONTEXT: ${context || "None provided"}
 
-    if (!geminiRes.ok) {
-      console.error("Gemini Error Payload:", JSON.stringify(data, null, 2));
-      const detail = data?.error?.message || "Failed to contact AI engine";
-      return NextResponse.json({ error: `AI Logic Coach: ${detail}` }, { status: geminiRes.status });
+${SYSTEM_PROMPT}
+
+ANALYSIS INSTRUCTION:
+1. Look at the student's handwriting.
+2. Identify the highest step number (from the LOGIC CONTEXT) they have correctly reached.
+3. If they are midway through a step or have made an error, nudge them.
+4. If they have completed a step, tell them what the NEXT thing to think about is (without giving the answer).
+5. Be sharp, technical, and Socratic. No filler.
+` }
+    ];
+
+    if (canvasImage && canvasImage.includes("base64,")) {
+      const base64Data = canvasImage.split("base64,")[1];
+      const mimeType = canvasImage.split(";")[0].split(":")[1];
+      userParts.push({
+        inlineData: {
+          data: base64Data,
+          mimeType: mimeType
+        }
+      });
     }
 
-    const hint =
-      data?.candidates?.[0]?.content?.parts
-        ?.map((p: any) => p.text ?? "")
-        .join("") ?? "I'm watching your logic. Keep going!";
+    console.log("Socratic AI: Monitoring logic using Gemini SDK...");
+    const result = await model.generateContent({
+      contents: [{ role: "user", parts: userParts }],
+      generationConfig: { temperature: 0.4, maxOutputTokens: 300 },
+    });
 
+    const hint = result.response.text() || "I'm watching your logic. Keep going!";
     return NextResponse.json({ hint });
+
   } catch (err) {
-    console.error("Socratic AI: Internal Fetch Error:", err);
-    return NextResponse.json({ error: "Internal Server Error during logic analysis" }, { status: 500 });
+    const error = err as Error;
+    console.error("Socratic AI Error:", error);
+    return NextResponse.json({ error: error.message || "Internal Server Error" }, { status: 500 });
   }
 }

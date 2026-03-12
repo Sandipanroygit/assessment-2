@@ -871,7 +871,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
       const loader = new STLLoader();
       loader.load(
         url,
-        (geometry) => {
+        (geometry: BufferGeometry) => {
           if (!mounted) return;
           geometry.computeBoundingBox();
           const box = geometry.boundingBox ?? new Box3();
@@ -896,7 +896,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
           scene.add(mesh);
         },
         undefined,
-        (err) => {
+        (err: ErrorEvent | Error) => {
           console.error("STL load failed", err);
           setError("Unable to preview this STL. You can still download it.");
         },
