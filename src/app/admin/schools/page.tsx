@@ -347,8 +347,9 @@ export default function AdminSchoolsPage() {
         setStatus(body.error ?? "Unable to add school.");
         return;
       }
+      const createdSchool = body.school;
       setSchools((prev) =>
-        [...prev, body.school].sort(
+        [...prev, createdSchool].sort(
           (a, b) => a.sort_order - b.sort_order || a.display_name.localeCompare(b.display_name),
         ),
       );
@@ -379,7 +380,8 @@ export default function AdminSchoolsPage() {
           setStatus(body.error ?? "Unable to update school.");
           return;
         }
-        setSchools((prev) => prev.map((item) => (item.id === school.id ? body.school! : item)));
+        const updatedSchool = body.school;
+        setSchools((prev) => prev.map((item) => (item.id === school.id ? updatedSchool : item)));
         setStatus(null);
       } catch (err) {
         setStatus(err instanceof Error ? err.message : "Unable to update school.");
