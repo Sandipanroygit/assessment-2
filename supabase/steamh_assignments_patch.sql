@@ -9,9 +9,15 @@ create table if not exists public.steamh_assignments (
   student_name text not null,
   title text not null,
   instructions text,
+  instruction_links jsonb default '[]'::jsonb,
+  instruction_attachments jsonb default '[]'::jsonb,
   subject text,
   grade text,
   due_at timestamp with time zone not null,
+  assignment_mode text check (assignment_mode in ('individual', 'group')) default 'individual',
+  group_id uuid,
+  group_name text,
+  group_size integer check (group_size is null or group_size > 0),
   status text check (status in ('assigned', 'submitted', 'closed')) default 'assigned',
   submitted_project_id uuid references public.steamh_projects (id) on delete set null,
   submitted_at timestamp with time zone,
@@ -24,9 +30,15 @@ alter table public.steamh_assignments add column if not exists teacher_name text
 alter table public.steamh_assignments add column if not exists student_name text;
 alter table public.steamh_assignments add column if not exists title text;
 alter table public.steamh_assignments add column if not exists instructions text;
+alter table public.steamh_assignments add column if not exists instruction_links jsonb;
+alter table public.steamh_assignments add column if not exists instruction_attachments jsonb;
 alter table public.steamh_assignments add column if not exists subject text;
 alter table public.steamh_assignments add column if not exists grade text;
 alter table public.steamh_assignments add column if not exists due_at timestamp with time zone;
+alter table public.steamh_assignments add column if not exists assignment_mode text;
+alter table public.steamh_assignments add column if not exists group_id uuid;
+alter table public.steamh_assignments add column if not exists group_name text;
+alter table public.steamh_assignments add column if not exists group_size integer;
 alter table public.steamh_assignments add column if not exists status text;
 alter table public.steamh_assignments add column if not exists submitted_project_id uuid references public.steamh_projects (id) on delete set null;
 alter table public.steamh_assignments add column if not exists submitted_at timestamp with time zone;
@@ -37,6 +49,22 @@ alter table public.steamh_assignments add column if not exists updated_at timest
 update public.steamh_assignments
 set status = 'assigned'
 where status is null or trim(status) = '';
+
+update public.steamh_assignments
+set assignment_mode = 'individual'
+where assignment_mode is null or trim(assignment_mode) = '';
+
+update public.steamh_assignments
+set instruction_links = '[]'::jsonb
+where instruction_links is null;
+
+update public.steamh_assignments
+set instruction_attachments = '[]'::jsonb
+where instruction_attachments is null;
+
+update public.steamh_assignments
+set group_size = 1
+where group_size is null and assignment_mode = 'individual';
 
 do $$
 begin
@@ -65,6 +93,21 @@ begin
   exception when others then
     null;
   end;
+  begin
+    alter table public.steamh_assignments alter column assignment_mode set default 'individual';
+  exception when others then
+    null;
+  end;
+  begin
+    alter table public.steamh_assignments alter column instruction_links set default '[]'::jsonb;
+  exception when others then
+    null;
+  end;
+  begin
+    alter table public.steamh_assignments alter column instruction_attachments set default '[]'::jsonb;
+  exception when others then
+    null;
+  end;
 end $$;
 
 create index if not exists steamh_assignments_teacher_due_idx
@@ -72,6 +115,9 @@ create index if not exists steamh_assignments_teacher_due_idx
 
 create index if not exists steamh_assignments_student_due_idx
   on public.steamh_assignments (student_id, due_at asc, created_at desc);
+
+create index if not exists steamh_assignments_group_idx
+  on public.steamh_assignments (group_id);
 
 alter table public.steamh_assignments enable row level security;
 

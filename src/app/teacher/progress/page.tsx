@@ -6,6 +6,11 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { GuidedTour, type GuidedTourStep } from "@/components/GuidedTour";
 import { playUiClickTone } from "@/lib/uiTone";
+import {
+  areGuidedToursEnabled,
+  GUIDED_TOURS_ENABLED_KEY,
+  GUIDED_TOURS_TOGGLE_EVENT,
+} from "@/lib/tourControls";
 
 type ProgressRow = {
   id: string;
@@ -83,6 +88,8 @@ const normalizeGradeKey = (value?: string | null) =>
     .toLowerCase()
     .replace(/grade/gi, "")
     .replace(/[^a-z0-9]+/g, "");
+const normalizeApprovalStatus = (value: unknown) =>
+  typeof value === "string" && value.trim().toLowerCase() === "approved" ? "approved" : "pending";
 
 const formatDateTime = (value?: string | null) => {
   if (!value) return "--";
@@ -132,6 +139,23 @@ export default function TeacherProgressPage() {
   const [returnToDashboardAfterTour, setReturnToDashboardAfterTour] = useState(false);
   const [dashboardResumeStepId, setDashboardResumeStepId] = useState("menu-queries");
   const [tourDisplayTotalOverride, setTourDisplayTotalOverride] = useState<number | null>(null);
+  const [guidedToursEnabled, setGuidedToursEnabled] = useState(true);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sync = () => setGuidedToursEnabled(areGuidedToursEnabled());
+    sync();
+    const onStorage = (event: StorageEvent) => {
+      if (!event.key || event.key === GUIDED_TOURS_ENABLED_KEY) sync();
+    };
+    const onToggle = () => sync();
+    window.addEventListener("storage", onStorage);
+    window.addEventListener(GUIDED_TOURS_TOGGLE_EVENT, onToggle as EventListener);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(GUIDED_TOURS_TOGGLE_EVENT, onToggle as EventListener);
+    };
+  }, []);
 
   useEffect(() => {
     const load = async () => {
@@ -142,9 +166,14 @@ export default function TeacherProgressPage() {
         if (session?.user) {
           const { data: profile } = await supabase
             .from("profiles")
-            .select("full_name")
+            .select("full_name, approval_status")
             .eq("id", session.user.id)
             .maybeSingle();
+          if (normalizeApprovalStatus(profile?.approval_status ?? session.user.user_metadata?.approval_status) !== "approved") {
+            await supabase.auth.signOut();
+            router.replace("/login?reason=pending");
+            return;
+          }
           setFullName(profile?.full_name || session.user.user_metadata?.full_name || session.user.email || "Teacher");
         }
         if (!token) {
@@ -475,6 +504,7 @@ export default function TeacherProgressPage() {
   }, [firstRemindableStudentId]);
 
   const startTour = useCallback(() => {
+    if (!guidedToursEnabled) return;
     setTourDisplayOffset(0);
     setTourDisplayTotalOverride(null);
     setReturnToDashboardAfterTour(false);
@@ -484,7 +514,7 @@ export default function TeacherProgressPage() {
       window.localStorage.removeItem(TEACHER_PROGRESS_TOUR_STORAGE_KEY);
       window.localStorage.removeItem(TEACHER_PROGRESS_TOUR_CHAIN_KEY);
     }
-  }, []);
+  }, [guidedToursEnabled]);
 
   const closeTour = useCallback((completed: boolean) => {
     setTourRun(false);
@@ -573,6 +603,11 @@ export default function TeacherProgressPage() {
     if (tourInitialized) return;
     if (isInitialLoading) return;
     if (typeof window === "undefined") return;
+    if (!guidedToursEnabled) {
+      setTourRun(false);
+      setTourInitialized(true);
+      return;
+    }
 
     const forcedFromDashboard =
       window.localStorage.getItem(TEACHER_PROGRESS_TOUR_FORCE_KEY) === "1";
@@ -614,7 +649,12 @@ export default function TeacherProgressPage() {
       setTourRun(true);
     }
     setTourInitialized(true);
-  }, [isInitialLoading, tourInitialized]);
+  }, [guidedToursEnabled, isInitialLoading, tourInitialized]);
+
+  useEffect(() => {
+    if (guidedToursEnabled) return;
+    setTourRun(false);
+  }, [guidedToursEnabled]);
 
   const tourDisplayTotal = useMemo(
     () =>
@@ -642,16 +682,18 @@ export default function TeacherProgressPage() {
         </div>
       )}
 
-      <GuidedTour
-        run={tourRun}
-        stepIndex={tourStepIndex}
-        steps={progressTourSteps}
-        onStepIndexChange={handleTourStepChange}
-        onClose={closeTour}
-        displayStepOffset={tourDisplayOffset > 0 ? tourDisplayOffset : undefined}
-        displayStepTotal={tourDisplayTotal}
-        palette={TEACHER_TOUR_PALETTE}
-      />
+      {guidedToursEnabled && (
+        <GuidedTour
+          run={tourRun}
+          stepIndex={tourStepIndex}
+          steps={progressTourSteps}
+          onStepIndexChange={handleTourStepChange}
+          onClose={closeTour}
+          displayStepOffset={tourDisplayOffset > 0 ? tourDisplayOffset : undefined}
+          displayStepTotal={tourDisplayTotal}
+          palette={TEACHER_TOUR_PALETTE}
+        />
+      )}
 
       <div
         className="sticky top-0 z-30 isolate -mx-[clamp(1.25rem,4vw,4rem)] -mt-[clamp(2rem,4vw,3.5rem)] space-y-3 overflow-visible rounded-none border border-white/35 bg-white/30 supports-[backdrop-filter]:bg-white/16 px-3 pb-3 pt-[clamp(2rem,4vw,3.5rem)] shadow-[0_26px_56px_rgba(15,23,42,0.24)] backdrop-blur-3xl backdrop-saturate-150"
@@ -668,16 +710,18 @@ export default function TeacherProgressPage() {
             </div>
 
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  void playUiClickTone();
-                  startTour();
-                }}
-                className="px-4 py-2 rounded-xl border border-cyan-300/70 bg-cyan-500/10 text-sm font-semibold text-cyan-100 hover:bg-cyan-500/20"
-              >
-                Take tour
-              </button>
+              {guidedToursEnabled && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void playUiClickTone();
+                    startTour();
+                  }}
+                  className="px-4 py-2 rounded-xl border border-cyan-300/70 bg-cyan-500/10 text-sm font-semibold text-cyan-100 hover:bg-cyan-500/20"
+                >
+                  Take tour
+                </button>
+              )}
               <Link
                 href="/customer"
                 data-tour="teacher-progress-back-dashboard"

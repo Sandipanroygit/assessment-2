@@ -17,6 +17,7 @@ import {
   toShowcaseSolution,
   truncateText,
 } from "@/lib/steamhShowcase";
+import { supabase } from "@/lib/supabaseClient";
 import type { SteamhProject } from "@/types";
 
 const formatDate = (isoDate: string) =>
@@ -44,6 +45,29 @@ export default function SteamhProjectDetailPage({ params }: { params: Promise<{ 
   const [project, setProject] = useState<SteamhProject | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isViewerAuthed, setIsViewerAuthed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    const syncAuthState = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!active) return;
+      setIsViewerAuthed(Boolean(data.session));
+    };
+
+    void syncAuthState();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!active) return;
+      setIsViewerAuthed(Boolean(session));
+    });
+
+    return () => {
+      active = false;
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -198,26 +222,52 @@ export default function SteamhProjectDetailPage({ params }: { params: Promise<{ 
             <h1 className="text-3xl md:text-4xl font-semibold text-white">{project.title}</h1>
             <p className="text-base leading-relaxed text-slate-200">{project.summary}</p>
 
-            <div className="rounded-2xl border border-accent/20 bg-white/75 p-4">
-              <div className="flex items-center gap-3">
-                <div className="grid h-11 w-11 place-items-center rounded-full border border-accent/25 bg-white text-sm font-semibold text-accent-strong">
-                  {initials}
+            <div className="relative overflow-hidden rounded-2xl border border-accent/20 bg-white/75 p-4">
+              <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                Author Details
+              </p>
+              <div className={!isViewerAuthed ? "pointer-events-none select-none blur-[2px]" : undefined} aria-hidden={!isViewerAuthed}>
+                <div className="flex items-center gap-3">
+                  <div className="grid h-11 w-11 place-items-center rounded-full border border-accent/25 bg-white text-sm font-semibold text-accent-strong">
+                    {initials}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">{projectMeta.studentName}</p>
+                    <p className="text-xs text-slate-600">{projectMeta.schoolName}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">{projectMeta.studentName}</p>
-                  <p className="text-xs text-slate-600">{projectMeta.schoolName}</p>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded-lg border border-accent/15 bg-white px-2.5 py-2 text-slate-700">
+                    <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Grade</p>
+                    <p className="mt-1 font-semibold">{projectMeta.grade ? `Grade ${projectMeta.grade}` : "Not specified"}</p>
+                  </div>
+                  <div className="rounded-lg border border-accent/15 bg-white px-2.5 py-2 text-slate-700">
+                    <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Published</p>
+                    <p className="mt-1 font-semibold">{formatDate(projectMeta.publishedAt)}</p>
+                  </div>
                 </div>
               </div>
-              <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                <div className="rounded-lg border border-accent/15 bg-white px-2.5 py-2 text-slate-700">
-                  <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Grade</p>
-                  <p className="mt-1 font-semibold">{projectMeta.grade ? `Grade ${projectMeta.grade}` : "Not specified"}</p>
+              {!isViewerAuthed && (
+                <div className="absolute inset-0 flex items-center justify-center bg-white/32 backdrop-blur-[1px]">
+                  <div className="flex flex-col items-center gap-3">
+                    <span
+                      aria-hidden="true"
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-accent/20 bg-white/90 text-accent-strong shadow-[0_8px_24px_rgba(15,118,110,0.18)]"
+                    >
+                      <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="5" y="11" width="14" height="10" rx="2" />
+                        <path d="M8 11V8a4 4 0 1 1 8 0v3" />
+                      </svg>
+                    </span>
+                    <Link
+                      href="/login"
+                      className="inline-flex items-center rounded-full bg-accent px-4 py-2 text-sm font-semibold text-true-white shadow-glow hover:opacity-90"
+                    >
+                      Login to view
+                    </Link>
+                  </div>
                 </div>
-                <div className="rounded-lg border border-accent/15 bg-white px-2.5 py-2 text-slate-700">
-                  <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Published</p>
-                  <p className="mt-1 font-semibold">{formatDate(projectMeta.publishedAt)}</p>
-                </div>
-              </div>
+              )}
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -296,41 +346,64 @@ export default function SteamhProjectDetailPage({ params }: { params: Promise<{ 
 
         <aside className="space-y-6">
           <section
-            className="rounded-3xl p-5 md:p-6 space-y-3 border shadow-glow"
+            className="relative overflow-hidden rounded-3xl p-5 md:p-6 space-y-3 border shadow-glow"
             style={{
               background: "var(--accent)",
               borderColor: "color-mix(in srgb, #ffffff 22%, var(--accent))",
             }}
           >
             <h2 className="text-lg font-semibold text-true-white">
-              Student Details
+              Author Details
             </h2>
-            <dl className="space-y-2 text-sm font-semibold">
-              <div className="flex items-start justify-between gap-3 border-b pb-2" style={{ borderColor: "rgba(255, 255, 255, 0.24)" }}>
-                <dt style={{ color: "rgba(255, 255, 255, 0.78)" }}>Student</dt>
-                <dd className="text-right font-semibold text-true-white">
-                  {projectMeta.studentName}
-                </dd>
+            <div className={!isViewerAuthed ? "pointer-events-none select-none blur-[2px]" : undefined} aria-hidden={!isViewerAuthed}>
+              <dl className="space-y-2 text-sm font-semibold">
+                <div className="flex items-start justify-between gap-3 border-b pb-2" style={{ borderColor: "rgba(255, 255, 255, 0.24)" }}>
+                  <dt style={{ color: "rgba(255, 255, 255, 0.78)" }}>Student</dt>
+                  <dd className="text-right font-semibold text-true-white">
+                    {projectMeta.studentName}
+                  </dd>
+                </div>
+                <div className="flex items-start justify-between gap-3 border-b pb-2" style={{ borderColor: "rgba(255, 255, 255, 0.24)" }}>
+                  <dt style={{ color: "rgba(255, 255, 255, 0.78)" }}>Grade</dt>
+                  <dd className="text-right font-semibold text-true-white">
+                    {projectMeta.grade ? `Grade ${projectMeta.grade}` : "Not specified"}
+                  </dd>
+                </div>
+                <div className="flex items-start justify-between gap-3 border-b pb-2" style={{ borderColor: "rgba(255, 255, 255, 0.24)" }}>
+                  <dt style={{ color: "rgba(255, 255, 255, 0.78)" }}>Subject</dt>
+                  <dd className="text-right font-semibold text-true-white">
+                    {project.subject || "Not specified"}
+                  </dd>
+                </div>
+                <div className="flex items-start justify-between gap-3">
+                  <dt style={{ color: "rgba(255, 255, 255, 0.78)" }}>Published</dt>
+                  <dd className="text-right font-semibold text-true-white">
+                    {formatDate(projectMeta.publishedAt)}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+            {!isViewerAuthed && (
+              <div className="absolute inset-0 flex items-center justify-center bg-[rgba(0,98,65,0.18)] backdrop-blur-[1px]">
+                <div className="flex flex-col items-center gap-3">
+                  <span
+                    aria-hidden="true"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/25 bg-white/92 text-accent-strong shadow-[0_10px_26px_rgba(0,0,0,0.16)]"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="5" y="11" width="14" height="10" rx="2" />
+                      <path d="M8 11V8a4 4 0 1 1 8 0v3" />
+                    </svg>
+                  </span>
+                  <Link
+                    href="/login"
+                    className="inline-flex items-center rounded-full bg-white px-4 py-2 text-sm font-semibold text-accent-strong shadow-glow hover:opacity-90"
+                  >
+                    Login to view
+                  </Link>
+                </div>
               </div>
-              <div className="flex items-start justify-between gap-3 border-b pb-2" style={{ borderColor: "rgba(255, 255, 255, 0.24)" }}>
-                <dt style={{ color: "rgba(255, 255, 255, 0.78)" }}>Grade</dt>
-                <dd className="text-right font-semibold text-true-white">
-                  {projectMeta.grade ? `Grade ${projectMeta.grade}` : "Not specified"}
-                </dd>
-              </div>
-              <div className="flex items-start justify-between gap-3 border-b pb-2" style={{ borderColor: "rgba(255, 255, 255, 0.24)" }}>
-                <dt style={{ color: "rgba(255, 255, 255, 0.78)" }}>Subject</dt>
-                <dd className="text-right font-semibold text-true-white">
-                  {project.subject || "Not specified"}
-                </dd>
-              </div>
-              <div className="flex items-start justify-between gap-3">
-                <dt style={{ color: "rgba(255, 255, 255, 0.78)" }}>Published</dt>
-                <dd className="text-right font-semibold text-true-white">
-                  {formatDate(projectMeta.publishedAt)}
-                </dd>
-              </div>
-            </dl>
+            )}
           </section>
 
           {focusTerms.length > 0 && (

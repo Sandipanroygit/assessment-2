@@ -8,7 +8,7 @@ const supabaseAdmin =
   SUPABASE_URL && SERVICE_ROLE_KEY ? createClient(SUPABASE_URL, SERVICE_ROLE_KEY) : null;
 
 const ASSIGNMENT_SELECT =
-  "id,teacher_id,teacher_name,student_id,student_name,title,instructions,subject,grade,due_at,status,submitted_project_id,submitted_at,last_reminded_at,created_at,updated_at";
+  "id,teacher_id,teacher_name,student_id,student_name,title,instructions,instruction_links,instruction_attachments,subject,grade,due_at,status,assignment_mode,group_id,group_name,group_size,submitted_project_id,submitted_at,last_reminded_at,created_at,updated_at";
 
 const normalizeRole = (value: unknown) => (typeof value === "string" ? value.trim().toLowerCase() : "");
 
@@ -16,8 +16,22 @@ const isStudentLikeRole = (role: string) => role === "student" || role === "cust
 
 const withTableHint = (message: string) => {
   const normalized = message.toLowerCase();
-  if (normalized.includes("steamh_assignments") && (normalized.includes("does not exist") || normalized.includes("schema cache"))) {
-    return `${message} Apply \`supabase/steamh_assignments_patch.sql\` in Supabase SQL Editor.`;
+  if (
+    normalized.includes("steamh_assignments") &&
+    (normalized.includes("does not exist") || normalized.includes("schema cache"))
+  ) {
+    return `${message} Apply \`supabase/steamh_assignments_patch.sql\` and \`supabase/steamh_group_assignments_patch.sql\` in Supabase SQL Editor.`;
+  }
+  if (
+    (normalized.includes("assignment_mode") ||
+      normalized.includes("group_id") ||
+      normalized.includes("group_name") ||
+      normalized.includes("group_size") ||
+      normalized.includes("instruction_links") ||
+      normalized.includes("instruction_attachments")) &&
+    (normalized.includes("column") || normalized.includes("schema cache"))
+  ) {
+    return `${message} Apply \`supabase/steamh_group_assignments_patch.sql\` and \`supabase/steamh_instruction_assets_patch.sql\` in Supabase SQL Editor.`;
   }
   return message;
 };
@@ -96,7 +110,7 @@ export async function POST(req: Request) {
 
     const { data: assignment, error: assignmentError } = await supabaseAdmin
       .from("steamh_assignments")
-      .select("id,teacher_id,teacher_name,student_id,student_name,title,subject,due_at")
+      .select("id,teacher_id,teacher_name,student_id,student_name,title,subject,due_at,assignment_mode,group_id,group_name,group_size,submitted_at")
       .eq("id", assignmentId)
       .eq("student_id", student.id)
       .maybeSingle();
@@ -122,23 +136,68 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Project not found for this student" }, { status: 404 });
     }
 
-    const nowIso = new Date().toISOString();
-    const { data: updated, error: updateError } = await supabaseAdmin
-      .from("steamh_assignments")
-      .update({
-        status: "submitted",
-        submitted_project_id: project.id,
-        submitted_at: nowIso,
-        updated_at: nowIso,
-      })
-      .eq("id", assignment.id)
-      .eq("student_id", student.id)
-      .select(ASSIGNMENT_SELECT)
-      .single();
-
-    if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 500 });
+    if (assignment.submitted_at) {
+      return NextResponse.json({ error: "Assignment already submitted" }, { status: 400 });
     }
+
+    const nowIso = new Date().toISOString();
+    const isGroup = (assignment.assignment_mode ?? "individual") === "group" && !!assignment.group_id;
+
+    let updatedRows: Array<Record<string, unknown>> = [];
+    if (isGroup) {
+      const { data: existingSubmission, error: existingError } = await supabaseAdmin
+        .from("steamh_assignments")
+        .select("id,student_name,submitted_at")
+        .eq("group_id", assignment.group_id)
+        .not("submitted_at", "is", null)
+        .limit(1)
+        .maybeSingle();
+      if (existingError) {
+        return NextResponse.json({ error: existingError.message }, { status: 500 });
+      }
+      if (existingSubmission?.submitted_at) {
+        const submittedBy = (existingSubmission.student_name as string | null) ?? "a group member";
+        return NextResponse.json({ error: `This group task is already submitted by ${submittedBy}.` }, { status: 409 });
+      }
+
+      const { data: updatedGroupRows, error: updateGroupError } = await supabaseAdmin
+        .from("steamh_assignments")
+        .update({
+          status: "submitted",
+          submitted_project_id: project.id,
+          submitted_at: nowIso,
+          updated_at: nowIso,
+        })
+        .eq("group_id", assignment.group_id)
+        .select(ASSIGNMENT_SELECT);
+
+      if (updateGroupError) {
+        return NextResponse.json({ error: withTableHint(updateGroupError.message) }, { status: 500 });
+      }
+      updatedRows = (updatedGroupRows as Array<Record<string, unknown>>) ?? [];
+    } else {
+      const { data: updatedSingle, error: updateError } = await supabaseAdmin
+        .from("steamh_assignments")
+        .update({
+          status: "submitted",
+          submitted_project_id: project.id,
+          submitted_at: nowIso,
+          updated_at: nowIso,
+        })
+        .eq("id", assignment.id)
+        .eq("student_id", student.id)
+        .select(ASSIGNMENT_SELECT);
+
+      if (updateError) {
+        return NextResponse.json({ error: withTableHint(updateError.message) }, { status: 500 });
+      }
+      updatedRows = (updatedSingle as Array<Record<string, unknown>>) ?? [];
+    }
+
+    const assignmentForStudent =
+      updatedRows.find((row) => row.id === assignment.id) ??
+      updatedRows[0] ??
+      null;
 
     const studentName =
       (student.user_metadata?.full_name as string | undefined)?.trim() ||
@@ -146,20 +205,23 @@ export async function POST(req: Request) {
       assignment.student_name ||
       "Student";
     const subjectSuffix = assignment.subject ? ` (${assignment.subject})` : "";
-    const message = `${studentName} submitted "${assignment.title}"${subjectSuffix} using project "${project.title}".`;
+    const message = isGroup
+      ? `${studentName} submitted group task "${assignment.title}"${subjectSuffix}${assignment.group_name ? ` for ${assignment.group_name}` : ""} using project "${project.title}".`
+      : `${studentName} submitted "${assignment.title}"${subjectSuffix} using project "${project.title}".`;
 
     const { error: notificationError } = await supabaseAdmin.from("notifications").insert({
       user_id: assignment.teacher_id,
       module_id: null,
       subject: assignment.subject ?? null,
-      title: "STEAM-H submission received",
+      title: isGroup ? "STEAM-H group submission received" : "STEAM-H submission received",
       message,
       status: "unread",
       inserted_by: student.id,
     });
 
     return NextResponse.json({
-      assignment: updated,
+      assignment: assignmentForStudent,
+      groupAssignments: isGroup ? updatedRows : null,
       warning: notificationError ? notificationError.message : null,
     });
   } catch (err) {

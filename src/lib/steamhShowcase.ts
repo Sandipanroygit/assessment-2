@@ -47,6 +47,21 @@ const normalizeWhitespace = (value: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
+const toFirstPersonShowcaseText = (value: string) => {
+  const normalized = normalizeWhitespace(value);
+  if (!normalized) return "";
+
+  return normalized
+    .replace(/^The student identified\s+/i, "I identified ")
+    .replace(/^The student needed to\s+/i, "I needed to ")
+    .replace(/^The project presents\s+/i, "I created ")
+    .replace(/\bthe student\b/gi, "I")
+    .replace(/\bthe project\b/gi, "my project")
+    .replace(/\bhe or she\b/gi, "I")
+    .replace(/\bhis or her\b/gi, "my")
+    .replace(/\bhis\/her\b/gi, "my");
+};
+
 const isInstructablesSampleProject = (project: SteamhProject) => {
   const studentName = project.studentName.trim().toLowerCase();
   const schoolName = project.schoolName.trim().toLowerCase();
@@ -160,9 +175,9 @@ export const toShowcaseDetails = (description: string, summary: string) => {
   const normalizedDetails = normalizeWhitespace(withoutMetaTrail ?? "");
   const normalizedSummary = normalizeWhitespace(summary);
 
-  if (normalizedDetails.length >= 80) return normalizedDetails;
-  if (normalizedDetails) return normalizedDetails;
-  return normalizedSummary;
+  if (normalizedDetails.length >= 80) return toFirstPersonShowcaseText(normalizedDetails);
+  if (normalizedDetails) return toFirstPersonShowcaseText(normalizedDetails);
+  return toFirstPersonShowcaseText(normalizedSummary);
 };
 
 export const toShowcaseChallenge = (project: SteamhProject) => {
@@ -171,15 +186,15 @@ export const toShowcaseChallenge = (project: SteamhProject) => {
   if (!normalizedChallenge || TEMPLATE_CHALLENGE.test(normalizedChallenge)) {
     const focusTerms = toFocusTerms(project, 3);
     const focusText = focusTerms.length > 0 ? focusTerms.join(", ") : project.subject.trim() || "the core concept";
-    return `The student identified a practical gap and designed this project to make ${focusText} understandable in a live showcase setting.`;
+    return `I noticed a practical gap and built this project to make ${focusText} easier to understand in a live showcase setting.`;
   }
 
   const keyIdeasMatch = normalizedChallenge.match(/key ideas behind (.+)$/i);
   if (keyIdeasMatch?.[1]) {
-    return `The student needed to communicate ${keyIdeasMatch[1].replace(/[.]+$/, "")} clearly so peers could understand the concept quickly.`;
+    return `I wanted to explain ${keyIdeasMatch[1].replace(/[.]+$/, "")} clearly so other students could understand the concept quickly.`;
   }
 
-  return normalizedChallenge;
+  return toFirstPersonShowcaseText(normalizedChallenge);
 };
 
 export const toShowcaseSolution = (project: SteamhProject) => {
@@ -188,10 +203,10 @@ export const toShowcaseSolution = (project: SteamhProject) => {
   if (!normalizedSolution || TEMPLATE_SOLUTION.test(normalizedSolution)) {
     const focusTerms = toFocusTerms(project, 3);
     const focusText = focusTerms.length > 0 ? focusTerms.join(", ") : project.subject.trim() || "the concept";
-    return `The project presents an exhibit-style demonstration that turns ${focusText} into something viewers can observe, discuss, and understand quickly.`;
+    return `I turned ${focusText} into an exhibit-style demonstration so viewers could observe it, discuss it, and understand it quickly.`;
   }
 
-  return normalizedSolution;
+  return toFirstPersonShowcaseText(normalizedSolution);
 };
 
 export const toNarrativeParagraphs = (text: string, maxParagraphs = 3) => {

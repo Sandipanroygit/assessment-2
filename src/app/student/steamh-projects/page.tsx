@@ -30,6 +30,8 @@ type AssignedSteamhTask = {
   student_name: string;
   title: string;
   instructions?: string | null;
+  instruction_links?: string[] | null;
+  instruction_attachments?: Array<{ name?: string | null; url?: string | null; mimeType?: string | null }> | null;
   subject?: string | null;
   grade?: string | null;
   due_at: string;
@@ -97,6 +99,8 @@ const normalizeRole = (value: unknown): StudentRole => {
   if (role === "student" || role === "customer") return "student";
   return "";
 };
+const normalizeApprovalStatus = (value: unknown) =>
+  typeof value === "string" && value.trim().toLowerCase() === "approved" ? "approved" : "pending";
 
 const sanitizeSegment = (value: string) =>
   value.replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase() || "item";
@@ -246,11 +250,17 @@ export default function StudentSteamhProjectsPage() {
 
         const { data: profileData } = await supabase
           .from("profiles")
-          .select("role,full_name,grade")
+          .select("role,full_name,grade,approval_status")
           .eq("id", user.id)
           .maybeSingle();
 
         if (!mounted) return;
+
+        if (normalizeApprovalStatus((profileData as { approval_status?: unknown } | null)?.approval_status ?? user.user_metadata?.approval_status) !== "approved") {
+          await supabase.auth.signOut();
+          router.replace("/login?reason=pending");
+          return;
+        }
 
         const resolvedRole =
           normalizeRole(user.user_metadata?.role) ||
@@ -710,6 +720,44 @@ export default function StudentSteamhProjectsPage() {
                     Teacher: {assignment.teacher_name} | Due: {formatDueAt(assignment.due_at)}
                   </p>
                   {assignment.instructions ? <p className="text-xs text-slate-600">{assignment.instructions}</p> : null}
+                  {(assignment.instruction_links?.length ?? 0) > 0 ? (
+                    <div className="space-y-1">
+                      <p className="text-[11px] font-semibold text-slate-700">Links</p>
+                      <div className="flex flex-wrap gap-2">
+                        {assignment.instruction_links?.slice(0, 4).map((link, idx) => (
+                          <a
+                            key={`${assignment.id}-link-${idx}`}
+                            href={link}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[11px] text-cyan-700 underline"
+                          >
+                            Resource {idx + 1}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {(assignment.instruction_attachments?.length ?? 0) > 0 ? (
+                    <div className="space-y-1">
+                      <p className="text-[11px] font-semibold text-slate-700">Attachments</p>
+                      <div className="flex flex-wrap gap-2">
+                        {assignment.instruction_attachments?.slice(0, 4).map((file, idx) =>
+                          file?.url ? (
+                            <a
+                              key={`${assignment.id}-file-${idx}`}
+                              href={file.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-[11px] text-cyan-700 underline"
+                            >
+                              {file.name || `File ${idx + 1}`}
+                            </a>
+                          ) : null,
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
                 </article>
               );
             })}

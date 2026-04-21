@@ -10,6 +10,7 @@ const supabaseAdmin =
         auth: { persistSession: false, autoRefreshToken: false },
       })
     : null;
+const DEFAULT_LEGACY_SCHOOL_NAME = "10X International School, Bangalore";
 
 const extractToken = (req: Request) => {
   const authHeader = req.headers.get("authorization") ?? "";
@@ -19,6 +20,8 @@ const extractToken = (req: Request) => {
 };
 
 const normalize = (value: string | null | undefined) => (value ?? "").trim().toLowerCase();
+const normalizeSchool = (value: string | null | undefined) => (value ?? "").trim().toLowerCase();
+const isMissingSchoolColumnError = (message: string) => message.toLowerCase().includes("school_name");
 
 const resolveUserRole = async (userId: string, metadataRole?: string | null): Promise<string | null> => {
   const normalizedMetadataRole = normalize(metadataRole);
@@ -35,6 +38,27 @@ const resolveUserRole = async (userId: string, metadataRole?: string | null): Pr
   }
 
   return normalize((profile as { role?: string } | null)?.role) || null;
+};
+
+const resolveUserSchool = async (userId: string, metadataSchool?: string | null): Promise<string> => {
+  const normalizedMetadataSchool = normalizeSchool(metadataSchool);
+  if (normalizedMetadataSchool) return normalizedMetadataSchool;
+
+  const { data: profile, error: profileError } = await supabaseAdmin!
+    .from("profiles")
+    .select("school_name")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (profileError) {
+    if (isMissingSchoolColumnError(profileError.message)) {
+      return normalizeSchool(DEFAULT_LEGACY_SCHOOL_NAME);
+    }
+    throw new Error(`School lookup failed: ${profileError.message}`);
+  }
+
+  return normalizeSchool((profile as { school_name?: string } | null)?.school_name)
+    || normalizeSchool(DEFAULT_LEGACY_SCHOOL_NAME);
 };
 
 type TeacherRow = {
@@ -69,6 +93,7 @@ export async function GET(req: Request) {
 
     const studentSubject = normalize(user.user_metadata?.subject as string | undefined);
     const studentGrade = normalize(user.user_metadata?.grade as string | undefined);
+    const studentSchool = await resolveUserSchool(user.id, user.user_metadata?.school_name as string | undefined);
 
     const { data: usersData, error: listError } = await supabaseAdmin.auth.admin.listUsers({
       page: 1,
@@ -81,22 +106,36 @@ export async function GET(req: Request) {
 
     const users = usersData.users ?? [];
     const userIds = users.map((item) => item.id);
-    const profileMap = new Map<string, { role?: string | null; grade?: string | null }>();
+    const profileMap = new Map<string, { role?: string | null; grade?: string | null; school_name?: string | null }>();
     if (userIds.length > 0) {
       const { data: profiles, error: profilesError } = await supabaseAdmin
         .from("profiles")
-        .select("id,role,grade")
+        .select("id,role,grade,school_name")
         .in("id", userIds);
       if (profilesError) {
-        return NextResponse.json({ error: profilesError.message }, { status: 500 });
-      }
-      for (const profile of profiles ?? []) {
-        const row = profile as { id: string; role?: string | null; grade?: string | null };
-        profileMap.set(row.id, { role: row.role ?? null, grade: row.grade ?? null });
+        if (!isMissingSchoolColumnError(profilesError.message)) {
+          return NextResponse.json({ error: profilesError.message }, { status: 500 });
+        }
+        const { data: fallbackProfiles, error: fallbackProfilesError } = await supabaseAdmin
+          .from("profiles")
+          .select("id,role,grade")
+          .in("id", userIds);
+        if (fallbackProfilesError) {
+          return NextResponse.json({ error: fallbackProfilesError.message }, { status: 500 });
+        }
+        for (const profile of fallbackProfiles ?? []) {
+          const row = profile as { id: string; role?: string | null; grade?: string | null };
+          profileMap.set(row.id, { role: row.role ?? null, grade: row.grade ?? null, school_name: null });
+        }
+      } else {
+        for (const profile of profiles ?? []) {
+          const row = profile as { id: string; role?: string | null; grade?: string | null; school_name?: string | null };
+          profileMap.set(row.id, { role: row.role ?? null, grade: row.grade ?? null, school_name: row.school_name ?? null });
+        }
       }
     }
 
-    const allTeachers: TeacherRow[] = users
+    const allTeachers: (TeacherRow & { school_name: string | null })[] = users
       .filter((item) => {
         const roleFromMetadata = normalize(item.user_metadata?.role as string | undefined);
         const roleFromProfile = normalize(profileMap.get(item.id)?.role);
@@ -111,10 +150,18 @@ export async function GET(req: Request) {
           (item.user_metadata?.grade as string | undefined)
           ?? profileMap.get(item.id)?.grade
           ?? null,
+        school_name:
+          (item.user_metadata?.school_name as string | undefined)
+          ?? profileMap.get(item.id)?.school_name
+          ?? null,
       }))
       .sort((a, b) => a.full_name.localeCompare(b.full_name));
 
     let filtered = allTeachers;
+
+    if (studentSchool) {
+      filtered = filtered.filter((teacher) => normalizeSchool(teacher.school_name) === studentSchool);
+    }
 
     if (studentSubject) {
       const subjectMatched = allTeachers.filter((teacher) => normalize(teacher.subject) === studentSubject);
@@ -133,7 +180,15 @@ export async function GET(req: Request) {
       }
     }
 
-    return NextResponse.json({ teachers: filtered });
+    return NextResponse.json({
+      teachers: filtered.map((teacher) => ({
+        id: teacher.id,
+        full_name: teacher.full_name,
+        email: teacher.email,
+        subject: teacher.subject,
+        grade: teacher.grade,
+      })),
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unable to load teachers.";
     return NextResponse.json({ error: message }, { status: 500 });

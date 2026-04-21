@@ -9,6 +9,12 @@ import { fetchCurriculumModuleById, uploadFileToBucket } from "@/lib/supabaseDat
 import type { CurriculumModule } from "@/types";
 import { logActivity } from "@/lib/activityLogger";
 import { GuidedTour, type GuidedTourPlacement, type GuidedTourStep } from "@/components/GuidedTour";
+import {
+  areGuidedToursEnabled,
+  GUIDED_TOURS_ENABLED_KEY,
+  GUIDED_TOURS_TOGGLE_EVENT,
+} from "@/lib/tourControls";
+import { isPressureAltitudeContext, pickRandomPressureAltitudeQuestions } from "@/data/pressureAltitudeQuestionBank";
 import logo from "../../../../../image/logo.jpg";
 import {
   AmbientLight,
@@ -35,11 +41,13 @@ const submissionHideKey = "activitySubmissionHide";
 const STUDENT_ACTIVITY_TOUR_AUTOSTART_KEY = "student_activity_tour_autostart_v2";
 const STUDENT_ACTIVITY_TOUR_CHAIN_KEY = "student_activity_tour_chain_meta_v2";
 const STUDENT_DASHBOARD_TOUR_RESUME_KEY = "student_dashboard_tour_resume_v2";
-const QUIZ_CORE_QUESTION_COUNT = 15;
-const QUIZ_HUMANITY_QUESTION_COUNT = 5;
+const QUIZ_CORE_QUESTION_COUNT = 20;
+const QUIZ_HUMANITY_QUESTION_COUNT = 0;
 const QUIZ_QUESTION_COUNT = QUIZ_CORE_QUESTION_COUNT + QUIZ_HUMANITY_QUESTION_COUNT;
 const QUIZ_TIME_PER_QUESTION_SECONDS = 60;
 const QUIZ_DURATION_SECONDS = QUIZ_QUESTION_COUNT * QUIZ_TIME_PER_QUESTION_SECONDS;
+const normalizeApprovalStatus = (value: unknown) =>
+  typeof value === "string" && value.trim().toLowerCase() === "approved" ? "approved" : "pending";
 const TEACHER_TOUR_PALETTE = {
   accent: "#2563eb",
   accentStrong: "#1e3a8a",
@@ -114,10 +122,12 @@ const buildFileMeta = (file: File): UploadMeta => ({ name: file.name, size: file
 const ensureProfile = async (user: User) => {
   const { data: existing, error: fetchError } = await supabase
     .from("profiles")
-    .select("full_name, role, grade")
+    .select("full_name, role, grade, approval_status")
     .eq("id", user.id)
     .maybeSingle();
-  if (!fetchError && existing) return existing as { full_name?: string; role?: string; grade?: string };
+  if (!fetchError && existing) {
+    return existing as { full_name?: string; role?: string; grade?: string; approval_status?: string | null };
+  }
   if (fetchError) {
     console.warn("Profile fetch error", fetchError.message);
   }
@@ -125,19 +135,20 @@ const ensureProfile = async (user: User) => {
     id: user.id,
     full_name: (user.user_metadata?.full_name as string | undefined) ?? user.email ?? "Student",
     role: (user.user_metadata?.role as string | undefined) ?? "customer",
+    approval_status: normalizeApprovalStatus(user.user_metadata?.approval_status),
   };
   const grade = user.user_metadata?.grade as string | undefined;
   if (grade) payload.grade = grade;
   const { data: inserted, error: insertError } = await supabase
     .from("profiles")
     .insert(payload)
-    .select("full_name, role, grade")
+    .select("full_name, role, grade, approval_status")
     .single();
   if (insertError) {
     console.warn("Profile insert failed", insertError.message);
     return existing ?? null;
   }
-  return inserted as { full_name?: string; role?: string; grade?: string };
+  return inserted as { full_name?: string; role?: string; grade?: string; approval_status?: string | null };
 };
 const normalizeStringList = (value: unknown) => {
   if (Array.isArray(value)) {
@@ -499,10 +510,28 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
   const [returnToDashboardAfterTour, setReturnToDashboardAfterTour] = useState(false);
   const [dashboardResumeStepId, setDashboardResumeStepId] = useState("student-menu-signout");
   const [activityTourActiveStepId, setActivityTourActiveStepId] = useState<string | null>(null);
+  const [guidedToursEnabled, setGuidedToursEnabled] = useState(true);
   const activityTourPalette = useMemo(
     () => (role === "teacher" ? TEACHER_TOUR_PALETTE : STUDENT_TOUR_PALETTE),
     [role],
   );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sync = () => setGuidedToursEnabled(areGuidedToursEnabled());
+    sync();
+    const onStorage = (event: StorageEvent) => {
+      if (!event.key || event.key === GUIDED_TOURS_ENABLED_KEY) sync();
+    };
+    const onToggle = () => sync();
+    window.addEventListener("storage", onStorage);
+    window.addEventListener(GUIDED_TOURS_TOGGLE_EVENT, onToggle as EventListener);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(GUIDED_TOURS_TOGGLE_EVENT, onToggle as EventListener);
+    };
+  }, []);
+
   const isDesignTech = useMemo(() => (module?.subject ?? "").toLowerCase().includes("design"), [module?.subject]);
   const isAuroraActivity = useMemo(() => (module?.title ?? "").toLowerCase().includes("aurora"), [module?.title]);
   const stlAssets = useMemo(() => (module?.assets ?? []).filter((a) => a.type === "stl"), [module]);
@@ -595,15 +624,6 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
         title: "SOP Viewer",
         description: "Access instructions, read the SOP, and download it from here.",
         placement: "left",
-      },
-      {
-        id: "activity-moodai-panel",
-        target: '[data-tour="activity-moodai-button"]',
-        title: "MoodAI Support",
-        description: "Open MoodAI to discuss this specific module and ask follow-up questions.",
-        placement: "left",
-        forcePageTop: false,
-        scrollBlock: "center",
       },
       {
         id: "activity-submission-panel",
@@ -798,6 +818,11 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
   useEffect(() => {
     if (activityTourInitialized || !authChecked || !isAuthenticated || !module) return;
     if (typeof window === "undefined") return;
+    if (!guidedToursEnabled) {
+      setActivityTourRun(false);
+      setActivityTourInitialized(true);
+      return;
+    }
 
     const autoStart = window.sessionStorage.getItem(STUDENT_ACTIVITY_TOUR_AUTOSTART_KEY) === "1";
     if (autoStart) {
@@ -834,7 +859,12 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
       setActivityTourRun(true);
     }
     setActivityTourInitialized(true);
-  }, [activityTourInitialized, activityTourSteps, authChecked, isAuthenticated, module]);
+  }, [activityTourInitialized, activityTourSteps, authChecked, guidedToursEnabled, isAuthenticated, module]);
+
+  useEffect(() => {
+    if (guidedToursEnabled) return;
+    setActivityTourRun(false);
+  }, [guidedToursEnabled]);
 
   const StlPreview = ({ url, name }: { url: string; name: string }) => {
     const containerRef = useRef<HTMLDivElement | null>(null);
@@ -1115,79 +1145,90 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
       kind,
     });
 
-    const buildHumanityFallbackQuestions = () => {
-      const activityName = module.title || "this activity";
-      const subjectName = formatSubject(module.subject || "this subject");
-      const summary = (module.description || "the activity objectives").trim();
-      const sopSummary = (module.judgingLogic || "the required activity procedure").trim();
-      const codeHint =
-        codeDisplay
-          .split("\n")
-          .map((line) => line.trim())
-          .find((line) => line.length > 12 && line.length < 140) || "the provided simulation logic";
+    const contextText = [module.title, module.description, module.judgingLogic, module.subject]
+      .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      .join(" ")
+      .toLowerCase();
+    const contextKeywordPool = Array.from(
+      new Set(
+        contextText
+          .split(/[^a-z0-9]+/g)
+          .map((token) => token.trim())
+          .filter((token) => token.length >= 4)
+          .filter(
+            (token) =>
+              ![
+                "this",
+                "that",
+                "with",
+                "from",
+                "activity",
+                "module",
+                "using",
+                "should",
+                "steps",
+                "student",
+                "students",
+                "through",
+                "which",
+                "where",
+                "when",
+                "what",
+                "into",
+                "your",
+                "their",
+              ].includes(token),
+          ),
+      ),
+    ).slice(0, 16);
+    const strictKeywords = contextKeywordPool.length > 0 ? contextKeywordPool : [sanitizeSegment(module.title)];
+    const strictKeywordLine = strictKeywords.join(", ");
+    const isPressureActivity = isPressureAltitudeContext(contextText);
+    const strictQuestionFilter = (questions: QuizQuestion[]) => {
+      const banned = /(community|ethic|opinion|personal|society|privacy|accessibility|value judgement|open ended)/i;
+      const technical = /(unit|law|formula|relation|proportional|increase|decrease|pressure|temperature|volume|density|altitude|height|sensor|reading|pascal|kpa|bar|gauge|absolute|trend|calculate|interpret|graph|data)/i;
+      return questions
+        .filter((q) => {
+          const blob = `${q.question} ${q.options.map((o) => o.text).join(" ")} ${q.explanation ?? ""}`.toLowerCase();
+          if (banned.test(blob)) return false;
+          if (!technical.test(blob)) return false;
+          return strictKeywords.some((key) => blob.includes(key));
+        })
+        .slice(0, QUIZ_CORE_QUESTION_COUNT);
+    };
 
-      return [
-        buildQuestion(
-          `During ${activityName}, what should students prioritize if the most accurate setup could expose sensitive community data?`,
-          [
-            "Apply privacy safeguards first, then tune accuracy within those limits.",
-            "Collect every possible data point and discuss privacy after completion.",
-            "Ignore data concerns because educational tasks are always exempt.",
-            "Stop the activity immediately and skip analysis entirely.",
-          ],
-          0,
-          `The activity should balance performance with real-world responsibility; privacy and safety constraints come first for ${summary}.`,
-          "humanity",
-        ),
-        buildQuestion(
-          `A team can complete ${activityName} faster by skipping one SOP check. What is the best decision?`,
-          [
-            "Keep all SOP checks and document timing trade-offs transparently.",
-            "Skip the check if the teacher is observing the run.",
-            "Skip only the final check because results matter more than process.",
-            "Let each student choose their own safety level.",
-          ],
-          0,
-          `Critical thinking in ${subjectName} includes disciplined execution; procedure integrity (${sopSummary}) prevents hidden failure modes.`,
-          "humanity",
-        ),
-        buildQuestion(
-          `If one student cannot access the interface used in ${activityName}, what response is most appropriate?`,
-          [
-            "Adapt instructions/tools so all students can participate and still meet the same learning goal.",
-            "Assign that student only note-taking while others complete the core task.",
-            "Lower expectations for that student and remove assessment questions.",
-            "Proceed unchanged because the class timeline is fixed.",
-          ],
-          0,
-          `Activity relevance is preserved by keeping the same objective while improving access and participation quality.`,
-          "humanity",
-        ),
-        buildQuestion(
-          `When results from ${codeHint} conflict with expected outcomes, what is the most ethical classroom action?`,
-          [
-            "Report uncertainty clearly, investigate causes, and avoid overstating conclusions.",
-            "Choose the result that best matches expectations to keep confidence high.",
-            "Discard conflicting runs without recording them.",
-            "Publish only successful attempts from the activity.",
-          ],
-          0,
-          "Responsible STEM practice requires transparent evidence handling, especially when outputs affect real-life decisions.",
-          "humanity",
-        ),
-        buildQuestion(
-          `How should students judge whether ${activityName} creates real community value beyond technical success?`,
-          [
-            "Evaluate who benefits, who may be harmed, and whether risks are fairly managed.",
-            "Focus only on speed and accuracy metrics from the simulator.",
-            "Assume any technology use automatically helps everyone.",
-            "Base impact solely on how difficult the code looked.",
-          ],
-          0,
-          `Humanity-focused critical thinking ties activity outcomes to social impact, fairness, and accountable deployment in ${subjectName}.`,
-          "humanity",
-        ),
-      ].slice(0, QUIZ_HUMANITY_QUESTION_COUNT);
+    const buildCoreFallbackQuestions = () => {
+      const activityName = module.title || "this activity";
+      const descriptionText = (module.description || "").trim() || "the description text of this activity";
+      if (isPressureActivity) {
+        return pickRandomPressureAltitudeQuestions(QUIZ_CORE_QUESTION_COUNT).map((item, index) =>
+          buildQuestion(`${item.question} (Q${index + 1})`, item.options, item.answerIndex, item.explanation, "core"),
+        );
+      }
+      const focus = strictKeywords[0] || "the main measured variable";
+      const secondary = strictKeywords[1] || "another variable from the description";
+      const tertiary = strictKeywords[2] || "the observed output";
+      const templates = [
+        [`In ${activityName}, which statement best describes ${focus}?`, [`${focus} is treated as a measurable variable in this activity context.`, `${focus} is unrelated to this activity.`, `${focus} is only a UI term with no data meaning.`, `${focus} is ignored after setup.`], 0],
+        [`For ${activityName}, what is the best interpretation when ${focus} increases while ${secondary} is unchanged?`, [`It indicates a trend that must be interpreted from the activity data.`, `It proves data quality is invalid.`, `It means the sensor was not used.`, `It means the SOP should be skipped.`], 0],
+        [`Which unit should be checked first for ${focus} readings in ${activityName}?`, [`The unit specified in the activity description or SOP.`, `Any convenient unit without conversion.`, `Only percentage, regardless of variable.`, `No unit check is needed.`], 0],
+        [`In ${activityName}, what is the correct first step if ${focus} data looks inconsistent?`, [`Verify setup and measurement steps from SOP before re-running.`, `Delete inconsistent data immediately.`, `Change objective to fit the output.`, `Ignore and continue.`], 0],
+        [`How should ${tertiary} be analyzed in ${activityName}?`, [`Using the described relation among activity variables.`, `Using an unrelated chapter formula.`, `Using only visual guesswork.`, `Without referencing description.`], 0],
+      ] as Array<[string, string[], number]>;
+      const generated: QuizQuestion[] = [];
+      for (let i = 0; generated.length < QUIZ_CORE_QUESTION_COUNT; i += 1) {
+        const [q, opts, answerIndex] = templates[i % templates.length];
+        generated.push(
+          buildQuestion(
+            `${q} (Q${i + 1})`,
+            opts,
+            answerIndex,
+            `Based only on activity description/SOP context: ${descriptionText.slice(0, 220)}.`,
+            "core",
+          ),
+        );
+      }
+      return generated;
     };
 
     const loadFromQuestionBank = async () => {
@@ -1215,7 +1256,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
         if (!res.ok) continue;
         const payload = await res.text();
         const parsed = parseQuestionBankPayload(payload);
-        if (parsed.length) return parsed.slice(0, QUIZ_CORE_QUESTION_COUNT);
+        if (parsed.length) return strictQuestionFilter(parsed).slice(0, QUIZ_CORE_QUESTION_COUNT);
       }
       return [] as QuizQuestion[];
     };
@@ -1257,7 +1298,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
         const parsed = reply ? parseQuiz(reply, kind, limit) : [];
 
         if (data?.fallback) {
-          if (parsed.length) return parsed;
+          if (parsed.length) return kind === "core" ? strictQuestionFilter(parsed) : parsed;
           setQuizStatus(data.detail || reply || "AI service unavailable.");
           return [] as QuizQuestion[];
         }
@@ -1267,11 +1308,12 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
           return [] as QuizQuestion[];
         }
 
-        if (!parsed.length) {
+        const finalParsed = kind === "core" ? strictQuestionFilter(parsed) : parsed;
+        if (!finalParsed.length) {
           setQuizStatus("AI replied but no valid MCQs were parsed.");
           return [] as QuizQuestion[];
         }
-        return parsed;
+        return finalParsed;
       } catch (err) {
         console.error("AI quiz generation failed", err);
         setQuizStatus(getErrorMessage(err));
@@ -1282,34 +1324,37 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
     const generateAiQuiz = async () =>
       requestAiQuestions({
         message:
-          `Create ${QUIZ_CORE_QUESTION_COUNT} activity-specific multiple-choice questions (A-D) with answers and short explanations for "${module.title}". `
-          + "Keep them technical and concept-focused for this module only. "
+          `Create exactly ${QUIZ_CORE_QUESTION_COUNT} standard conceptual/factual MCQs (A-D) for "${module.title}". `
+          + "Use only facts and concepts inferable from this activity description, SOP, and code context. "
+          + `Mandatory topic focus keywords: ${strictKeywordLine}. `
+          + "Questions must test variable relationships, laws/formulas, units, interpretation of trends, and parameter effects. "
+          + "For pressure/altitude activities, include questions like: unit of pressure, meaning of PSI, definition of pressure, trend with altitude up/down, and gravity effect on pressure. "
+          + "Do not include ethics, society, opinion, generic pedagogy, or vague motivational content. "
           + "Return in the format: Q1. question\\nA) option\\nB) option\\nC) option\\nD) option\\nAnswer: A\\nExplanation: ...",
         kind: "core",
         limit: QUIZ_CORE_QUESTION_COUNT,
         statusMessage: "Generating core activity questions...",
       });
 
-    const generateHumanityAiQuiz = async () =>
-      requestAiQuestions({
-        message:
-          `Create ${QUIZ_HUMANITY_QUESTION_COUNT} real-life, humanity-focused critical-thinking multiple-choice questions (A-D) for "${module.title}". `
-          + "Every question must stay directly relevant to this activity, its SOP, code, safety, and expected outcomes. "
-          + "Focus on ethical judgment, community impact, accessibility, and responsible use. "
-          + "Return in the format: Q1. question\\nA) option\\nB) option\\nC) option\\nD) option\\nAnswer: A\\nExplanation: ...",
-        kind: "humanity",
-        limit: QUIZ_HUMANITY_QUESTION_COUNT,
-        statusMessage: "Adding humanity critical-thinking questions...",
-      });
-
     try {
       const bankQuestions = await loadFromQuestionBank();
-      let coreQuestions = bankQuestions.slice(0, QUIZ_CORE_QUESTION_COUNT);
+      let coreQuestions = isPressureActivity
+        ? buildCoreFallbackQuestions()
+        : bankQuestions.slice(0, QUIZ_CORE_QUESTION_COUNT);
+      let usedCoreFallback = false;
 
-      if (coreQuestions.length < QUIZ_CORE_QUESTION_COUNT) {
+      if (!isPressureActivity && coreQuestions.length < QUIZ_CORE_QUESTION_COUNT) {
         const aiCoreQuestions = await generateAiQuiz();
         if (aiCoreQuestions.length) {
           coreQuestions = [...coreQuestions, ...aiCoreQuestions].slice(0, QUIZ_CORE_QUESTION_COUNT);
+        }
+      }
+
+      if (coreQuestions.length < QUIZ_CORE_QUESTION_COUNT) {
+        const fallbackCoreQuestions = buildCoreFallbackQuestions();
+        if (fallbackCoreQuestions.length) {
+          coreQuestions = [...coreQuestions, ...fallbackCoreQuestions].slice(0, QUIZ_CORE_QUESTION_COUNT);
+          usedCoreFallback = true;
         }
       }
 
@@ -1318,18 +1363,12 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
         return;
       }
 
-      const aiHumanityQuestions = await generateHumanityAiQuiz();
-      const fallbackHumanityQuestions = buildHumanityFallbackQuestions();
-      const humanityQuestions = (
-        aiHumanityQuestions.length >= QUIZ_HUMANITY_QUESTION_COUNT
-          ? aiHumanityQuestions.slice(0, QUIZ_HUMANITY_QUESTION_COUNT)
-          : [...aiHumanityQuestions, ...fallbackHumanityQuestions].slice(0, QUIZ_HUMANITY_QUESTION_COUNT)
-      ).map((question) => ({ ...question, kind: "humanity" as const }));
-
-      const mixedQuestions = shuffleArray([...coreQuestions, ...humanityQuestions]).slice(0, QUIZ_QUESTION_COUNT);
+      const mixedQuestions = shuffleArray([...coreQuestions]).slice(0, QUIZ_QUESTION_COUNT);
       if (applyQuizQuestions(mixedQuestions)) {
-        if (aiHumanityQuestions.length < QUIZ_HUMANITY_QUESTION_COUNT) {
-          setQuizStatus("Loaded fallback humanity critical-thinking questions from activity context.");
+        if (usedCoreFallback) {
+          setQuizStatus("Loaded fallback core questions from this activity context.");
+        } else {
+          setQuizStatus(null);
         }
         return;
       }
@@ -1715,6 +1754,13 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
         setAuthChecked(true);
         setUserId(user.id);
         const profile = await ensureProfile(user);
+        if (normalizeApprovalStatus(profile?.approval_status ?? user.user_metadata?.approval_status) !== "approved") {
+          await supabase.auth.signOut();
+          setIsAuthenticated(false);
+          setStatus("Account verification is pending admin approval.");
+          router.replace("/login?reason=pending");
+          return;
+        }
         setStudentName(profile?.full_name ?? user.user_metadata.full_name ?? user.email ?? "Student");
         const roleFromMeta = normalizeRoleValue(user.user_metadata?.role);
         const roleFromProfile = normalizeRoleValue(profile?.role);
@@ -2401,16 +2447,18 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
 
   return (
     <main className="section-padding space-y-8">
-      <GuidedTour
-        run={activityTourRun}
-        stepIndex={activityTourCurrentStepIndex}
-        steps={activityTourSteps}
-        onStepIndexChange={handleActivityTourStepChange}
-        onClose={closeActivityTour}
-        displayStepOffset={activityTourDisplayOffset > 0 ? activityTourDisplayOffset : undefined}
-        displayStepTotal={activityTourDisplayTotal}
-        palette={activityTourPalette}
-      />
+      {guidedToursEnabled && (
+        <GuidedTour
+          run={activityTourRun}
+          stepIndex={activityTourCurrentStepIndex}
+          steps={activityTourSteps}
+          onStepIndexChange={handleActivityTourStepChange}
+          onClose={closeActivityTour}
+          displayStepOffset={activityTourDisplayOffset > 0 ? activityTourDisplayOffset : undefined}
+          displayStepTotal={activityTourDisplayTotal}
+          palette={activityTourPalette}
+        />
+      )}
 
       <div
         className="glass-panel rounded-2xl border border-white/10 p-4 flex flex-wrap items-center justify-between gap-3"
@@ -2621,25 +2669,6 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
               </div>
             )}
           </div>
-
-        <div className="glass-panel rounded-2xl p-4 border border-white/10 space-y-3" data-tour="activity-moodai-panel">
-          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-accent-strong">MoodAI</p>
-              <h3 className="text-lg font-semibold text-white">Talk Freely with MoodAI</h3>
-              <p className="text-sm text-slate-400">
-                Continue the conversation about this activity with MoodAI
-              </p>
-            </div>
-            <Link
-              href={module ? `/moodai?module=${module.id}` : "/moodai"}
-              data-tour="activity-moodai-button"
-              className="px-4 py-2 rounded-xl bg-accent text-true-white text-sm font-semibold shadow-glow inline-flex items-center justify-center"
-            >
-              Go to MoodAI
-            </Link>
-          </div>
-        </div>
 
         <div className="glass-panel rounded-2xl p-4 border border-white/10 space-y-3" data-tour="activity-submission-panel">
           <div className="flex items-start justify-between gap-3">
@@ -3112,7 +3141,7 @@ export default function ActivityPage({ params }: { params: Promise<{ id: string 
                     <h3 className="text-2xl font-semibold text-slate-900">Practice MCQ Quiz</h3>
                     {module && (
                       <p className="text-sm text-slate-600">
-                        {module.title} | {formatSubject(module.subject)} | Grade {module.grade}
+                        {module.title} | {formatSubject(module.subject)} | {module.grade}
                       </p>
                     )}
                   </div>

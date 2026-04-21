@@ -10,7 +10,14 @@ import { logActivity } from "@/lib/activityLogger";
 
 type AuthMode = "login" | "signup" | "reset";
 type UserRole = "admin" | "teacher" | "student";
-type Profile = { full_name?: string; role?: string; grade?: string };
+type ApprovalStatus = "pending" | "approved";
+type Profile = {
+  full_name?: string;
+  role?: string;
+  grade?: string;
+  school_name?: string;
+  approval_status?: ApprovalStatus | string | null;
+};
 const TEACHER_HOME_TOUR_ENTRY_KEY = "teacher_home_tour_entry_pending_v1";
 const TEACHER_TOUR_STORAGE_KEY = "teacher_feature_tour_v2";
 const TEACHER_PROGRESS_TOUR_FORCE_KEY = "teacher_progress_tour_force_once_v2";
@@ -33,6 +40,34 @@ const subjectOptions = [
   "Environment System & Society (ESS)",
   "Design Technology",
 ];
+const fallbackSchoolOptions = [
+  {
+    label: "Indus International Schools",
+    schools: [
+      "Indus International School, Bangalore",
+      "Indus International School, Hyderabad",
+      "Indus International School, Pune",
+      "Indus International School, Belgavi",
+    ],
+  },
+  {
+    label: "10X International Schools",
+    schools: [
+      "10X International School, Bangalore",
+      "10X International School, Mysuru",
+    ],
+  },
+];
+const REQUIRED_EMAIL_DOMAIN = "indusschool.com";
+const PENDING_APPROVAL_MESSAGE =
+  "Your account is pending admin approval. Wait for an admin to activate access.";
+const isMissingSchoolColumnError = (message: string) => message.toLowerCase().includes("school_name");
+type SchoolDirectoryRow = {
+  id: string;
+  network_name: string;
+  branch_name: string;
+  display_name: string;
+};
 
 const resolveAuthNetworkStatus = (error: unknown, fallback: string) => {
   if (error instanceof TypeError && error.message.toLowerCase().includes("failed to fetch")) {
@@ -55,16 +90,28 @@ function LoginPageContent() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
+  const [schoolName, setSchoolName] = useState("");
+  const [schoolDirectory, setSchoolDirectory] = useState<SchoolDirectoryRow[]>([]);
   const [role, setRole] = useState<UserRole>("teacher");
   const [grade, setGrade] = useState(gradeOptions[0]);
   const [subject, setSubject] = useState<string>(subjectOptions[0]);
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const modeParam = searchParams.get("mode");
+  const reasonParam = searchParams.get("reason");
   const isEmailNotConfirmed = (status ?? "").toLowerCase().includes("email not confirmed");
   const statusClassName = isEmailNotConfirmed
     ? "rounded-xl border border-rose-300/70 bg-rose-50/90 px-3 py-2 text-sm font-medium text-rose-700"
     : "rounded-xl border border-accent/30 bg-accent/10 px-3 py-2 text-sm text-accent-strong";
+
+  const normalizeApprovalStatus = useCallback((value: unknown): ApprovalStatus => {
+    return typeof value === "string" && value.trim().toLowerCase() === "approved" ? "approved" : "pending";
+  }, []);
+
+  const isAllowedSchoolEmail = useCallback((value: string) => {
+    const normalized = value.trim().toLowerCase();
+    return normalized.endsWith(`@${REQUIRED_EMAIL_DOMAIN}`);
+  }, []);
 
   const nextPath = useMemo(() => {
     const raw = searchParams.get("next");
@@ -78,9 +125,37 @@ function LoginPageContent() {
     }
   }, [searchParams]);
 
+  const schoolOptions = useMemo(() => {
+    if (!schoolDirectory.length) return fallbackSchoolOptions;
+    const grouped = new Map<string, string[]>();
+    for (const school of schoolDirectory) {
+      const network = school.network_name?.trim() || "Schools";
+      const list = grouped.get(network) ?? [];
+      list.push(school.display_name);
+      grouped.set(network, list);
+    }
+    return Array.from(grouped.entries()).map(([label, schools]) => ({ label, schools }));
+  }, [schoolDirectory]);
+
   useEffect(() => {
     setStatus(null);
   }, [mode]);
+
+  useEffect(() => {
+    const loadSchools = async () => {
+      try {
+        const response = await fetch("/api/schools", { cache: "no-store" });
+        if (!response.ok) return;
+        const body = (await response.json().catch(() => ({}))) as { schools?: SchoolDirectoryRow[] };
+        if (Array.isArray(body.schools) && body.schools.length) {
+          setSchoolDirectory(body.schools);
+        }
+      } catch {
+        // Fall back to static school list.
+      }
+    };
+    void loadSchools();
+  }, []);
 
   useEffect(() => {
     if (modeParam === "login" || modeParam === "signup" || modeParam === "reset") {
@@ -88,23 +163,45 @@ function LoginPageContent() {
     }
   }, [modeParam]);
 
+  useEffect(() => {
+    if (reasonParam === "pending") {
+      setMode("login");
+      setStatus(PENDING_APPROVAL_MESSAGE);
+    }
+  }, [reasonParam]);
+
   const ensureProfile = useCallback(
     async (user: User): Promise<Profile | null> => {
       const { data: existing, error: fetchError } = await supabase
         .from("profiles")
-        .select("full_name, role, grade")
+        .select("full_name, role, grade, school_name, approval_status")
         .eq("id", user.id)
         .maybeSingle();
       if (!fetchError && existing) return existing as Profile;
+      let fallbackExisting: Profile | null = null;
       if (fetchError) {
-        console.warn("Profile fetch error", fetchError.message);
+        if (isMissingSchoolColumnError(fetchError.message)) {
+          const { data: legacyExisting } = await supabase
+            .from("profiles")
+            .select("full_name, role, grade, approval_status")
+            .eq("id", user.id)
+            .maybeSingle();
+          if (legacyExisting) {
+            fallbackExisting = legacyExisting as Profile;
+          }
+        } else {
+          console.warn("Profile fetch error", fetchError.message);
+        }
       }
+      if (fallbackExisting) return fallbackExisting;
 
       const roleFromMeta = (user.user_metadata?.role as string | undefined)?.toLowerCase() ?? "student";
       const payload: Record<string, string> = {
         id: user.id,
         full_name: (user.user_metadata?.full_name as string | undefined) ?? user.email ?? "Customer",
         role: roleFromMeta,
+        school_name: ((user.user_metadata?.school_name as string | undefined) ?? "").trim(),
+        approval_status: normalizeApprovalStatus(user.user_metadata?.approval_status),
       };
       const gradeFromMeta = user.user_metadata?.grade as string | undefined;
       if (gradeFromMeta) {
@@ -114,15 +211,29 @@ function LoginPageContent() {
       const { data, error } = await supabase
         .from("profiles")
         .insert(payload)
-        .select("full_name, role, grade")
+        .select("full_name, role, grade, school_name, approval_status")
         .single();
       if (error) {
+        if (isMissingSchoolColumnError(error.message)) {
+          const payloadWithoutSchool = { ...payload };
+          delete payloadWithoutSchool.school_name;
+          const { data: fallbackData, error: fallbackError } = await supabase
+            .from("profiles")
+            .insert(payloadWithoutSchool)
+            .select("full_name, role, grade, approval_status")
+            .single();
+          if (fallbackError) {
+            console.warn("Profile insert failed", fallbackError.message);
+            return existing ?? null;
+          }
+          return fallbackData as Profile;
+        }
         console.warn("Profile insert failed", error.message);
         return existing ?? null;
       }
       return data as Profile;
     },
-    []
+    [normalizeApprovalStatus]
   );
 
   const routeByRole = useCallback(
@@ -155,6 +266,11 @@ function LoginPageContent() {
         const user = data.user;
         if (user) {
           const profile = await ensureProfile(user);
+          if (normalizeApprovalStatus(profile?.approval_status ?? user.user_metadata?.approval_status) !== "approved") {
+            await supabase.auth.signOut();
+            setStatus(PENDING_APPROVAL_MESSAGE);
+            return;
+          }
           routeByRole(profile?.role ?? user.user_metadata.role, user.email, false, nextPath);
         }
       } catch {
@@ -162,7 +278,7 @@ function LoginPageContent() {
       }
     };
     void checkSession();
-  }, [ensureProfile, nextPath, routeByRole]);
+  }, [ensureProfile, nextPath, normalizeApprovalStatus, routeByRole]);
 
   const handleRoleChange = (nextRole: UserRole) => {
     setRole(nextRole);
@@ -194,6 +310,11 @@ function LoginPageContent() {
         return;
       }
       const profile = await ensureProfile(data.user);
+      if (normalizeApprovalStatus(profile?.approval_status ?? data.user.user_metadata?.approval_status) !== "approved") {
+        await supabase.auth.signOut();
+        setStatus(PENDING_APPROVAL_MESSAGE);
+        return;
+      }
       const resolvedRole = (profile?.role ?? (data.user.user_metadata?.role as string | undefined) ?? "student").toLowerCase();
       if (typeof window !== "undefined") {
         window.localStorage.removeItem(TEACHER_TOUR_STORAGE_KEY);
@@ -235,8 +356,23 @@ function LoginPageContent() {
       setLoading(false);
       return;
     }
+    if (!isAllowedSchoolEmail(email)) {
+      setStatus(`Signups are restricted to @${REQUIRED_EMAIL_DOMAIN} email addresses.`);
+      setLoading(false);
+      return;
+    }
     if (password.length < 6) {
       setStatus("Password must be at least 6 characters.");
+      setLoading(false);
+      return;
+    }
+    if (!fullName.trim()) {
+      setStatus("Full name is required.");
+      setLoading(false);
+      return;
+    }
+    if (!schoolName.trim()) {
+      setStatus("Please select your school.");
       setLoading(false);
       return;
     }
@@ -245,7 +381,12 @@ function LoginPageContent() {
       setLoading(false);
       return;
     }
-    const metadata: Record<string, string> = { full_name: fullName, role: role.toLowerCase() };
+    const metadata: Record<string, string> = {
+      full_name: fullName.trim(),
+      school_name: schoolName.trim(),
+      role: role.toLowerCase(),
+      approval_status: "pending",
+    };
     if (role === "teacher") {
       metadata.subject = subject;
     }
@@ -266,7 +407,7 @@ function LoginPageContent() {
         setStatus(error?.message ?? "Unable to sign up.");
         return;
       }
-      setStatus("Account created. Check your email to confirm, then sign in.");
+      setStatus("Account created. Check your email, then wait for admin approval before signing in.");
       setMode("login");
     } catch (err) {
       setStatus(resolveAuthNetworkStatus(err, "Unable to sign up."));
@@ -351,8 +492,15 @@ function LoginPageContent() {
                   className="w-full rounded-xl border border-slate-500/70 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  placeholder={mode === "signup" ? `name@${REQUIRED_EMAIL_DOMAIN}` : undefined}
                 />
               </label>
+
+              {mode === "signup" && (
+                <p className="text-xs text-slate-400">
+                  Signups are limited to <span className="font-semibold text-slate-200">@{REQUIRED_EMAIL_DOMAIN}</span> accounts and require admin approval.
+                </p>
+              )}
               {status && (
                 <div className={statusClassName}>
                   {status}
@@ -406,6 +554,30 @@ function LoginPageContent() {
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                   />
+                </label>
+              )}
+
+              {mode === "signup" && (
+                <label className="block text-sm text-slate-300 space-y-2">
+                  School
+                  <select
+                    className="w-full rounded-xl border border-slate-500/70 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none"
+                    value={schoolName}
+                    onChange={(e) => setSchoolName(e.target.value)}
+                  >
+                    <option value="" className="text-black">
+                      Select your school
+                    </option>
+                    {schoolOptions.map((group) => (
+                      <optgroup key={group.label} label={group.label}>
+                        {group.schools.map((school) => (
+                          <option key={school} value={school} className="text-black">
+                            {school}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
                 </label>
               )}
 

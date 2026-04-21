@@ -1,0 +1,14 @@
+mensa.bundle
+mensa-work.bundle
+*.bundle
+tmp_*.html
+tmp_*.css
+tmp_*.txt
+temp.txt
+temp_view.txt
+admin_out.txt
+updated.txt
+dev.log
+patches/
+docs/
+Curriculum/

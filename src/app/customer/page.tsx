@@ -14,11 +14,18 @@ import {
 } from "@/lib/vrModules";
 import { GuidedTour, type GuidedTourStep } from "@/components/GuidedTour";
 import { playUiClickTone } from "@/lib/uiTone";
+import {
+  areGuidedToursEnabled,
+  GUIDED_TOURS_ENABLED_KEY,
+  GUIDED_TOURS_TOGGLE_EVENT,
+} from "@/lib/tourControls";
 
 const normalizeSubject = (subject: string) =>
   subject?.toLowerCase() === "maths" ? "Mathematics" : subject;
 const normalizeStatusValue = (value: unknown) => (typeof value === "string" ? value.trim().toLowerCase() : "");
 const normalizeTextValue = (value: unknown) => (typeof value === "string" ? value.trim().toLowerCase() : "");
+const normalizeApprovalStatus = (value: unknown) =>
+  typeof value === "string" && value.trim().toLowerCase() === "approved" ? "approved" : "pending";
 const toInputDateTime = (value?: string | null) => {
   if (!value) return "";
   const date = new Date(value);
@@ -200,6 +207,7 @@ export default function CustomerPage() {
   const [studentTourActiveStepId, setStudentTourActiveStepId] = useState<string | null>(null);
   const [studentTourLockedSteps, setStudentTourLockedSteps] = useState<GuidedTourStep[] | null>(null);
   const [studentTourPromptOpen, setStudentTourPromptOpen] = useState(false);
+  const [guidedToursEnabled, setGuidedToursEnabled] = useState(true);
   const [studentTourResumeMeta, setStudentTourResumeMeta] = useState<{
     stepId: string;
     completedCount: number;
@@ -253,6 +261,27 @@ export default function CustomerPage() {
       }),
     [],
   );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sync = () => setGuidedToursEnabled(areGuidedToursEnabled());
+    sync();
+
+    const onStorage = (event: StorageEvent) => {
+      if (!event.key || event.key === GUIDED_TOURS_ENABLED_KEY) {
+        sync();
+      }
+    };
+    const onToggle = () => sync();
+
+    window.addEventListener("storage", onStorage);
+    window.addEventListener(GUIDED_TOURS_TOGGLE_EVENT, onToggle as EventListener);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(GUIDED_TOURS_TOGGLE_EVENT, onToggle as EventListener);
+    };
+  }, []);
+
   useEffect(() => {
     const loadProgress = () => {
       try {
@@ -391,10 +420,19 @@ export default function CustomerPage() {
         // Profile fetch is best-effort; fall back to metadata even if it fails.
         const { data: profileData } = await supabase
           .from("profiles")
-          .select("full_name, role, grade")
+          .select("full_name, role, grade, approval_status")
           .eq("id", latestUser.id)
           .maybeSingle();
         if (cancelled) return;
+
+        if (normalizeApprovalStatus(profileData?.approval_status ?? latestUser.user_metadata?.approval_status) !== "approved") {
+          await supabase.auth.signOut();
+          setSessionToken(null);
+          setIsAuthenticated(false);
+          setAuthChecked(true);
+          router.replace("/login?reason=pending");
+          return;
+        }
 
         const normalizeRoleValue = (value: unknown) => {
           const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -1506,6 +1544,7 @@ export default function CustomerPage() {
   const teacherTourSteps = teacherTourLockedSteps ?? teacherTourComputedSteps;
 
   const startTeacherTour = useCallback(() => {
+    if (!guidedToursEnabled) return;
     setNotificationsOpen(false);
     setTeacherMenuOpen(false);
     setRequestOpen(false);
@@ -1523,7 +1562,7 @@ export default function CustomerPage() {
       window.localStorage.removeItem(TEACHER_PROGRESS_TOUR_FORCE_KEY);
       window.localStorage.removeItem(TEACHER_PROGRESS_TOUR_CHAIN_KEY);
     }
-  }, [teacherTourComputedSteps]);
+  }, [guidedToursEnabled, teacherTourComputedSteps]);
 
   const closeTeacherTour = useCallback((completed: boolean) => {
     setTeacherTourRun(false);
@@ -1675,6 +1714,12 @@ export default function CustomerPage() {
     if (role !== "teacher" || !authChecked || !isAuthenticated || teacherTourInitialized) return;
     if (dataStatus === "Loading activities...") return;
     if (typeof window === "undefined") return;
+    if (!guidedToursEnabled) {
+      setTeacherTourRun(false);
+      setTeacherTourPromptOpen(false);
+      setTeacherTourInitialized(true);
+      return;
+    }
 
     const resumeRaw = window.localStorage.getItem(TEACHER_DASHBOARD_TOUR_RESUME_KEY);
     if (resumeRaw) {
@@ -1722,7 +1767,7 @@ export default function CustomerPage() {
       setTeacherTourPromptOpen(!hasTeacherTourPreference);
     }
     setTeacherTourInitialized(true);
-  }, [authChecked, dataStatus, isAuthenticated, role, teacherTourComputedSteps, teacherTourInitialized]);
+  }, [authChecked, dataStatus, guidedToursEnabled, isAuthenticated, role, teacherTourComputedSteps, teacherTourInitialized]);
 
   useEffect(() => {
     if (!teacherTourResumeMeta) return;
@@ -1862,6 +1907,7 @@ export default function CustomerPage() {
   }, [studentTourComputedSteps, studentTourResumeMeta, studentTourSteps]);
 
   const startStudentTour = useCallback(() => {
+    if (!guidedToursEnabled) return;
     setNotificationsOpen(false);
     setTeacherMenuOpen(false);
     setStudentDoubtOpen(false);
@@ -1877,7 +1923,7 @@ export default function CustomerPage() {
       window.localStorage.removeItem(STUDENT_DASHBOARD_TOUR_RESUME_KEY);
       window.localStorage.removeItem(STUDENT_ACTIVITY_TOUR_CHAIN_KEY);
     }
-  }, [studentTourComputedSteps]);
+  }, [guidedToursEnabled, studentTourComputedSteps]);
 
   const closeStudentTour = useCallback((completed: boolean) => {
     setStudentTourRun(false);
@@ -2022,6 +2068,12 @@ export default function CustomerPage() {
     if (role === "teacher" || !authChecked || !isAuthenticated || studentTourInitialized) return;
     if (dataStatus === "Loading activities...") return;
     if (typeof window === "undefined") return;
+    if (!guidedToursEnabled) {
+      setStudentTourRun(false);
+      setStudentTourPromptOpen(false);
+      setStudentTourInitialized(true);
+      return;
+    }
 
     const resumeRaw = window.localStorage.getItem(STUDENT_DASHBOARD_TOUR_RESUME_KEY);
     if (resumeRaw) {
@@ -2060,7 +2112,15 @@ export default function CustomerPage() {
     setStudentTourRun(false);
     setStudentTourPromptOpen(!hasStudentTourPreference);
     setStudentTourInitialized(true);
-  }, [authChecked, dataStatus, isAuthenticated, role, studentTourInitialized]);
+  }, [authChecked, dataStatus, guidedToursEnabled, isAuthenticated, role, studentTourInitialized]);
+
+  useEffect(() => {
+    if (guidedToursEnabled) return;
+    setTeacherTourRun(false);
+    setTeacherTourPromptOpen(false);
+    setStudentTourRun(false);
+    setStudentTourPromptOpen(false);
+  }, [guidedToursEnabled]);
 
   if (!authChecked) {
     return (
@@ -2082,7 +2142,7 @@ export default function CustomerPage() {
 
   return (
     <main className="section-padding space-y-8">
-      {role === "teacher" && (
+      {guidedToursEnabled && role === "teacher" && (
         <GuidedTour
           run={teacherTourRun}
           stepIndex={teacherTourCurrentStepIndex}
@@ -2095,7 +2155,7 @@ export default function CustomerPage() {
         />
       )}
 
-      {role !== "teacher" && (
+      {guidedToursEnabled && role !== "teacher" && (
         <GuidedTour
           run={studentTourRun}
           stepIndex={studentTourCurrentStepIndex}
@@ -2108,7 +2168,7 @@ export default function CustomerPage() {
         />
       )}
 
-      {role === "teacher" && teacherTourPromptOpen && !teacherTourRun && (
+      {guidedToursEnabled && role === "teacher" && teacherTourPromptOpen && !teacherTourRun && (
         <div className="fixed inset-0 z-[60] flex items-start justify-center px-4 pt-14" style={{ background: "rgba(15, 23, 42, 0.14)" }}>
           <div
             className="w-full max-w-lg rounded-2xl p-5"
@@ -2187,7 +2247,7 @@ export default function CustomerPage() {
         </div>
       )}
 
-      {role !== "teacher" && studentTourPromptOpen && !studentTourRun && (
+      {guidedToursEnabled && role !== "teacher" && studentTourPromptOpen && !studentTourRun && (
         <div className="fixed inset-0 z-[60] flex items-start justify-center px-4 pt-14" style={{ background: "rgba(15, 23, 42, 0.14)" }}>
           <div
             className="w-full max-w-lg rounded-2xl p-5"
@@ -3485,32 +3545,6 @@ export default function CustomerPage() {
                       </button>
 
                       <Link
-                        href="/socratic-ai"
-                        onClick={() => setTeacherMenuOpen(false)}
-                        className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 bg-slate-50 hover:bg-amber-50 border border-slate-200 hover:border-amber-300/60 text-sm text-slate-800 transition"
-                      >
-                        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500 border border-amber-300 text-true-white shadow-glow">
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            className="h-5 w-5"
-                          >
-                            <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z" />
-                            <path d="M12 6v4l3 2" />
-                          </svg>
-                        </span>
-                        <div className="text-left">
-                          <p className="font-semibold">Socratic AI</p>
-                          <p className="text-xs text-slate-500">JEE/NEET Logic Coach</p>
-                        </div>
-                      </Link>
-
-                      <Link
                         href="/student/steamh-projects"
                         data-tour="student-menu-upload-project"
                         onClick={() => setTeacherMenuOpen(false)}
@@ -3649,12 +3683,25 @@ export default function CustomerPage() {
             >
               <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-accent/25 bg-white text-accent-strong group-hover:bg-accent/10">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-                    <path d="M3 3v18h18" />
-                    <path d="m7 14 3-3 3 2 4-5" />
+                    <circle cx="11" cy="11" r="6.5" />
+                    <path d="m16 16 4.5 4.5" />
                   </svg>
                 </span>
                 Student Progress
               </Link>
+            <Link
+              href="/teacher/analytics"
+              onClick={() => setTeacherMenuOpen(false)}
+              className="group relative shrink-0 inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition-all bg-white/85 text-foreground border-accent/25 hover:border-accent-strong hover:bg-white"
+            >
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-accent/25 bg-white text-accent-strong group-hover:bg-accent/10">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                  <path d="M3 3v18h18" />
+                  <path d="m7 14 3-3 3 2 4-5" />
+                </svg>
+              </span>
+              Analytics
+            </Link>
             <Link
               href="/teacher/assign-task"
               onClick={() => setTeacherMenuOpen(false)}

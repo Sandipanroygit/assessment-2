@@ -7,14 +7,86 @@ create table if not exists public.profiles (
   full_name text,
   role text check (role in ('admin', 'teacher', 'student', 'customer')) default 'student',
   grade text,
+  school_name text,
+  approval_status text check (approval_status in ('pending', 'approved')) default 'pending',
+  approved_at timestamp with time zone,
+  approved_by uuid references public.profiles (id) on delete set null,
   created_at timestamp with time zone default now()
 );
 
 -- Bring existing tables in line with the newer profile shape
 alter table public.profiles add column if not exists grade text;
+alter table public.profiles add column if not exists school_name text;
+alter table public.profiles add column if not exists approval_status text;
+alter table public.profiles add column if not exists approved_at timestamp with time zone;
+alter table public.profiles add column if not exists approved_by uuid references public.profiles (id) on delete set null;
 alter table public.profiles drop constraint if exists profiles_role_check;
 alter table public.profiles add constraint profiles_role_check check (role in ('admin', 'teacher', 'student', 'customer'));
 alter table public.profiles alter column role set default 'student';
+alter table public.profiles drop constraint if exists profiles_approval_status_check;
+alter table public.profiles add constraint profiles_approval_status_check check (approval_status in ('pending', 'approved'));
+update public.profiles
+set approval_status = 'approved',
+    approved_at = coalesce(approved_at, created_at, now())
+where approval_status is null;
+alter table public.profiles alter column approval_status set default 'pending';
+alter table public.profiles alter column approval_status set not null;
+
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  raw_role text;
+  normalized_role text;
+  requested_grade text;
+  requested_school_name text;
+  requested_name text;
+  initial_approval_status text;
+  initial_approved_at timestamp with time zone;
+begin
+  raw_role := lower(coalesce(new.raw_user_meta_data ->> 'role', 'student'));
+  if raw_role in ('admin', 'teacher', 'student', 'customer') then
+    normalized_role := raw_role;
+  else
+    normalized_role := 'student';
+  end if;
+
+  requested_grade := nullif(trim(coalesce(new.raw_user_meta_data ->> 'grade', '')), '');
+  requested_school_name := nullif(trim(coalesce(new.raw_user_meta_data ->> 'school_name', '')), '');
+  requested_name := nullif(trim(coalesce(new.raw_user_meta_data ->> 'full_name', new.email)), '');
+  initial_approval_status := case when normalized_role = 'admin' then 'approved' else 'pending' end;
+  initial_approved_at := case when normalized_role = 'admin' then now() else null end;
+
+  insert into public.profiles (id, full_name, role, grade, school_name, approval_status, approved_at)
+  values (
+    new.id,
+    coalesce(requested_name, new.email, 'User'),
+    normalized_role,
+    requested_grade,
+    requested_school_name,
+    initial_approval_status,
+    initial_approved_at
+  )
+  on conflict (id) do update
+  set
+    full_name = coalesce(excluded.full_name, public.profiles.full_name),
+    role = excluded.role,
+    grade = coalesce(excluded.grade, public.profiles.grade),
+    school_name = coalesce(excluded.school_name, public.profiles.school_name),
+    approval_status = coalesce(public.profiles.approval_status, excluded.approval_status),
+    approved_at = coalesce(public.profiles.approved_at, excluded.approved_at);
+
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user();
 
 create table if not exists public.curriculum_modules (
   id uuid primary key default gen_random_uuid(),
@@ -154,9 +226,15 @@ create table if not exists public.steamh_assignments (
   student_name text not null,
   title text not null,
   instructions text,
+  instruction_links jsonb default '[]'::jsonb,
+  instruction_attachments jsonb default '[]'::jsonb,
   subject text,
   grade text,
   due_at timestamp with time zone not null,
+  assignment_mode text check (assignment_mode in ('individual', 'group')) default 'individual',
+  group_id uuid,
+  group_name text,
+  group_size integer check (group_size is null or group_size > 0),
   status text check (status in ('assigned', 'submitted', 'closed')) default 'assigned',
   submitted_project_id uuid references public.steamh_projects (id) on delete set null,
   submitted_at timestamp with time zone,
@@ -170,6 +248,9 @@ create index if not exists steamh_assignments_teacher_due_idx
 
 create index if not exists steamh_assignments_student_due_idx
   on public.steamh_assignments (student_id, due_at asc, created_at desc);
+
+create index if not exists steamh_assignments_group_idx
+  on public.steamh_assignments (group_id);
 
 create table if not exists public.simulation_assignments (
   id uuid primary key default gen_random_uuid(),
@@ -292,6 +373,32 @@ create table if not exists public.vr_modules (
   unique (subject, module_name)
 );
 
+create table if not exists public.schools (
+  id uuid primary key default gen_random_uuid(),
+  network_name text not null,
+  branch_name text not null,
+  display_name text not null,
+  sort_order integer not null default 100,
+  active boolean not null default true,
+  created_by uuid references public.profiles (id) on delete set null,
+  created_at timestamp with time zone default now(),
+  unique (network_name, branch_name),
+  unique (display_name)
+);
+
+create index if not exists schools_active_sort_idx
+  on public.schools (active, sort_order asc, display_name asc);
+
+insert into public.schools (network_name, branch_name, display_name, sort_order, active)
+values
+  ('Indus International Schools', 'Bangalore', 'Indus International School, Bangalore', 10, true),
+  ('Indus International Schools', 'Hyderabad', 'Indus International School, Hyderabad', 20, true),
+  ('Indus International Schools', 'Pune', 'Indus International School, Pune', 30, true),
+  ('Indus International Schools', 'Belgavi', 'Indus International School, Belgavi', 40, true),
+  ('10X International Schools', 'Bangalore', '10X International School, Bangalore', 50, true),
+  ('10X International Schools', 'Mysuru', '10X International School, Mysuru', 60, true)
+on conflict (network_name, branch_name) do nothing;
+
 -- RLS
 alter table public.profiles enable row level security;
 alter table public.curriculum_modules enable row level security;
@@ -311,6 +418,7 @@ alter table public.notifications enable row level security;
 alter table public.student_queries enable row level security;
 alter table public.student_query_messages enable row level security;
 alter table public.vr_modules enable row level security;
+alter table public.schools enable row level security;
 
 -- Helper: admin check (used by multiple policies)
 create or replace function public.is_admin()
@@ -350,9 +458,31 @@ drop policy if exists "Admins manage profiles" on public.profiles;
 create policy "Profiles are self-readable" on public.profiles
   for select using (auth.uid() = id);
 create policy "Profiles are self-updatable" on public.profiles
-  for update using (auth.uid() = id) with check (auth.uid() = id and role in ('teacher', 'student', 'customer'));
+  for update using (auth.uid() = id)
+  with check (
+    auth.uid() = id
+    and exists (
+      select 1
+      from public.profiles as old
+      where old.id = profiles.id
+        and old.role is not distinct from profiles.role
+        and old.approval_status is not distinct from profiles.approval_status
+        and old.approved_at is not distinct from profiles.approved_at
+        and old.approved_by is not distinct from profiles.approved_by
+    )
+  );
 create policy "Profiles are self-insertable" on public.profiles
-  for insert with check (auth.uid() = id and role in ('teacher', 'student', 'customer'));
+  for insert with check (
+    auth.uid() = id
+    and role = case
+      when lower(coalesce(auth.jwt() -> 'user_metadata' ->> 'role', 'student')) in ('teacher', 'student', 'customer')
+        then lower(coalesce(auth.jwt() -> 'user_metadata' ->> 'role', 'student'))
+      else 'student'
+    end
+    and approval_status = 'pending'
+    and approved_at is null
+    and approved_by is null
+  );
 create policy "Admins manage profiles" on public.profiles
   for all using (public.is_admin()) with check (public.is_admin());
 
@@ -664,6 +794,13 @@ drop policy if exists "Admins manage VR modules" on public.vr_modules;
 create policy "Teachers read VR modules" on public.vr_modules
   for select using (public.is_teacher());
 create policy "Admins manage VR modules" on public.vr_modules
+  for all using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "Public read active schools" on public.schools;
+drop policy if exists "Admins manage schools" on public.schools;
+create policy "Public read active schools" on public.schools
+  for select using (active is true);
+create policy "Admins manage schools" on public.schools
   for all using (public.is_admin()) with check (public.is_admin());
 
 -- Hint PostgREST to refresh its schema cache

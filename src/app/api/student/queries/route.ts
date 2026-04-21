@@ -10,6 +10,7 @@ const supabaseAdmin =
         auth: { persistSession: false, autoRefreshToken: false },
       })
     : null;
+const DEFAULT_LEGACY_SCHOOL_NAME = "10X International School, Bangalore";
 
 const extractToken = (req: Request) => {
   const authHeader = req.headers.get("authorization") ?? "";
@@ -23,6 +24,8 @@ const isMissingTableError = (message: string) =>
   && (message.toLowerCase().includes("schema cache") || message.toLowerCase().includes("relation"));
 
 const normalizeRole = (value: string | null | undefined) => (value ?? "").trim().toLowerCase();
+const normalizeSchool = (value: string | null | undefined) => (value ?? "").trim().toLowerCase();
+const isMissingSchoolColumnError = (message: string) => message.toLowerCase().includes("school_name");
 
 const resolveUserRole = async (userId: string, metadataRole?: string | null): Promise<string | null> => {
   const normalizedMetadataRole = normalizeRole(metadataRole);
@@ -39,6 +42,27 @@ const resolveUserRole = async (userId: string, metadataRole?: string | null): Pr
   }
 
   return normalizeRole((profile as { role?: string } | null)?.role) || null;
+};
+
+const resolveUserSchool = async (userId: string, metadataSchool?: string | null): Promise<string> => {
+  const normalizedMetadataSchool = normalizeSchool(metadataSchool);
+  if (normalizedMetadataSchool) return normalizedMetadataSchool;
+
+  const { data: profile, error: profileError } = await supabaseAdmin!
+    .from("profiles")
+    .select("school_name")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (profileError) {
+    if (isMissingSchoolColumnError(profileError.message)) {
+      return normalizeSchool(DEFAULT_LEGACY_SCHOOL_NAME);
+    }
+    throw new Error(`School lookup failed: ${profileError.message}`);
+  }
+
+  return normalizeSchool((profile as { school_name?: string } | null)?.school_name)
+    || normalizeSchool(DEFAULT_LEGACY_SCHOOL_NAME);
 };
 
 const ensureProfile = async (user: {
@@ -194,6 +218,11 @@ export async function POST(req: Request) {
     const teacherRole = (await resolveUserRole(teacher.id, teacher.user_metadata?.role as string | undefined)) ?? "";
     if (teacherRole !== "teacher") {
       return NextResponse.json({ error: "Selected user is not a teacher." }, { status: 400 });
+    }
+    const studentSchool = await resolveUserSchool(student.id, student.user_metadata?.school_name as string | undefined);
+    const teacherSchool = await resolveUserSchool(teacher.id, teacher.user_metadata?.school_name as string | undefined);
+    if (studentSchool && teacherSchool && studentSchool !== teacherSchool) {
+      return NextResponse.json({ error: "Select a teacher from your own school." }, { status: 400 });
     }
 
     await ensureProfile(student, "student");

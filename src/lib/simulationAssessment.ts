@@ -1,3 +1,8 @@
+import {
+  isPressureAltitudeContext,
+  pickRandomPressureAltitudeQuestions,
+} from "@/data/pressureAltitudeQuestionBank";
+
 type GeminiResponse = {
   candidates?: Array<{
     content?: {
@@ -109,6 +114,17 @@ const normalizeQuestions = (raw: unknown): SimulationAssessmentQuestion[] => {
 };
 
 const assessmentFallbackPool = (context: AssessmentContext) => {
+  const contextText = `${context.simulationTitle ?? ""} ${context.subject ?? ""} ${context.notes ?? ""}`.toLowerCase();
+  if (isPressureAltitudeContext(contextText)) {
+    return pickRandomPressureAltitudeQuestions(QUESTION_COUNT).map((item, index) => ({
+      id: `q${index + 1}`,
+      question: item.question,
+      options: item.options,
+      answerIndex: item.answerIndex,
+      explanation: item.explanation,
+    }));
+  }
+
   const title = cleanText(context.simulationTitle, "this simulation");
   const subject = cleanText(context.subject, "STEM");
   const grade = cleanText(context.targetGrade, "student level");
@@ -195,6 +211,22 @@ const parseQuestionPayload = (raw: string): unknown => {
 export const generateSimulationAssessment = async (
   context: AssessmentContext,
 ): Promise<GeneratedAssessment> => {
+  const contextText = `${context.simulationTitle ?? ""} ${context.subject ?? ""} ${context.notes ?? ""}`.toLowerCase();
+  if (isPressureAltitudeContext(contextText)) {
+    const questions = pickRandomPressureAltitudeQuestions(QUESTION_COUNT).map((item, index) => ({
+      id: `q${index + 1}`,
+      question: item.question,
+      options: item.options,
+      answerIndex: item.answerIndex,
+      explanation: item.explanation,
+    }));
+    return {
+      questions,
+      source: "fallback",
+      warning: null,
+    };
+  }
+
   const apiKey = pickGeminiApiKey();
   if (!apiKey) {
     return {

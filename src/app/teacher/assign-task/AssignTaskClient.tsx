@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { uploadFileToBucket } from "@/lib/supabaseData";
 
 type StudentRow = {
   id: string;
@@ -21,10 +22,16 @@ type SteamhAssignmentRow = {
   student_name: string;
   title: string;
   instructions?: string | null;
+  instruction_links?: string[] | null;
+  instruction_attachments?: Array<{ name?: string | null; url?: string | null; mimeType?: string | null }> | null;
   subject?: string | null;
   grade?: string | null;
   due_at: string;
   status?: string | null;
+  assignment_mode?: "individual" | "group" | null;
+  group_id?: string | null;
+  group_name?: string | null;
+  group_size?: number | null;
   submitted_project_id?: string | null;
   submitted_at?: string | null;
   last_reminded_at?: string | null;
@@ -62,6 +69,9 @@ function normalizeGrade(value?: string | null) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+const STEAMH_ASSIGNMENT_ASSETS_BUCKET = "steamh-projects";
+const STEAMH_ASSIGNMENT_ASSETS_PREFIX = "teacher-assignment-assets";
+
 export default function TeacherAssignTaskPage() {
   const [fullName, setFullName] = useState("Teacher");
   const [sessionToken, setSessionToken] = useState<string | null>(null);
@@ -71,15 +81,24 @@ export default function TeacherAssignTaskPage() {
   const [status, setStatus] = useState<string | null>(null);
   const [assignmentStatus, setAssignmentStatus] = useState<string | null>(null);
   const [assignmentForm, setAssignmentForm] = useState({
+    mode: "individual" as "individual" | "group",
     studentId: "",
+    studentIds: [] as string[],
+    groupName: "",
     title: "",
     dueAt: defaultAssignmentDueInput(),
     instructions: "",
+    instructionLinks: "",
   });
+  const [instructionFiles, setInstructionFiles] = useState<File[]>([]);
   const [assigningTask, setAssigningTask] = useState(false);
   const [remindingAssignmentId, setRemindingAssignmentId] = useState<string | null>(null);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
-  const [, startLoading] = useTransition();
+
+  const onInstructionFilesChange = (files: FileList | null) => {
+    const next = files ? Array.from(files) : [];
+    setInstructionFiles(next.slice(0, 10));
+  };
 
   const loadAssignments = useCallback(async (token: string) => {
     try {
@@ -167,6 +186,13 @@ export default function TeacherAssignTaskPage() {
 
   useEffect(() => {
     setAssignmentForm((prev) => {
+      if (prev.mode === "group") {
+        const nextStudentIds = prev.studentIds.filter((id) => filteredStudents.some((student) => student.id === id));
+        return {
+          ...prev,
+          studentIds: nextStudentIds,
+        };
+      }
       if (prev.studentId && filteredStudents.some((student) => student.id === prev.studentId)) {
         return prev;
       }
@@ -192,14 +218,33 @@ export default function TeacherAssignTaskPage() {
       setAssignmentStatus("Please log in again.");
       return;
     }
+    const mode = assignmentForm.mode;
     const studentId = assignmentForm.studentId.trim();
+    const studentIds = assignmentForm.studentIds;
+    const groupName = assignmentForm.groupName.trim();
     const title = assignmentForm.title.trim();
     const dueAtRaw = assignmentForm.dueAt.trim();
     const instructions = assignmentForm.instructions.trim();
+    const instructionLinks = assignmentForm.instructionLinks
+      .split(/\r?\n/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .slice(0, 20);
 
-    if (!studentId) {
-      setAssignmentStatus("Select a student before assigning.");
-      return;
+    if (mode === "individual") {
+      if (!studentId) {
+        setAssignmentStatus("Select a student before assigning.");
+        return;
+      }
+    } else {
+      if (studentIds.length < 2) {
+        setAssignmentStatus("Select at least 2 students to create a group task.");
+        return;
+      }
+      if (!groupName || groupName.length < 2) {
+        setAssignmentStatus("Group name should be at least 2 characters.");
+        return;
+      }
     }
     if (!title || title.length < 4) {
       setAssignmentStatus("Assignment title should be at least 4 characters.");
@@ -218,6 +263,20 @@ export default function TeacherAssignTaskPage() {
     try {
       setAssigningTask(true);
       setAssignmentStatus(null);
+      const uploadedInstructionAttachments = await Promise.all(
+        instructionFiles.map(async (file) => {
+          const url = await uploadFileToBucket({
+            bucket: STEAMH_ASSIGNMENT_ASSETS_BUCKET,
+            file,
+            pathPrefix: `${STEAMH_ASSIGNMENT_ASSETS_PREFIX}/${Date.now()}`,
+          });
+          return {
+            name: file.name,
+            url,
+            mimeType: file.type || null,
+          };
+        }),
+      );
       const res = await fetch("/api/teacher/steamh-assignments", {
         method: "POST",
         headers: {
@@ -225,10 +284,15 @@ export default function TeacherAssignTaskPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          studentId,
+          mode,
+          studentId: mode === "individual" ? studentId : undefined,
+          studentIds: mode === "group" ? studentIds : undefined,
+          groupName: mode === "group" ? groupName : undefined,
           title,
           dueAt: dueAtDate.toISOString(),
           instructions,
+          instructionLinks,
+          instructionAttachments: uploadedInstructionAttachments,
         }),
       });
       const body = await res.json().catch(() => ({}));
@@ -242,10 +306,14 @@ export default function TeacherAssignTaskPage() {
       setAssignmentStatus(`Task assigned successfully.${warning}`);
       setAssignmentForm((prev) => ({
         ...prev,
+        studentIds: [],
+        groupName: "",
         title: "",
         instructions: "",
+        instructionLinks: "",
         dueAt: defaultAssignmentDueInput(),
       }));
+      setInstructionFiles([]);
       await loadAssignments(sessionToken);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to create STEAM-H task.";
@@ -253,7 +321,12 @@ export default function TeacherAssignTaskPage() {
     } finally {
       setAssigningTask(false);
     }
-  }, [assignmentForm, loadAssignments, sessionToken]);
+  }, [assignmentForm, instructionFiles, loadAssignments, sessionToken]);
+
+  const selectedGroupStudents = useMemo(
+    () => filteredStudents.filter((student) => assignmentForm.studentIds.includes(student.id)),
+    [assignmentForm.studentIds, filteredStudents],
+  );
 
   const sendAssignmentReminder = useCallback(
     async (assignmentId: string, studentName: string) => {
@@ -395,32 +468,120 @@ export default function TeacherAssignTaskPage() {
                   ))}
                 </select>
               </label>
-              <label className="block text-sm text-slate-300 space-y-1">
-                Student
-                <select
-                  value={assignmentForm.studentId}
-                  onChange={(event) =>
-                    setAssignmentForm((prev) => ({
-                      ...prev,
-                      studentId: event.target.value,
-                    }))
-                  }
-                  className="w-full rounded-xl border border-accent/25 bg-white px-3 py-2 text-slate-900 outline-none focus:border-accent-strong"
-                >
-                  <option value="" className="text-black">Select student</option>
-                  {filteredStudents.map((student) => (
-                    <option key={student.id} value={student.id} className="text-black">
-                      {student.full_name} {student.grade ? `- ${student.grade}` : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="space-y-2">
+                <p className="text-sm text-slate-300">Assignment mode</p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setAssignmentForm((prev) => ({
+                        ...prev,
+                        mode: "individual",
+                        studentIds: [],
+                        groupName: "",
+                      }))
+                    }
+                    className={`rounded-xl px-3 py-2 text-sm font-semibold border ${
+                      assignmentForm.mode === "individual"
+                        ? "border-accent bg-accent text-true-white shadow-glow"
+                        : "border-white/20 bg-white/5 text-slate-200 hover:bg-white/10"
+                    }`}
+                  >
+                    Individual
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setAssignmentForm((prev) => ({
+                        ...prev,
+                        mode: "group",
+                        studentId: "",
+                      }))
+                    }
+                    className={`rounded-xl px-3 py-2 text-sm font-semibold border ${
+                      assignmentForm.mode === "group"
+                        ? "border-accent bg-accent text-true-white shadow-glow"
+                        : "border-white/20 bg-white/5 text-slate-200 hover:bg-white/10"
+                    }`}
+                  >
+                    Group
+                  </button>
+                </div>
+              </div>
+              {assignmentForm.mode === "individual" ? (
+                <label className="block text-sm text-slate-300 space-y-1">
+                  Student
+                  <select
+                    value={assignmentForm.studentId}
+                    onChange={(event) =>
+                      setAssignmentForm((prev) => ({
+                        ...prev,
+                        studentId: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-xl border border-accent/25 bg-white px-3 py-2 text-slate-900 outline-none focus:border-accent-strong"
+                  >
+                    <option value="" className="text-black">Select student</option>
+                    {filteredStudents.map((student) => (
+                      <option key={student.id} value={student.id} className="text-black">
+                        {student.full_name} {student.grade ? `- ${student.grade}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <div className="space-y-2">
+                  <label className="block text-sm text-slate-300 space-y-1">
+                    Group name
+                    <input
+                      value={assignmentForm.groupName}
+                      onChange={(event) =>
+                        setAssignmentForm((prev) => ({
+                          ...prev,
+                          groupName: event.target.value,
+                        }))
+                      }
+                      maxLength={80}
+                      placeholder="Example: Team Falcon"
+                      className="w-full rounded-xl border border-accent/25 bg-white px-3 py-2 text-slate-900 outline-none focus:border-accent-strong"
+                    />
+                  </label>
+                  <div className="rounded-xl border border-white/15 bg-white/5 p-3 space-y-2">
+                    <p className="text-sm text-slate-200">Select group members</p>
+                    <div className="max-h-44 overflow-auto space-y-1 pr-1">
+                      {filteredStudents.map((student) => {
+                        const checked = assignmentForm.studentIds.includes(student.id);
+                        return (
+                          <label key={student.id} className="flex items-center gap-2 text-sm text-slate-200">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(event) =>
+                                setAssignmentForm((prev) => ({
+                                  ...prev,
+                                  studentIds: event.target.checked
+                                    ? [...prev.studentIds, student.id]
+                                    : prev.studentIds.filter((id) => id !== student.id),
+                                }))
+                              }
+                            />
+                            <span>{student.full_name} {student.grade ? `- ${student.grade}` : ""}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <p className="text-xs text-slate-300">
+                      Selected: {selectedGroupStudents.length}
+                    </p>
+                  </div>
+                </div>
+              )}
               {selectedGrade && filteredStudents.length === 0 && (
                 <p className="text-xs text-amber-200">No students found for grade {selectedGrade}.</p>
               )}
 
               <label className="block text-sm text-slate-300 space-y-1">
-                Task title
+                Task title<span className="text-rose-400">*</span>
                 <input
                   value={assignmentForm.title}
                   onChange={(event) =>
@@ -436,7 +597,7 @@ export default function TeacherAssignTaskPage() {
               </label>
 
               <label className="block text-sm text-slate-300 space-y-1">
-                Deadline
+                Deadline<span className="text-rose-400">*</span>
                 <input
                   type="datetime-local"
                   value={assignmentForm.dueAt}
@@ -465,6 +626,35 @@ export default function TeacherAssignTaskPage() {
                   placeholder="Add expected outcome, rubric points, and submission guidelines."
                   className="w-full rounded-xl border border-accent/25 bg-white px-3 py-2 text-slate-900 outline-none focus:border-accent-strong resize-y"
                 />
+              </label>
+              <label className="block text-sm text-slate-300 space-y-1">
+                Reference links (optional, one per line)
+                <textarea
+                  value={assignmentForm.instructionLinks}
+                  onChange={(event) =>
+                    setAssignmentForm((prev) => ({
+                      ...prev,
+                      instructionLinks: event.target.value,
+                    }))
+                  }
+                  rows={3}
+                  maxLength={3000}
+                  placeholder={"https://example.com/reference\nhttps://drive.google.com/..."}
+                  className="w-full rounded-xl border border-accent/25 bg-white px-3 py-2 text-slate-900 outline-none focus:border-accent-strong resize-y"
+                />
+              </label>
+              <label className="block text-sm text-slate-300 space-y-1">
+                Attachments (images/pdf/word/ppt/zip)
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.zip,.txt"
+                  onChange={(event) => onInstructionFilesChange(event.target.files)}
+                  className="w-full rounded-xl border border-accent/25 bg-white px-3 py-2 text-slate-900 outline-none focus:border-accent-strong file-accent"
+                />
+                {instructionFiles.length > 0 ? (
+                  <p className="text-xs text-slate-300">{instructionFiles.length} file(s) selected.</p>
+                ) : null}
               </label>
 
               <div className="flex items-center justify-between gap-3">
@@ -496,6 +686,7 @@ export default function TeacherAssignTaskPage() {
                     <thead>
                       <tr>
                         <th>Student</th>
+                        <th>Mode</th>
                         <th>Task</th>
                         <th>Deadline</th>
                         <th>Status</th>
@@ -514,8 +705,17 @@ export default function TeacherAssignTaskPage() {
                         return (
                           <tr key={assignment.id}>
                             <td>
-                              <p className="font-semibold text-white">{assignment.student_name}</p>
+                              <p className="font-semibold text-white">
+                                {assignment.assignment_mode === "group" && assignment.group_name
+                                  ? `${assignment.group_name} - ${assignment.student_name}`
+                                  : assignment.student_name}
+                              </p>
                               <p className="text-xs text-slate-400">{assignment.grade ?? "--"}</p>
+                            </td>
+                            <td className="text-slate-300">
+                              {assignment.assignment_mode === "group"
+                                ? `Group (${assignment.group_size ?? "--"})`
+                                : "Individual"}
                             </td>
                             <td>
                               <p className="font-semibold text-white">{assignment.title}</p>
@@ -524,6 +724,12 @@ export default function TeacherAssignTaskPage() {
                               ) : (
                                 <p className="text-xs text-slate-500">No instructions added</p>
                               )}
+                              {(assignment.instruction_links?.length ?? 0) > 0 ? (
+                                <p className="text-xs text-cyan-200">{assignment.instruction_links?.length} link(s) attached</p>
+                              ) : null}
+                              {(assignment.instruction_attachments?.length ?? 0) > 0 ? (
+                                <p className="text-xs text-cyan-200">{assignment.instruction_attachments?.length} file(s) attached</p>
+                              ) : null}
                             </td>
                             <td className="text-slate-300">{formatDueDate(assignment.due_at)}</td>
                             <td>

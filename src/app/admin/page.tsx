@@ -29,6 +29,12 @@ import { logActivity } from "@/lib/activityLogger";
 import { GuidedTour, type GuidedTourStep } from "@/components/GuidedTour";
 import { playUiClickTone } from "@/lib/uiTone";
 import {
+  areGuidedToursEnabled,
+  GUIDED_TOURS_ENABLED_KEY,
+  GUIDED_TOURS_TOGGLE_EVENT,
+  setGuidedToursEnabled,
+} from "@/lib/tourControls";
+import {
   isDesignTechnologySubject,
   normalizeVrSubjectKey,
   VR_SUBJECT_ORDER,
@@ -41,6 +47,9 @@ type AdminUser = {
   email?: string | null;
   grade?: string | null;
   subject?: string | null;
+  school_name?: string | null;
+  approval_status?: "pending" | "approved" | string | null;
+  approved_at?: string | null;
   created_at?: string | null;
 };
 
@@ -62,6 +71,7 @@ const ADMIN_TOUR_BOOT_SELECTORS = [
 
 const gradeOptions = ["Grade 5", "Grade 6", "Grade 7", "Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12"];
 const subjectOptions = ["Physics", "Mathematics", "Computer Science", "Environment System & Society (ESS)", "Design Technology"];
+const DEFAULT_LEGACY_SCHOOL_NAME = "10X International School, Bangalore";
 
 const isMissingTableSchemaCacheError = (message: string) =>
   message.toLowerCase().includes("schema cache") && message.toLowerCase().includes("could not find the table");
@@ -73,8 +83,6 @@ const formatPrice = (value: number) =>
 
 const formatJoinedDate = (value?: string | null) => (value ? new Date(value).toLocaleDateString() : "-");
 const formatDateTime = (value?: string | null) => (value ? new Date(value).toLocaleString() : "-");
-const sanitizeSegment = (value: string) =>
-  value.replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase() || "item";
 const decodeDataUrl = (url?: string) => {
   if (!url || !url.startsWith("data:")) return null;
   const commaIndex = url.indexOf(",");
@@ -95,13 +103,6 @@ const encodeToBase64 = (text: string) => {
     return btoa(text);
   }
 };
-const studentLabelFromFile = (fileName: string) => {
-  const base = fileName.replace(/\.json$/i, "");
-  const parts = base.split("-");
-  if (parts.length > 1 && /^\d+$/.test(parts[parts.length - 1])) parts.pop();
-  const label = parts.join(" ").replace(/-+/g, " ").trim();
-  return label || "Student";
-};
 const mapRoleLabel = (role?: string | null) => {
   const normalized = (role ?? "").trim().toLowerCase();
   if (normalized === "admin") return "Admin";
@@ -110,6 +111,8 @@ const mapRoleLabel = (role?: string | null) => {
   if (normalized === "customer") return "Student"; // legacy role value
   return "Student";
 };
+const mapApprovalLabel = (value?: string | null) =>
+  (value ?? "").trim().toLowerCase() === "approved" ? "Approved" : "Pending";
 const shortId = (id: string) => (id.length <= 8 ? id : `${id.slice(0, 6)}...${id.slice(-4)}`);
 const getTeacherRequestTypeMeta = (requestType?: string | null) => {
   const normalized = (requestType ?? "").trim().toLowerCase();
@@ -131,14 +134,14 @@ const getTeacherRequestTypeMeta = (requestType?: string | null) => {
   };
 };
 
-type SentimentFile = {
-  moduleId: string;
-  moduleTitle: string;
-  studentLabel: string;
-  fileName: string;
-  path: string;
-  url: string;
-  createdAt?: string | null;
+type SchoolDirectoryRow = {
+  id: string;
+  network_name: string;
+  branch_name: string;
+  display_name: string;
+  sort_order: number;
+  active: boolean;
+  created_at?: string | null;
 };
 
 type TeacherRequest = {
@@ -213,7 +216,7 @@ type AdminRibbonSection =
   | "upload"
   | "questions"
   | "products"
-  | "sentiment"
+  | "schools"
   | "users"
   | "orders";
 
@@ -234,14 +237,14 @@ export default function AdminPage() {
     dir: "asc",
   });
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [sentimentFiles, setSentimentFiles] = useState<SentimentFile[]>([]);
+  const [schoolDirectoryRows, setSchoolDirectoryRows] = useState<SchoolDirectoryRow[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingCurriculumId, setEditingCurriculumId] = useState<string | null>(null);
-  const [deletingSentimentPath, setDeletingSentimentPath] = useState<string | null>(null);
+  const [savingSchoolId, setSavingSchoolId] = useState<string | null>(null);
   const curriculumEditRef = useRef<HTMLDivElement | null>(null);
   const curriculumCodeEditRef = useRef<HTMLDivElement | null>(null);
   const [dataStatus, setDataStatus] = useState<string | null>(null);
-  const [sentimentStatus, setSentimentStatus] = useState<string | null>(null);
+  const [schoolDirectoryStatus, setSchoolDirectoryStatus] = useState<string | null>(null);
   const [teacherRequests, setTeacherRequests] = useState<TeacherRequest[]>([]);
   const [teacherRequestStatus, setTeacherRequestStatus] = useState<string | null>(null);
   const [updatingRequestId, setUpdatingRequestId] = useState<string | null>(null);
@@ -269,6 +272,7 @@ export default function AdminPage() {
   const [adminTourLockedSteps, setAdminTourLockedSteps] = useState<GuidedTourStep[] | null>(null);
   const [adminTourPromptOpen, setAdminTourPromptOpen] = useState(false);
   const [adminTourUiReady, setAdminTourUiReady] = useState(false);
+  const [guidedToursEnabled, setGuidedToursEnabledState] = useState(true);
   const adminTourPromptOverlayRef = useRef<HTMLDivElement | null>(null);
   const adminTourPromptCardRef = useRef<HTMLDivElement | null>(null);
   const adminTourPromptButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -276,7 +280,15 @@ export default function AdminPage() {
   const [droneSearchInput, setDroneSearchInput] = useState("");
   const [droneSearchQuery, setDroneSearchQuery] = useState("");
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
-  const [userForm, setUserForm] = useState({ full_name: "", role: "student", grade: "", subject: "" });
+  const [approvingUserId, setApprovingUserId] = useState<string | null>(null);
+  const [userForm, setUserForm] = useState({
+    full_name: "",
+    role: "student",
+    grade: "",
+    subject: "",
+    school_name: "",
+    approval_status: "pending",
+  });
   const [sopFile, setSopFile] = useState<File | null>(null);
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [codeFile, setCodeFile] = useState<File | null>(null);
@@ -306,6 +318,33 @@ export default function AdminPage() {
     codeLabel: "",
     codeSnippet: "",
   });
+  const [newSchoolForm, setNewSchoolForm] = useState({
+    network_name: "Indus International Schools",
+    branch_name: "",
+    display_name: "",
+    sort_order: 100,
+    active: true,
+  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sync = () => setGuidedToursEnabledState(areGuidedToursEnabled());
+    sync();
+
+    const onStorage = (event: StorageEvent) => {
+      if (!event.key || event.key === GUIDED_TOURS_ENABLED_KEY) {
+        sync();
+      }
+    };
+    const onToggle = () => sync();
+
+    window.addEventListener("storage", onStorage);
+    window.addEventListener(GUIDED_TOURS_TOGGLE_EVENT, onToggle as EventListener);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(GUIDED_TOURS_TOGGLE_EVENT, onToggle as EventListener);
+    };
+  }, []);
+
   const unreadTeacherRequestItems = useMemo(
     () => teacherRequests.filter((req) => (req.status ?? "pending") !== "done"),
     [teacherRequests],
@@ -388,13 +427,12 @@ export default function AdminPage() {
   const canEditCurriculum = isAdmin || isTeacher;
   const dashboardRoleLabel = isAdmin ? "Admin" : isTeacher ? "Teacher" : "User";
   const ribbonSections: Array<{ id: AdminRibbonSection; label: string; adminOnly?: boolean }> = [
+    { id: "schools", label: "School Directories", adminOnly: true },
     { id: "drone", label: "Drone Activity" },
     { id: "vrModules", label: "VR Modules", adminOnly: true },
     { id: "simulations", label: "Simulations", adminOnly: true },
     { id: "upload", label: "Upload Content", adminOnly: true },
     { id: "questions", label: "Manage Questions" },
-    { id: "sentiment", label: "Sentiment Summaries" },
-    { id: "users", label: "Reg Users" },
     { id: "products", label: "Product Catalogue" },
     { id: "orders", label: "Orders" },
   ];
@@ -457,11 +495,13 @@ export default function AdminPage() {
             <path d="M8 7V5a4 4 0 0 1 8 0v2" />
           </svg>
         );
-      case "sentiment":
+      case "schools":
         return (
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-4 w-4">
-            <path d="M4 20h16" />
-            <path d="M6 16l3-4 3 2 4-6 2 2" />
+            <path d="M3 21h18" />
+            <path d="M5 21V7l7-4 7 4v14" />
+            <path d="M9 10h6" />
+            <path d="M9 14h6" />
           </svg>
         );
       case "users":
@@ -545,6 +585,12 @@ export default function AdminPage() {
           full_name: user.full_name?.trim() ? user.full_name : user.email ?? "Unnamed user",
           displayRole: mapRoleLabel(user.role),
           subject: user.subject ?? null,
+          school_name:
+            user.school_name
+            ?? (["teacher", "student", "customer"].includes((user.role ?? "").toLowerCase())
+              ? DEFAULT_LEGACY_SCHOOL_NAME
+              : null),
+          approval_status: (user.approval_status ?? "pending").toLowerCase(),
         }));
 
       setUserRows(users);
@@ -1093,6 +1139,8 @@ export default function AdminPage() {
       role: (user.role ?? "student").toLowerCase(),
       grade: user.grade ?? "",
       subject: user.subject ?? "",
+      school_name: user.school_name ?? "",
+      approval_status: (user.approval_status ?? "pending").toLowerCase(),
     });
     setUserEditStatus(null);
   };
@@ -1123,6 +1171,8 @@ export default function AdminPage() {
             userForm.role === "teacher"
               ? (userForm.subject.trim() || subjectOptions[0] || null)
               : null,
+          school_name: userForm.school_name.trim() || null,
+          approval_status: userForm.approval_status,
         }),
       });
 
@@ -1141,12 +1191,63 @@ export default function AdminPage() {
     }
     await reloadUsers();
     setEditingUser(null);
-    setUserForm({ full_name: "", role: "student", grade: "", subject: "" });
+    setUserForm({ full_name: "", role: "student", grade: "", subject: "", school_name: "", approval_status: "pending" });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unable to save user";
     setUserEditStatus(message);
   }
-  }, [editingUser, reloadUsers, userForm.grade, userForm.full_name, userForm.role, userForm.subject]);
+  }, [editingUser, reloadUsers, userForm.approval_status, userForm.grade, userForm.full_name, userForm.role, userForm.school_name, userForm.subject]);
+
+  const handleApproveUser = useCallback(
+    async (user: AdminUser) => {
+      if (!isAdmin) {
+        setDataStatus("Admin access is required to approve users.");
+        return;
+      }
+      setApprovingUserId(user.id);
+      setDataStatus(`Approving ${user.full_name}...`);
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+        if (!token) {
+          setDataStatus("No active session; please sign in again.");
+          return;
+        }
+
+        const response = await fetch("/api/admin/users", {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            id: user.id,
+            full_name: (user.full_name ?? "").trim(),
+            role: (user.role ?? "student").toLowerCase(),
+            grade: (user.role ?? "").toLowerCase() === "student" ? (user.grade ?? null) : null,
+            subject: (user.role ?? "").toLowerCase() === "teacher" ? (user.subject ?? null) : null,
+            school_name: user.school_name ?? null,
+            approval_status: "approved",
+          }),
+        });
+
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          setDataStatus(body?.error ?? `Approval failed (status ${response.status})`);
+          return;
+        }
+
+        await reloadUsers();
+        setDataStatus(`${user.full_name} approved.`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unable to approve user";
+        setDataStatus(message);
+      } finally {
+        setApprovingUserId(null);
+      }
+    },
+    [isAdmin, reloadUsers],
+  );
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -1224,6 +1325,8 @@ export default function AdminPage() {
               id?: string;
               full_name?: string | null;
               role?: string | null;
+              approval_status?: string | null;
+              approved_at?: string | null;
               created_at?: string | null;
             };
             if (!next?.id) return prev;
@@ -1233,6 +1336,8 @@ export default function AdminPage() {
               full_name: next.full_name ?? "Unnamed user",
               role: next.role ?? "customer",
               displayRole: mapRoleLabel(next.role),
+              approval_status: next.approval_status ?? "pending",
+              approved_at: next.approved_at ?? null,
               created_at: next.created_at ?? null,
             };
 
@@ -1277,78 +1382,181 @@ export default function AdminPage() {
     setUserRows((prev) => prev.filter((u) => u.id !== user.id));
     if (editingUser && editingUser.id === user.id) {
       setEditingUser(null);
-      setUserForm({ full_name: "", role: "student", grade: "", subject: "" });
+      setUserForm({ full_name: "", role: "student", grade: "", subject: "", school_name: "", approval_status: "pending" });
     }
     setDataStatus(null);
   };
 
-  useEffect(() => {
-    let cancelled = false;
-    const loadSentiment = async () => {
-      if (!isAdmin) return;
-      if (curriculumRows.length === 0) {
-        setSentimentFiles([]);
-        setSentimentStatus("No activities found yet.");
+  const loadSchoolDirectories = useCallback(async () => {
+    if (!isAdmin) return;
+    setSchoolDirectoryStatus("Loading school directories...");
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        setSchoolDirectoryStatus("No active session; please sign in again.");
         return;
       }
-      setSentimentStatus("Loading sentiment summaries...");
-      try {
-        const bucket = supabase.storage.from("curriculum-assets");
-        const collected: SentimentFile[] = [];
-        // Fetch sentiment files per activity folder
-        for (const mod of curriculumRows) {
-          const folder = `sentiment-metrics/${sanitizeSegment(mod.title)}-${sanitizeSegment(mod.id)}`;
-          const { data, error } = await bucket.list(folder, { limit: 100, offset: 0, sortBy: { column: "name", order: "desc" } });
-          if (error || !data) continue;
-          data
-            .filter((item) => item.name.toLowerCase().endsWith(".json"))
-            .forEach((item) => {
-              const path = `${folder}/${item.name}`;
-              const { data: publicUrl } = bucket.getPublicUrl(path);
-              collected.push({
-                moduleId: mod.id,
-                moduleTitle: mod.title,
-                studentLabel: studentLabelFromFile(item.name),
-                fileName: item.name,
-                path,
-                url: publicUrl.publicUrl,
-                createdAt: (item as { created_at?: string; updated_at?: string }).created_at || (item as { updated_at?: string }).updated_at,
-              });
-            });
-        }
-        if (cancelled) return;
-        const sorted = collected.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
-        setSentimentFiles(sorted);
-        setSentimentStatus(sorted.length ? null : "No sentiment summaries yet.");
-      } catch (err) {
-        if (cancelled) return;
-        const message = err instanceof Error ? err.message : "Unable to load sentiment files";
-        setSentimentFiles([]);
-        setSentimentStatus(message);
-      }
-    };
-    void loadSentiment();
-    return () => {
-      cancelled = true;
-    };
-  }, [isAdmin, curriculumRows]);
 
-  const handleDeleteSentimentFile = async (file: SentimentFile) => {
-    if (deletingSentimentPath) return;
-    setDeletingSentimentPath(file.path);
-    setSentimentStatus(`Deleting ${file.fileName}...`);
-    try {
-      const { error } = await supabase.storage.from("curriculum-assets").remove([file.path]);
-      if (error) throw error;
-      setSentimentFiles((prev) => prev.filter((item) => item.path !== file.path));
-      setSentimentStatus(`Deleted ${file.fileName}`);
+      const response = await fetch("/api/admin/schools", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const body = (await response.json().catch(() => ({}))) as { schools?: SchoolDirectoryRow[]; error?: string };
+      if (!response.ok) {
+        setSchoolDirectoryStatus(body?.error ?? `Failed to load school directories (status ${response.status}).`);
+        setSchoolDirectoryRows([]);
+        return;
+      }
+
+      setSchoolDirectoryRows(body.schools ?? []);
+      setSchoolDirectoryStatus(null);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unable to delete file";
-      setSentimentStatus(`Delete failed: ${message}`);
-    } finally {
-      setDeletingSentimentPath(null);
+      const message = err instanceof Error ? err.message : "Unable to load school directories";
+      setSchoolDirectoryStatus(message);
+      setSchoolDirectoryRows([]);
     }
-  };
+  }, [isAdmin]);
+
+  const addSchoolDirectory = useCallback(async () => {
+    if (!isAdmin) return;
+    if (!newSchoolForm.network_name.trim() || !newSchoolForm.branch_name.trim() || !newSchoolForm.display_name.trim()) {
+      setSchoolDirectoryStatus("Network, branch, and display name are required.");
+      return;
+    }
+
+    setSavingSchoolId("new");
+    setSchoolDirectoryStatus("Adding school directory...");
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        setSchoolDirectoryStatus("No active session; please sign in again.");
+        return;
+      }
+
+      const response = await fetch("/api/admin/schools", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          networkName: newSchoolForm.network_name.trim(),
+          branchName: newSchoolForm.branch_name.trim(),
+          displayName: newSchoolForm.display_name.trim(),
+          sortOrder: Number(newSchoolForm.sort_order) || 100,
+          active: newSchoolForm.active,
+        }),
+      });
+      const body = (await response.json().catch(() => ({}))) as { school?: SchoolDirectoryRow; error?: string };
+      if (!response.ok || !body.school) {
+        setSchoolDirectoryStatus(body?.error ?? `Unable to add school (status ${response.status}).`);
+        return;
+      }
+
+      setSchoolDirectoryRows((prev) =>
+        [...prev, body.school!].sort(
+          (a, b) => a.sort_order - b.sort_order || a.display_name.localeCompare(b.display_name),
+        ),
+      );
+      setNewSchoolForm((prev) => ({
+        ...prev,
+        branch_name: "",
+        display_name: "",
+        sort_order: (Number(prev.sort_order) || 100) + 10,
+      }));
+      setSchoolDirectoryStatus("School directory added.");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to add school";
+      setSchoolDirectoryStatus(message);
+    } finally {
+      setSavingSchoolId(null);
+    }
+  }, [isAdmin, newSchoolForm]);
+
+  const toggleSchoolDirectoryActive = useCallback(
+    async (row: SchoolDirectoryRow) => {
+      if (!isAdmin) return;
+      setSavingSchoolId(row.id);
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+        if (!token) {
+          setSchoolDirectoryStatus("No active session; please sign in again.");
+          return;
+        }
+
+        const response = await fetch("/api/admin/schools", {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ id: row.id, active: !row.active }),
+        });
+        const body = (await response.json().catch(() => ({}))) as { school?: SchoolDirectoryRow; error?: string };
+        if (!response.ok || !body.school) {
+          setSchoolDirectoryStatus(body?.error ?? `Unable to update school (status ${response.status}).`);
+          return;
+        }
+
+        setSchoolDirectoryRows((prev) => prev.map((item) => (item.id === row.id ? body.school! : item)));
+        setSchoolDirectoryStatus(null);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unable to update school";
+        setSchoolDirectoryStatus(message);
+      } finally {
+        setSavingSchoolId(null);
+      }
+    },
+    [isAdmin],
+  );
+
+  const deleteSchoolDirectory = useCallback(
+    async (row: SchoolDirectoryRow) => {
+      if (!isAdmin) return;
+      const confirmed = window.confirm(`Delete school "${row.display_name}"?`);
+      if (!confirmed) return;
+
+      setSavingSchoolId(row.id);
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+        if (!token) {
+          setSchoolDirectoryStatus("No active session; please sign in again.");
+          return;
+        }
+
+        const response = await fetch("/api/admin/schools", {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ id: row.id }),
+        });
+        const body = (await response.json().catch(() => ({}))) as { success?: boolean; error?: string };
+        if (!response.ok || !body.success) {
+          setSchoolDirectoryStatus(body?.error ?? `Unable to delete school (status ${response.status}).`);
+          return;
+        }
+
+        setSchoolDirectoryRows((prev) => prev.filter((item) => item.id !== row.id));
+        setSchoolDirectoryStatus(null);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unable to delete school";
+        setSchoolDirectoryStatus(message);
+      } finally {
+        setSavingSchoolId(null);
+      }
+    },
+    [isAdmin],
+  );
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    void loadSchoolDirectories();
+  }, [isAdmin, loadSchoolDirectories]);
 
   useEffect(() => {
     const handleClickOutside = (event: globalThis.MouseEvent) => {
@@ -1497,10 +1705,10 @@ export default function AdminPage() {
         placement: "top",
       },
       {
-        id: "admin-sentiment-section",
-        target: '[data-tour="admin-sentiment-section"]',
-        title: "Sentiment Summaries Section",
-        description: "Track generated sentiment reports and open or remove files here.",
+        id: "admin-schools-section",
+        target: '[data-tour="admin-schools-section"]',
+        title: "School Directories Section",
+        description: "Manage branch directories used in signup and school partitioning.",
         placement: "top",
       },
       {
@@ -1657,6 +1865,10 @@ export default function AdminPage() {
   );
 
   const startAdminTour = useCallback(() => {
+    if (!guidedToursEnabled) {
+      setDataStatus("Walkthroughs are disabled. Enable them from Menu to start tours.");
+      return;
+    }
     setAdminMenuOpen(false);
     setAdminNotificationsOpen(false);
     setShowTeacherRequests(false);
@@ -1680,7 +1892,36 @@ export default function AdminPage() {
     };
     const cleanup = waitForAdminTourUi(kickoff);
     return cleanup;
-  }, [adminTourComputedSteps, waitForAdminTourUi]);
+  }, [adminTourComputedSteps, guidedToursEnabled, waitForAdminTourUi]);
+
+  const toggleGuidedTours = useCallback(() => {
+    const nextEnabled = !guidedToursEnabled;
+    setGuidedToursEnabled(nextEnabled);
+    setGuidedToursEnabledState(nextEnabled);
+    setAdminMenuOpen(false);
+
+    if (!nextEnabled && typeof window !== "undefined") {
+      window.localStorage.setItem(ADMIN_TOUR_STORAGE_KEY, "skipped");
+      window.localStorage.setItem("teacher_feature_tour_v2", "skipped");
+      window.localStorage.setItem("teacher_progress_feature_tour_v2", "skipped");
+      window.localStorage.setItem("teacher_students_feature_tour_v2", "skipped");
+      window.localStorage.setItem("student_feature_tour_v2", "skipped");
+      window.sessionStorage.removeItem("teacher_dashboard_tour_autostart_v1");
+      window.sessionStorage.removeItem("student_activity_tour_autostart_v2");
+    }
+    if (!nextEnabled) {
+      setAdminTourRun(false);
+      setAdminTourActiveStepId(null);
+      setAdminTourLockedSteps(null);
+      setAdminTourPromptOpen(false);
+      setAdminNotificationsOpen(false);
+      setShowTeacherRequests(false);
+      setShowSalesInquiries(false);
+      setDataStatus("Walkthroughs disabled.");
+    } else {
+      setDataStatus("Walkthroughs enabled.");
+    }
+  }, [guidedToursEnabled]);
 
   const closeAdminTour = useCallback((completed: boolean) => {
     setAdminTourRun(false);
@@ -1759,8 +2000,9 @@ export default function AdminPage() {
       setActiveAdminSection("upload");
     } else if (stepId === "admin-questions-section") {
       setActiveAdminSection("questions");
-    } else if (stepId === "admin-sentiment-section") {
-      setActiveAdminSection("sentiment");
+    } else if (stepId === "admin-schools-section") {
+      setActiveAdminSection("schools");
+      void loadSchoolDirectories();
     } else if (stepId === "admin-drone-section") {
       setActiveAdminSection("drone");
     }
@@ -1770,6 +2012,7 @@ export default function AdminPage() {
     adminTourRun,
     adminTourSteps,
     loadSalesInquiries,
+    loadSchoolDirectories,
     loadTeacherRequests,
   ]);
 
@@ -1800,13 +2043,25 @@ export default function AdminPage() {
     if (!isAdmin || adminTourInitialized) return;
     if (typeof window === "undefined") return;
     if (!adminTourUiReady) return;
+    if (!guidedToursEnabled) {
+      setAdminTourRun(false);
+      setAdminTourPromptOpen(false);
+      setAdminTourInitialized(true);
+      return;
+    }
 
     const adminTourStatus = window.localStorage.getItem(ADMIN_TOUR_STORAGE_KEY);
     const hasAdminTourPreference = adminTourStatus === "done" || adminTourStatus === "skipped";
     setAdminTourRun(false);
     setAdminTourPromptOpen(!hasAdminTourPreference);
     setAdminTourInitialized(true);
-  }, [adminTourInitialized, isAdmin, adminTourUiReady]);
+  }, [adminTourInitialized, guidedToursEnabled, isAdmin, adminTourUiReady]);
+
+  useEffect(() => {
+    if (guidedToursEnabled) return;
+    setAdminTourRun(false);
+    setAdminTourPromptOpen(false);
+  }, [guidedToursEnabled]);
 
   useEffect(() => {
     if (!adminTourPromptOpen || adminTourRun) return;
@@ -1909,7 +2164,7 @@ export default function AdminPage() {
         />
       )}
 
-      {isAdmin && adminTourPromptOpen && !adminTourRun && adminTourUiReady && (
+      {isAdmin && guidedToursEnabled && adminTourPromptOpen && !adminTourRun && adminTourUiReady && (
         <div
           ref={adminTourPromptOverlayRef}
           className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto px-4 py-4"
@@ -2294,6 +2549,79 @@ export default function AdminPage() {
                         <p className="text-xs text-slate-500">Login logs and score analytics</p>
                     </div>
                   </Link>
+                )}
+
+                {isAdmin && (
+                  <Link
+                    href="/admin/schools"
+                    onClick={() => setAdminMenuOpen(false)}
+                    className="flex items-center gap-3 rounded-xl px-3 py-2.5 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300/60 text-sm text-slate-800 transition"
+                  >
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-500 border border-indigo-300 text-true-white shadow-glow">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="h-5 w-5"
+                      >
+                        <path d="M3 21h18" />
+                        <path d="M5 21V7l7-4 7 4v14" />
+                        <path d="M9 10h6" />
+                        <path d="M9 14h6" />
+                      </svg>
+                    </span>
+                    <div className="text-left">
+                      <p className="font-semibold">School Directory</p>
+                      <p className="text-xs text-slate-500">Manage branches for signup</p>
+                    </div>
+                  </Link>
+                )}
+
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={toggleGuidedTours}
+                    className="w-full flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300/60 text-sm text-slate-800 transition"
+                  >
+                    <span className="flex items-center gap-3 min-w-0">
+                      <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-500 border border-indigo-300 text-true-white shadow-glow">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="h-5 w-5"
+                        >
+                          <path d="M4 12a8 8 0 0 1 8-8h4" />
+                          <path d="M20 12a8 8 0 0 1-8 8H8" />
+                          <path d="M16 4v6h6" />
+                          <path d="M8 20v-6H2" />
+                        </svg>
+                      </span>
+                      <span className="text-left">
+                        <span className="block font-semibold">Walkthroughs</span>
+                        <span className="text-xs text-slate-500">
+                          {guidedToursEnabled ? "Disable tours for admin/teacher/student" : "Enable tours for admin/teacher/student"}
+                        </span>
+                      </span>
+                    </span>
+                    <span
+                      className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                        guidedToursEnabled
+                          ? "border-emerald-300 bg-emerald-100 text-emerald-700"
+                          : "border-slate-300 bg-slate-100 text-slate-600"
+                      }`}
+                    >
+                      {guidedToursEnabled ? "On" : "Off"}
+                    </span>
+                  </button>
                 )}
 
                 <button
@@ -3039,58 +3367,153 @@ export default function AdminPage() {
       </div>
       )}
 
-      {activeAdminSection === "sentiment" && (
+      {activeAdminSection === "schools" && (
       <div
         className="glass-panel rounded-2xl p-6 space-y-4"
-        data-tour={isAdmin ? "admin-sentiment-section" : undefined}
+        data-tour={isAdmin ? "admin-schools-section" : undefined}
       >
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-white">Sentiment summaries</h2>
-          <span className="text-sm text-slate-400">{sentimentFiles.length} files</span>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h2 className="text-lg font-semibold text-white">School directories</h2>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-slate-400">{schoolDirectoryRows.length} schools</span>
+            <button
+              className="text-sm px-3 py-1 rounded-lg border border-emerald-300 bg-emerald-700 text-true-white hover:bg-emerald-600"
+              onClick={() => void loadSchoolDirectories()}
+            >
+              Refresh
+            </button>
+            <Link
+              href="/admin/schools"
+              className="text-sm px-3 py-1 rounded-lg border border-emerald-300 bg-emerald-700 text-true-white hover:bg-emerald-600"
+            >
+              Open full page
+            </Link>
+          </div>
         </div>
-        {sentimentStatus && (
-          <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">{sentimentStatus}</div>
+
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3">
+          <label className="block text-sm text-slate-300 space-y-1">
+            Network
+            <select
+              value={newSchoolForm.network_name}
+              onChange={(e) => setNewSchoolForm((prev) => ({ ...prev, network_name: e.target.value }))}
+              className="w-full rounded-xl border border-slate-400/60 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none"
+            >
+              <option value="Indus International Schools" className="text-black">
+                Indus International Schools
+              </option>
+              <option value="10X International Schools" className="text-black">
+                10X International Schools
+              </option>
+            </select>
+          </label>
+          <label className="block text-sm text-slate-300 space-y-1">
+            Branch
+            <input
+              value={newSchoolForm.branch_name}
+              onChange={(e) => setNewSchoolForm((prev) => ({ ...prev, branch_name: e.target.value }))}
+              className="w-full rounded-xl border border-slate-400/60 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none"
+            />
+          </label>
+          <label className="block text-sm text-slate-300 space-y-1 lg:col-span-2">
+            Display name
+            <input
+              value={newSchoolForm.display_name}
+              onChange={(e) => setNewSchoolForm((prev) => ({ ...prev, display_name: e.target.value }))}
+              className="w-full rounded-xl border border-slate-400/60 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none"
+            />
+          </label>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <label className="inline-flex items-center gap-2 text-sm text-slate-300">
+            <input
+              type="checkbox"
+              checked={newSchoolForm.active}
+              onChange={(e) => setNewSchoolForm((prev) => ({ ...prev, active: e.target.checked }))}
+            />
+            Active
+          </label>
+          <button
+            className="px-4 py-2 rounded-xl bg-accent text-true-white font-semibold shadow-glow hover:translate-y-[-1px] transition-transform disabled:opacity-60"
+            onClick={() => void addSchoolDirectory()}
+            disabled={savingSchoolId === "new"}
+          >
+            {savingSchoolId === "new" ? "Adding..." : "Add school"}
+          </button>
+        </div>
+
+        {schoolDirectoryStatus && (
+          <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
+            {schoolDirectoryStatus}
+          </div>
         )}
+
         <div className="overflow-auto">
           <table className="table-v1">
             <thead>
               <tr className="text-left text-slate-400 border-b border-white/10">
-                <th className="py-2 pr-3">Activity</th>
-                <th className="py-2 pr-3">Student</th>
-                <th className="py-2 pr-3">File</th>
+                <th className="py-2 pr-3">Network</th>
+                <th className="py-2 pr-3">Branch</th>
+                <th className="py-2 pr-3">Display name</th>
+                <th className="py-2 pr-3">Status</th>
                 <th className="py-2 pr-3">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {sentimentFiles.length === 0 ? (
+              {schoolDirectoryRows.length === 0 ? (
                 <tr className="border-b border-white/5">
-                  <td className="py-2 pr-3 text-slate-300" colSpan={4}>
-                    No sentiment summaries yet.
+                  <td className="py-2 pr-3 text-slate-300" colSpan={5}>
+                    No school directories configured yet.
                   </td>
                 </tr>
               ) : (
-                sentimentFiles.map((file) => (
-                  <tr key={file.path} className="border-b border-white/5">
-                    <td className="py-2 pr-3 font-semibold text-white">{file.moduleTitle}</td>
-                    <td className="py-2 pr-3 text-slate-300">{file.studentLabel}</td>
-                    <td className="py-2 pr-3 text-slate-300">{file.fileName}</td>
+                schoolDirectoryRows.map((row) => (
+                  <tr
+                    key={row.id}
+                    className="border-b border-white/5"
+                  >
+                    <td className="py-2 pr-3 text-slate-200">{row.network_name}</td>
+                    <td className="py-2 pr-3 text-slate-200">{row.branch_name}</td>
+                    <td className="py-2 pr-3 text-slate-200">{row.display_name}</td>
                     <td className="py-2 pr-3">
-                      <a
-                        href={file.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="px-3 py-1 rounded-lg bg-emerald-500 text-slate-900 font-semibold text-xs border border-emerald-400 hover:bg-emerald-400 hover:border-emerald-300"
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs font-semibold border ${
+                          row.active
+                            ? "bg-emerald-600/80 border-emerald-300 text-white"
+                            : "bg-slate-600/70 border-slate-300 text-white"
+                        }`}
                       >
-                        Open
-                      </a>
-                      <button
-                        type="button"
-                        onClick={() => void handleDeleteSentimentFile(file)}
-                        disabled={deletingSentimentPath === file.path}
-                        className="ml-2 px-3 py-1 rounded-lg bg-rose-600 text-true-white font-semibold text-xs border border-rose-500 hover:bg-rose-500 hover:border-rose-400 disabled:opacity-50"
-                      >
-                        {deletingSentimentPath === file.path ? "Deleting..." : "Delete"}
-                      </button>
+                        {row.active ? "Active" : "Inactive"}
+                      </span>
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      <div className="flex flex-nowrap gap-2">
+                        <Link
+                          href={`/admin/schools?school=${encodeURIComponent(row.display_name)}`}
+                          className="shrink-0 px-3 py-1 rounded-lg text-xs font-semibold border border-sky-300 bg-sky-600 text-true-white hover:bg-sky-500"
+                        >
+                          View users
+                        </Link>
+                        <button
+                          className={`shrink-0 px-3 py-1 rounded-lg text-xs font-semibold border text-true-white disabled:opacity-60 ${
+                            row.active
+                              ? "border-amber-300 bg-amber-600 hover:bg-amber-500"
+                              : "border-emerald-300 bg-emerald-600 hover:bg-emerald-500"
+                          }`}
+                          onClick={() => void toggleSchoolDirectoryActive(row)}
+                          disabled={savingSchoolId === row.id}
+                        >
+                          {savingSchoolId === row.id ? "Saving..." : row.active ? "Disable" : "Enable"}
+                        </button>
+                        <button
+                          className="shrink-0 px-3 py-1 rounded-lg text-xs font-semibold border border-rose-300 bg-rose-600 text-true-white hover:bg-rose-500 disabled:opacity-60"
+                          onClick={() => void deleteSchoolDirectory(row)}
+                          disabled={savingSchoolId === row.id}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -3136,13 +3559,15 @@ export default function AdminPage() {
             </button>
           </div>
         </div>
-        <p className="text-sm text-slate-300">See everyone who has signed up for the platform.</p>
+        <p className="text-sm text-slate-300">See everyone who has signed up for the platform and approve new Indus School accounts.</p>
         <div className="overflow-auto">
           <table className="table-v1">
             <thead>
               <tr className="text-left text-slate-400 border-b border-white/10">
                 <th className="py-2 pr-3">Name</th>
                 <th className="py-2 pr-3">Role</th>
+                <th className="py-2 pr-3">Approval</th>
+                <th className="py-2 pr-3">School</th>
                 <th className="py-2 pr-3">Grade</th>
                 <th className="py-2 pr-3">Subject</th>
                 <th className="py-2 pr-3">User ID</th>
@@ -3153,7 +3578,7 @@ export default function AdminPage() {
             <tbody>
               {userRows.length === 0 ? (
                 <tr className="border-b border-white/5">
-                  <td className="py-2 pr-3 text-slate-300" colSpan={7}>
+                  <td className="py-2 pr-3 text-slate-300" colSpan={9}>
                     No users found yet. New accounts will appear here automatically after signup.
                   </td>
                 </tr>
@@ -3162,6 +3587,18 @@ export default function AdminPage() {
                   <tr key={user.id} className="border-b border-white/5">
                     <td className="py-2 pr-3 font-semibold text-white">{user.full_name}</td>
                     <td className="py-2 pr-3 text-slate-300">{user.displayRole}</td>
+                    <td className="py-2 pr-3">
+                      <span
+                        className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${
+                          mapApprovalLabel(user.approval_status) === "Approved"
+                            ? "border-emerald-700 bg-emerald-600 text-white"
+                            : "border-amber-700 bg-amber-400 text-slate-900"
+                        }`}
+                      >
+                        {mapApprovalLabel(user.approval_status)}
+                      </span>
+                    </td>
+                    <td className="py-2 pr-3 text-slate-300">{user.school_name ?? "â€”"}</td>
                     <td className="py-2 pr-3 text-slate-300">{user.grade ?? "â€”"}</td>
                     <td className="py-2 pr-3 text-slate-300">
                       {user.role === "teacher" ? user.subject ?? "â€”" : "â€”"}
@@ -3170,6 +3607,16 @@ export default function AdminPage() {
                     <td className="py-2 pr-3 text-slate-300">{formatJoinedDate(user.created_at)}</td>
                     <td className="py-2 pr-3">
                       <div className="flex flex-wrap gap-2">
+                        {mapApprovalLabel(user.approval_status) !== "Approved" && (
+                          <button
+                            className="px-3 py-1 rounded-lg border-2 border-emerald-300/90 bg-emerald-600 text-xs font-semibold text-true-white hover:bg-emerald-500 hover:border-emerald-200 transition"
+                            onClick={() => void handleApproveUser(user)}
+                            disabled={approvingUserId === user.id}
+                            title="Approve user immediately"
+                          >
+                            {approvingUserId === user.id ? "Approving..." : "Approve now"}
+                          </button>
+                        )}
                         <button
                           className="px-3 py-1 rounded-lg border-2 border-blue-300/90 bg-blue-600 text-xs font-semibold text-true-white hover:bg-blue-500 hover:border-blue-200 transition"
                           onClick={(e) => openUserEditor(user, e)}
@@ -3907,6 +4354,21 @@ export default function AdminPage() {
                 </select>
               </label>
               <label className="block text-sm text-slate-300 space-y-2">
+                Approval
+                <select
+                  value={userForm.approval_status}
+                  onChange={(e) => setUserForm((f) => ({ ...f, approval_status: e.target.value }))}
+                  className="w-full rounded-xl border border-slate-400/60 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none"
+                >
+                  <option value="pending" className="text-black">
+                    Pending admin approval
+                  </option>
+                  <option value="approved" className="text-black">
+                    Approved
+                  </option>
+                </select>
+              </label>
+              <label className="block text-sm text-slate-300 space-y-2">
                 Grade (students only)
                 <input
                   value={userForm.grade}
@@ -3936,6 +4398,15 @@ export default function AdminPage() {
                     </option>
                   ))}
                 </select>
+              </label>
+              <label className="block text-sm text-slate-300 space-y-2">
+                School
+                <input
+                  value={userForm.school_name}
+                  onChange={(e) => setUserForm((f) => ({ ...f, school_name: e.target.value }))}
+                  className="w-full rounded-xl border border-slate-400/60 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none"
+                  placeholder="e.g., Indus International School, Hyderabad"
+                />
               </label>
               <label className="block text-sm text-slate-300 space-y-2">
                 Email (read-only)
@@ -4000,4 +4471,5 @@ export default function AdminPage() {
     </main>
   );
 }
+
 
