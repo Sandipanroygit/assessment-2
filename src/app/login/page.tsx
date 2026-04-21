@@ -492,15 +492,9 @@ function LoginPageContent() {
                   className="w-full rounded-xl border border-slate-500/70 bg-white/5 px-3 py-2 text-white focus:border-accent focus:outline-none"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder={mode === "signup" ? `name@${REQUIRED_EMAIL_DOMAIN}` : undefined}
+                  placeholder="name@example.com"
                 />
               </label>
-
-              {mode === "signup" && (
-                <p className="text-xs text-slate-400">
-                  Signups are limited to <span className="font-semibold text-slate-200">@{REQUIRED_EMAIL_DOMAIN}</span> accounts and require admin approval.
-                </p>
-              )}
               {status && (
                 <div className={statusClassName}>
                   {status}
